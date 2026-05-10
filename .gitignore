@@ -1,13 +1,17 @@
 node_modules/
 dist/
 .next/
+out/
 .venv/
 __pycache__/
 *.py[cod]
 .Python
 .env
+.env.*
+!.env.example
 .env.local
 *.log
+*.tsbuildinfo
 .DS_Store
 Thumbs.db
 .idea/
@@ -17,3 +21,4 @@ Thumbs.db
 .mypy_cache/
 .ruff_cache/
 coverage/
+.eslintcache
