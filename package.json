@@ -1,0 +1,14 @@
+{
+  "name": "room-os",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev --prefix web\" \"npm run dev:api\"",
+    "dev:web": "npm run dev --prefix web",
+    "dev:api": "cd backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+    "build": "npm run build --prefix web",
+    "lint": "npm run lint --prefix web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}
