@@ -1,9 +1,9 @@
-"""Room OS API — scaffold only."""
+"""HAVEN API — scaffold only."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Room OS", version="0.0.0")
+app = FastAPI(title="HAVEN", version="0.0.0")
 
 app.add_middleware(
     CORSMiddleware,

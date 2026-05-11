@@ -30,7 +30,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={200}>
         {children}
-        <Toaster richColors position="bottom-right" />
+        <Toaster closeButton position="bottom-right" richColors={false} />
       </TooltipProvider>
       {process.env.NODE_ENV === "development" ? (
         <ReactQueryDevtools buttonPosition="bottom-left" />

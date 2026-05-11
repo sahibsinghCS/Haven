@@ -38,7 +38,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          toast: "cn-toast font-sans text-zinc-100",
+          title: "text-zinc-50 font-medium",
+          description: "text-zinc-400 text-sm opacity-95",
+          closeButton:
+            "text-zinc-500 hover:text-zinc-200 hover:bg-white/10 border-0 bg-transparent",
         },
       }}
       {...props}

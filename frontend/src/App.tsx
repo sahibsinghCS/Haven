@@ -20,7 +20,7 @@ function Shell() {
             Stack ready
           </Badge>
           <h1 className="text-foreground font-heading text-4xl font-semibold tracking-tight">
-            Room OS
+            HAVEN
           </h1>
           <p className="text-muted-foreground max-w-xl text-pretty text-base leading-relaxed">
             Frontend tooling is wired: Tailwind v4, shadcn (Radix Nova / Geist),

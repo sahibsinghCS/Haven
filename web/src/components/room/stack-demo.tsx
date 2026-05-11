@@ -112,7 +112,7 @@ export function StackDemo() {
             </Badge>
           </div>
           <h1 className="text-foreground font-heading text-4xl font-semibold tracking-tight">
-            Room OS
+            Haven
           </h1>
           <p className="text-muted-foreground max-w-2xl text-pretty text-base leading-relaxed">
             Next.js, Tailwind, shadcn/ui, Zustand, TanStack Query, React Hook
