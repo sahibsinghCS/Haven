@@ -38,7 +38,7 @@ export function LiveVideoStage({ snapshot }: { snapshot: LiveInferenceSnapshot }
           transition={reduceMotion ? { duration: 0.12 } : { duration: 0.9, ease: "easeOut" }}
           aria-hidden
         />
-        {/* Atmospheric lift — reduces flat black void */}
+        {/* Atmospheric lift: reduces flat black void */}
         <div
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_85%_70%_at_50%_38%,rgba(255,255,255,0.055)_0%,transparent_52%)]"
           aria-hidden
@@ -74,50 +74,86 @@ export function LiveVideoStage({ snapshot }: { snapshot: LiveInferenceSnapshot }
         />
       </div>
 
-      {/* Center lens — intentional placeholder, not an empty hole */}
+      {/* Center lens: intentional placeholder, not an empty hole */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
         <div
-          className="flex size-[5.5rem] items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/50 text-zinc-500 shadow-[0_0_0_1px_rgba(255,255,255,0.04),inset_0_1px_0_rgba(255,255,255,0.06),0_28px_70px_-28px_rgba(0,0,0,0.55)] backdrop-blur-[2px] ring-1 ring-white/[0.04] sm:size-24"
+          className="relative grid size-24 place-items-center rounded-full sm:size-28"
           aria-hidden
         >
-          <Camera className="size-8 opacity-50 sm:size-9" aria-hidden />
+          {!reduceMotion ? (
+            <motion.span
+              className="absolute inset-0 rounded-full border border-white/[0.07]"
+              initial={{ scale: 0.85, opacity: 0.4 }}
+              animate={{ scale: 1.4, opacity: 0 }}
+              transition={{ duration: 3.6, repeat: Number.POSITIVE_INFINITY, ease: "easeOut" }}
+            />
+          ) : null}
+          {!reduceMotion ? (
+            <motion.span
+              className="absolute inset-0 rounded-full border border-white/[0.06]"
+              initial={{ scale: 0.85, opacity: 0.45 }}
+              animate={{ scale: 1.6, opacity: 0 }}
+              transition={{
+                duration: 3.6,
+                repeat: Number.POSITIVE_INFINITY,
+                ease: "easeOut",
+                delay: 1.2,
+              }}
+            />
+          ) : null}
+          <span className="relative flex size-[5.5rem] items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/55 text-zinc-400 shadow-[0_0_0_1px_rgba(255,255,255,0.04),inset_0_1px_0_rgba(255,255,255,0.07),0_28px_70px_-28px_rgba(0,0,0,0.6)] backdrop-blur-[2px] ring-1 ring-white/[0.05] sm:size-24">
+            <Camera className="size-8 opacity-60 sm:size-9" aria-hidden />
+          </span>
         </div>
-        <span className="sr-only">Camera preview placeholder — no recording shown</span>
+        <span className="sr-only">Camera preview placeholder. No recording shown</span>
       </div>
 
       {/* Overlay UI */}
       <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[min(100%,88rem)] flex-1 flex-col gap-6 p-4 sm:gap-7 sm:p-6 lg:p-8">
         <div className="flex shrink-0 flex-col gap-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div
-              role="status"
-              className={cn(
-                roomosUi.liveStatusPill,
-                "inline-flex items-center gap-2 px-3 py-1.5",
-              )}
-            >
-              <span className="relative flex size-2" aria-hidden>
-                {!reduceMotion ? (
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400/50 opacity-35 motion-reduce:animate-none" />
-                ) : null}
-                <span className="relative inline-flex size-2 rounded-full bg-emerald-400/90" />
-              </span>
-              <Camera className="size-3.5 text-zinc-300" aria-hidden />
-              <span className="text-zinc-100">Live camera</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                role="status"
+                className={cn(
+                  roomosUi.liveStatusPill,
+                  "inline-flex items-center gap-2 px-3 py-1.5",
+                )}
+              >
+                <span className="relative flex size-2" aria-hidden>
+                  {!reduceMotion ? (
+                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400/55 opacity-50 motion-reduce:animate-none" />
+                  ) : null}
+                  <span className="relative inline-flex size-2 rounded-full bg-emerald-400/95" />
+                </span>
+                <Camera className="size-3.5 text-zinc-300" aria-hidden />
+                <span className="text-zinc-100">Live camera</span>
+              </div>
+              <div
+                className={cn(
+                  roomosUi.liveStatusPill,
+                  "inline-flex items-center gap-2 px-3 py-1.5 text-zinc-300",
+                )}
+              >
+                <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  Room
+                </span>
+                <span className="text-zinc-200">Living room</span>
+              </div>
             </div>
             <div
               className={cn(
                 roomosUi.liveStatusPill,
-                "inline-flex items-center gap-2 border-emerald-500/18 px-3 py-1.5 text-emerald-50/98",
+                "inline-flex items-center gap-2 border-emerald-500/22 bg-emerald-950/35 px-3 py-1.5 text-emerald-50/98",
               )}
             >
               <Shield className="size-3.5 text-emerald-400/95" aria-hidden />
-              <span>On-device · Private</span>
+              <span>On-device, private</span>
             </div>
           </div>
           <p className="max-w-2xl text-pretty text-[0.8125rem] leading-relaxed text-zinc-400 sm:text-sm">
             Haven reads your space locally, names what you are probably doing, then nudges the
-            room toward comfort — calmly, and only with signals you already have here.
+            room toward comfort, calmly, and only with signals you already have here.
           </p>
         </div>
 
@@ -129,7 +165,7 @@ export function LiveVideoStage({ snapshot }: { snapshot: LiveInferenceSnapshot }
               sceneSummary={formatSceneSummary(snapshot)}
             />
           </div>
-          <div className="w-full min-w-0 shrink-0 lg:max-w-sm xl:max-w-[19.5rem]">
+          <div className="w-full min-w-0 shrink-0 lg:max-w-[20rem] xl:max-w-[21rem]">
             <SecondaryStateConfidence
               variant="overlay"
               distribution={snapshot.distribution}
@@ -145,5 +181,5 @@ export function LiveVideoStage({ snapshot }: { snapshot: LiveInferenceSnapshot }
 function formatSceneSummary(snapshot: LiveInferenceSnapshot): string {
   const s = snapshot.appliedScene
   const fan = s.fanOn ? "Fan on" : "Fan off"
-  return `Lights ${s.brightness}% · ${fan} · ${s.temperatureF}°F target`
+  return `Lights ${s.brightness}%, ${fan}, ${s.temperatureF}°F target`
 }

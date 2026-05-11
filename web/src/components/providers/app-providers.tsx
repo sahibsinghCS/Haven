@@ -32,8 +32,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
         {children}
         <Toaster closeButton position="bottom-right" richColors={false} />
       </TooltipProvider>
-      {process.env.NODE_ENV === "development" ? (
-        <ReactQueryDevtools buttonPosition="bottom-left" />
+      {process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_RQ_DEVTOOLS === "1" ? (
+        <ReactQueryDevtools buttonPosition="top-right" />
       ) : null}
     </QueryClientProvider>
   )

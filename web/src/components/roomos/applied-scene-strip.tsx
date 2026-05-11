@@ -14,7 +14,7 @@ export function AppliedSceneStrip({ scene }: { scene: RoomDeviceTargets }) {
         <div className="flex flex-col">
           <span className="text-zinc-500 text-xs uppercase">Lights</span>
           <span className="font-medium tabular-nums">
-            {scene.brightness}% ·{" "}
+            {scene.brightness}%,{" "}
             <span className="text-zinc-300">{scene.lightColorHex}</span>
           </span>
         </div>

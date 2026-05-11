@@ -16,27 +16,35 @@ export function LightTonePreview({ hex, brightness, className }: LightTonePrevie
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <div
-        className="relative size-14 shrink-0 overflow-hidden rounded-xl border border-zinc-200/95 bg-white shadow-inner sm:size-[4.5rem]"
+        className="relative size-14 shrink-0 overflow-hidden rounded-2xl border border-[color:var(--haven-line-strong)] bg-stone-900 shadow-[inset_0_1px_2px_rgba(18,17,15,0.18),0_1px_2px_rgba(18,17,15,0.06)] sm:size-[4.25rem]"
         aria-hidden
       >
         <div
           className="absolute inset-0"
           style={{
-            background: `linear-gradient(155deg, ${normalized}, #e4e4e7)`,
-            opacity: 0.25 + level * 0.82,
+            background: `radial-gradient(circle at 28% 22%, rgba(255,255,255,0.7), transparent 55%), linear-gradient(155deg, ${normalized}, #1f1d1c)`,
+            opacity: 0.32 + level * 0.78,
           }}
         />
         <div
-          className="absolute inset-0 bg-zinc-900"
-          style={{ opacity: (1 - level) * 0.55 }}
+          className="pointer-events-none absolute inset-0 bg-zinc-950"
+          style={{ opacity: (1 - level) * 0.6 }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/12"
         />
       </div>
       <div className="min-w-0 space-y-1">
-        <p className="text-[0.65rem] font-medium uppercase tracking-[0.12em] text-zinc-500">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--haven-faint)]">
           Preview
         </p>
-        <p className="font-mono text-xs tracking-tight text-zinc-800">{normalized}</p>
-        <p className="text-xs tabular-nums text-zinc-600">{Math.round(brightness)}% brightness</p>
+        <p className="font-mono text-[12px] tracking-tight text-[color:var(--haven-ink-soft)]">
+          {normalized.toUpperCase()}
+        </p>
+        <p className="text-[12px] tabular-nums text-[color:var(--haven-muted)]">
+          {Math.round(brightness)}% brightness
+        </p>
       </div>
     </div>
   )

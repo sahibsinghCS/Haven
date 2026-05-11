@@ -154,7 +154,7 @@ const basicPreset: PreferencePreset = {
 const customPreset: PreferencePreset = {
   id: "preset_custom",
   name: "Custom",
-  description: "Your personal mix — adjust any mood, then save.",
+  description: "Your personal mix. Adjust any mood, then save.",
   isDefault: false,
   preferences: {
     sleep: {

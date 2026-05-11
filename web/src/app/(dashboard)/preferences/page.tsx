@@ -4,7 +4,7 @@ import { PreferencesPageClient } from "@/components/roomos/preferences-page-clie
 
 export const metadata: Metadata = {
   title: "Preferences",
-  description: "Tune lights, fan, and temperature for each mood — saved on this device.",
+  description: "Tune lights, fan, and temperature for each mood. Saved on this device.",
 }
 
 export default function PreferencesPage() {

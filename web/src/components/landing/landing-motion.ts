@@ -5,24 +5,24 @@
 
 import type { Variants } from "framer-motion"
 
-/** Primary easing — confident, premium deceleration */
+/** Primary easing: confident, premium deceleration */
 export const landingEase = {
   lux: [0.22, 1, 0.36, 1] as const,
-  /** Slower, calmer — trust / privacy moments */
+  /** Slower, calmer: trust / privacy moments */
   grounded: [0.33, 1, 0.25, 1] as const,
-  /** Hero / CTA — slightly more cinematic without bounce */
+  /** Hero / CTA: slightly more cinematic without bounce */
   velvet: [0.16, 1, 0.22, 1] as const,
 }
 
-/** Viewport presets for whileInView — once-only reveals */
+/** Viewport presets for whileInView: once-only reveals */
 export const landingViewport = {
   section: { once: true as const, margin: "-11% 0px -9% 0px" as const },
   headline: { once: true as const, margin: "-14% 0px -10% 0px" as const },
-  /** Tighter trigger — narrative pipeline steps */
+  /** Tighter trigger: narrative pipeline steps */
   pipelineStep: { once: true as const, margin: "-6% 0px -8% 0px" as const, amount: 0.35 as const },
-  /** Calm blocks — privacy, assurance */
+  /** Calm blocks: privacy, assurance */
   assured: { once: true as const, margin: "-10% 0px -8% 0px" as const, amount: 0.28 as const },
-  /** Product tiles — tactile previews */
+  /** Product tiles: tactile previews */
   tactile: { once: true as const, margin: "-7% 0px -6% 0px" as const, amount: 0.3 as const },
   /** Strong finish */
   finale: { once: true as const, margin: "-12% 0px -18% 0px" as const, amount: 0.4 as const },
@@ -62,7 +62,7 @@ export function landingStaggerParent(
 }
 
 /**
- * Child fade-up — default marketing reveal.
+ * Child fade-up: default marketing reveal.
  */
 export function landingFadeUp(
   reduceMotion: boolean | null,
@@ -87,7 +87,7 @@ export function landingFadeUp(
   }
 }
 
-/** Smaller travel + grounded ease — privacy, trust copy */
+/** Smaller travel + grounded ease: privacy, trust copy */
 export function landingFadeGrounded(
   reduceMotion: boolean | null,
   opts: { y?: number; duration?: number } = {},
@@ -99,7 +99,7 @@ export function landingFadeGrounded(
   })
 }
 
-/** Opacity + scale only — pairs with parent `transform` (e.g. hero parallax). */
+/** Opacity + scale only: pairs with parent `transform` (e.g. hero parallax). */
 export function landingFadeScale(
   reduceMotion: boolean | null,
   opts: { scale?: number; duration?: number } = {},
@@ -122,7 +122,7 @@ export function landingFadeScale(
   }
 }
 
-/** Depth reveal — cards, floating panels (opacity + y + optional scale). */
+/** Depth reveal: cards, floating panels (opacity + y + optional scale). */
 export function landingFadeLift(
   reduceMotion: boolean | null,
   opts: { y?: number; scale?: number; duration?: number } = {},

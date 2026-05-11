@@ -81,7 +81,7 @@ export function PersonalizeSection() {
           </motion.p>
         </motion.div>
 
-        {/* Light memory strip — product-specific metaphor */}
+        {/* Light memory strip (product metaphor) */}
         <motion.div
           className="relative mx-auto mt-11 max-w-3xl overflow-hidden rounded-2xl border border-[color:var(--landing-line-strong)] bg-[color-mix(in_oklab,var(--landing-surface)_82%,transparent)] p-6 shadow-[var(--landing-shadow-float)] backdrop-blur-md ring-1 ring-[color:var(--landing-edge-light)] sm:mt-12 sm:p-8"
           initial={reduceMotion ? false : { opacity: 0, y: 26, scale: 0.987 }}
@@ -94,39 +94,25 @@ export function PersonalizeSection() {
               Tone memory
             </p>
             <span className="rounded-md bg-stone-900/[0.06] px-2 py-1 font-mono text-[11px] text-[color:var(--landing-muted)]">
-              Focus → evening
+              Focus to evening
             </span>
           </div>
-          <div className="relative mt-6 h-14 overflow-hidden rounded-xl border border-[color:var(--landing-line)] bg-gradient-to-r from-amber-50/95 via-white to-sky-50/90 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.92)]">
-            <motion.div
-              className="absolute inset-y-2 left-[8%] w-[28%] rounded-lg bg-gradient-to-r from-amber-400/55 to-amber-200/35 blur-[0.5px]"
-              initial={false}
-              animate={
-                reduceMotion
-                  ? { opacity: 0.85 }
-                  : { left: ["8%", "12%", "10%"], opacity: [0.75, 0.95, 0.82] }
-              }
-              transition={{
-                duration: 8,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-              }}
-            />
-            <motion.div
-              className="absolute inset-y-2 right-[12%] w-[42%] rounded-lg bg-gradient-to-r from-sky-400/35 to-teal-300/25"
-              initial={false}
-              animate={
-                reduceMotion ? { opacity: 0.75 } : { opacity: [0.65, 0.88, 0.72], scaleX: [1, 1.03, 1] }
-              }
-              transition={{ duration: 9, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-            />
-            <span className="relative z-[1] flex h-full items-center px-4 text-[12px] font-medium text-[color:var(--landing-ink-soft)]">
-              After two light corrections, scenes drift cooler and softer, without another prompt.
-            </span>
+          <div className="relative mt-6 rounded-xl border border-[color:var(--landing-line)] bg-gradient-to-r from-amber-50/95 via-white to-sky-50/90 px-4 py-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.92)] sm:px-5 sm:py-5">
+            <p className="relative z-[1] text-pretty text-[13px] font-medium leading-[1.65] text-[color:var(--landing-ink-soft)] sm:text-[14px] sm:leading-[1.7]">
+              After two{" "}
+              <span className="rounded-md bg-gradient-to-r from-amber-200/95 to-amber-100/75 px-1.5 py-0.5 text-[color:var(--landing-ink)] shadow-[0_1px_0_rgba(255,255,255,0.65)] [box-decoration-break:clone]">
+                light corrections
+              </span>
+              , scenes drift{" "}
+              <span className="rounded-md bg-gradient-to-r from-sky-200/90 to-teal-100/75 px-1.5 py-0.5 text-[color:var(--landing-ink)] shadow-[0_1px_0_rgba(255,255,255,0.65)] [box-decoration-break:clone]">
+                cooler and softer
+              </span>
+              , without another prompt.
+            </p>
           </div>
         </motion.div>
 
-        {/* Story beats — not duplicate cards */}
+        {/* Story beats (not duplicate cards) */}
         <motion.div
           className="mx-auto mt-14 grid max-w-5xl gap-5 sm:gap-6 lg:mt-[3.75rem] lg:grid-cols-3 lg:gap-7"
           variants={beatStagger}

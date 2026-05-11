@@ -31,19 +31,20 @@ export function SecondaryStateConfidence({
       <motion.div
         layout={!reduceMotion}
         transition={reduceMotion ? { duration: 0.15 } : { duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className={cn(
-          roomosUi.liveOverlayGlass,
-          "w-full p-4",
-          "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]",
-        )}
+        className={cn(roomosUi.liveOverlayGlass, "w-full p-4 sm:p-5")}
       >
-        <p className="px-0.5 pb-3 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-zinc-400">
-          Also considering
-        </p>
+        <div className="flex items-center justify-between gap-3 px-0.5 pb-3.5">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-zinc-400">
+            Also considering
+          </p>
+          <span className="text-[0.65rem] font-medium uppercase tracking-[0.14em] text-zinc-600">
+            Distribution
+          </span>
+        </div>
         <div
           role="list"
           aria-label="Confidence for other room states"
-          className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-2"
+          className="flex flex-col gap-1.5"
         >
           {ROOM_STATE_ORDER.map((id) => {
             const value = distribution[id]
@@ -61,32 +62,39 @@ export function SecondaryStateConfidence({
                     : `${label}, ${pct} likelihood`
                 }
                 className={cn(
-                  "flex min-h-[3.5rem] min-w-0 flex-col justify-center gap-1.5 rounded-xl border px-2.5 py-2 sm:px-3",
-                  "border-white/[0.09] bg-white/[0.055]",
-                  active && "border-white/[0.16] bg-white/[0.1] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]",
+                  "group/sec relative flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2 transition-colors duration-300",
+                  active
+                    ? "border-white/[0.16] bg-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                    : "border-white/[0.06] bg-white/[0.025] hover:bg-white/[0.04]",
                 )}
               >
-                <div className="flex min-w-0 items-start justify-between gap-2">
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 text-left text-[0.75rem] font-medium leading-snug sm:text-[0.8125rem]",
-                      active ? "text-zinc-50" : "text-zinc-300",
-                    )}
-                  >
-                    <span className="line-clamp-2 text-pretty">{label}</span>
-                  </span>
-                  <span className="shrink-0 self-start pt-0.5 text-xs font-semibold tabular-nums text-zinc-300">
-                    {pct}
-                  </span>
-                </div>
-                <div className="h-[2px] overflow-hidden rounded-full bg-white/[0.12]" aria-hidden>
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    accent.bar,
+                    !active && "opacity-65",
+                  )}
+                  aria-hidden
+                />
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-[12.5px] font-medium leading-snug",
+                    active ? "text-zinc-50" : "text-zinc-300",
+                  )}
+                >
+                  {label}
+                </span>
+                <div className="relative h-[3px] w-20 overflow-hidden rounded-full bg-white/[0.08]" aria-hidden>
                   <motion.div
-                    className={cn("h-full rounded-full", accent.bar)}
+                    className={cn("absolute inset-y-0 left-0 rounded-full", accent.bar, !active && "opacity-80")}
                     initial={false}
                     animate={{ width: `${Math.round(value * 100)}%` }}
                     transition={barTransition}
                   />
                 </div>
+                <span className="w-9 shrink-0 text-right font-mono text-[11.5px] font-semibold tabular-nums text-zinc-300">
+                  {pct}
+                </span>
               </div>
             )
           })}

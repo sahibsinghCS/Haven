@@ -3,19 +3,19 @@ import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 /**
- * Marketing layout scale — editorial rhythm across the landing page.
+ * Marketing layout scale: editorial rhythm across the landing page.
  */
 export const landingLayout = {
   /** Max content width ~1152px, generous horizontal padding */
   container: "mx-auto w-full max-w-[min(100%,72rem)] px-5 sm:px-8",
   /**
-   * Default section vertical rhythm — composed, not underfilled.
+   * Default section vertical rhythm: composed, not underfilled.
    * Slightly tighter than before so momentum carries between chapters.
    */
   sectionY:
     "py-[clamp(4.75rem,10vw,7.75rem)] sm:py-[clamp(5.25rem,11vw,8.5rem)] lg:py-[clamp(7rem,9vw,8.75rem)]",
   /**
-   * First section after hero — pulls the narrative forward without crowding the fold.
+   * First section after hero: pulls the narrative forward without crowding the fold.
    */
   sectionYAfterHero:
     "pb-[clamp(5rem,10vw,8rem)] pt-[clamp(3.5rem,8vw,5.75rem)] sm:pb-[clamp(5.75rem,11vw,8.75rem)] sm:pt-[clamp(4rem,8.5vw,6.5rem)] lg:pb-[clamp(7rem,9vw,8.75rem)] lg:pt-[clamp(4.75rem,6vw,6.25rem)]",
@@ -23,11 +23,11 @@ export const landingLayout = {
   scrollMargin: "scroll-mt-28",
 } as const
 
-/** Serif display — Fraunces via root layout variable */
+/** Serif display: Fraunces via root layout variable */
 export const landingFontDisplay = "[font-family:var(--landing-display)]"
 
 /**
- * Primary elevated surface — cards, hero fragments (layered gradient + warm shadow + light rim).
+ * Primary elevated surface: cards, hero fragments (layered gradient + warm shadow + light rim).
  */
 export const landingGlass = cn(
   "rounded-[1.35rem]",
@@ -39,7 +39,7 @@ export const landingGlass = cn(
 )
 
 /**
- * Large marketing panels (privacy manifesto, final CTA shell) — stronger lift from canvas.
+ * Large marketing panels (privacy manifesto, final CTA shell): stronger lift from canvas.
  */
 export const landingPanel = cn(
   "overflow-hidden rounded-[2rem]",
@@ -50,7 +50,7 @@ export const landingPanel = cn(
   "ring-1 ring-[color:var(--landing-edge-light)]",
 )
 
-/** Primary marketing CTA — charcoal gradient, specular rim, teal accent ring */
+/** Primary marketing CTA: charcoal gradient, specular rim, teal accent ring */
 export const landingBtnPrimary = cn(
   "inline-flex items-center justify-center gap-2 rounded-full font-semibold tracking-[-0.012em] text-[#fffcf9]",
   "border border-teal-950/12",
@@ -62,10 +62,10 @@ export const landingBtnPrimary = cn(
   "motion-safe:active:translate-y-0 motion-safe:active:scale-[0.99]",
 )
 
-/** Compact primary — dense UI */
+/** Compact primary: dense UI */
 export const landingBtnPrimaryCompact = cn(landingBtnPrimary, "h-9 px-4 text-[13px]")
 
-/** Marketing nav — slightly more presence than compact; still minimal */
+/** Marketing nav: slightly more presence than compact; still minimal */
 export const landingBtnPrimaryNav = cn(
   landingBtnPrimary,
   "h-9 min-h-9 px-[1.125rem] text-[12.5px] font-semibold tracking-[-0.02em] sm:h-[2.375rem] sm:min-h-[2.375rem] sm:px-5 sm:text-[13px]",
@@ -74,23 +74,23 @@ export const landingBtnPrimaryNav = cn(
 /** Hero / finale primary size */
 export const landingBtnPrimaryLg = cn(landingBtnPrimary, "h-[3.35rem] px-11 text-[15px]")
 
-/** Hero fold — flagship primary (first screen, high confidence) */
+/** Hero fold: flagship primary (first screen, high confidence) */
 export const landingBtnPrimaryHero = cn(
   landingBtnPrimary,
   "h-[3.65rem] min-h-[3.65rem] min-w-[12.5rem] px-12 text-[16px] sm:h-[3.8rem] sm:min-h-[3.8rem] sm:px-14 sm:text-[17px]",
 )
 
-/** Hero secondary — quiet text action (primary CTA dominates) */
+/** Hero secondary: quiet text action (primary CTA dominates) */
 export const landingHeroSecondaryLink = cn(
   "group/hs inline-flex items-center gap-2 rounded-lg px-2 py-2.5 text-[14px] font-semibold tracking-[-0.02em] text-[color:var(--landing-muted)]",
   "transition-[color,transform] duration-300 ease-out hover:text-[color:var(--landing-ink)]",
   "motion-safe:hover:translate-x-px",
 )
 
-/** Mid primary — preference preview strip */
+/** Mid primary: preference preview strip */
 export const landingBtnPrimaryMd = cn(landingBtnPrimary, "h-11 px-7 text-[13px]")
 
-/** Secondary pill — glass surface, confident hover lift */
+/** Secondary pill: glass surface, confident hover lift */
 export const landingBtnSecondary = cn(
   "inline-flex items-center justify-center rounded-full border border-[color:var(--landing-line-strong)] bg-[color-mix(in_oklab,var(--landing-surface)_90%,transparent)] px-5 py-2.5 text-[13px] font-semibold text-[color:var(--landing-ink-soft)]",
   "shadow-[var(--landing-shadow-card)] backdrop-blur-md",
@@ -99,7 +99,7 @@ export const landingBtnSecondary = cn(
   "motion-safe:hover:-translate-y-px motion-safe:hover:border-[color:rgba(27,25,23,0.14)] motion-safe:hover:bg-[color-mix(in_oklab,var(--landing-surface)_97%,transparent)] motion-safe:hover:text-[color:var(--landing-ink)]",
 )
 
-/** Outline / tertiary — preferences links */
+/** Outline / tertiary: preferences links */
 export const landingBtnOutline = cn(
   "inline-flex items-center justify-center gap-2 rounded-full border border-[color:var(--landing-line-strong)] bg-[color-mix(in_oklab,var(--landing-surface)_92%,transparent)] px-6 text-[13px] font-semibold text-[color:var(--landing-ink)] shadow-[var(--landing-shadow-card)] backdrop-blur-md",
   "ring-1 ring-inset ring-white/52",

@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { motion, useReducedMotion } from "framer-motion"
 import Link from "next/link"
@@ -29,14 +30,49 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
 
   const accent = primaryState ? ROOM_STATE_ACCENT[primaryState] : null
 
+  // Segmented-nav active indicator: measures the active tab and animates
+  const navWrapRef = useRef<HTMLDivElement | null>(null)
+  const tabRefs = useRef<Record<string, HTMLAnchorElement | null>>({})
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null)
+  const activeKey = useMemo(() => nav.find((n) => n.href === pathname)?.href, [pathname])
+
+  useEffect(() => {
+    const measure = () => {
+      const wrap = navWrapRef.current
+      const el = activeKey ? tabRefs.current[activeKey] : null
+      if (!wrap || !el) {
+        setIndicator(null)
+        return
+      }
+      const wrapRect = wrap.getBoundingClientRect()
+      const tabRect = el.getBoundingClientRect()
+      setIndicator({
+        left: tabRect.left - wrapRect.left,
+        width: tabRect.width,
+      })
+    }
+    measure()
+    window.addEventListener("resize", measure)
+    return () => window.removeEventListener("resize", measure)
+  }, [activeKey])
+
   return (
     <div
       className={cn(
-        "relative flex min-h-full flex-1 flex-col",
+        "relative flex min-h-full flex-1 flex-col overflow-x-clip",
         isLive
           ? "bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100"
-          : "bg-gradient-to-b from-zinc-100 via-neutral-50 to-zinc-200/90 text-zinc-900",
+          : "haven-app text-[color:var(--haven-ink)]",
       )}
+      style={
+        isLive
+          ? undefined
+          : {
+              backgroundColor: "#f7f4ee",
+              backgroundImage:
+                "radial-gradient(ellipse 90% 60% at 50% -10%, rgba(255,253,250,0.96), transparent 55%), radial-gradient(ellipse 60% 45% at 92% 12%, rgba(167,243,208,0.18), transparent 55%), radial-gradient(ellipse 50% 45% at 4% 75%, rgba(253,230,138,0.14), transparent 55%), linear-gradient(180deg, #fdfcfa 0%, #f7f4ee 38%, #ebe6dc 100%)",
+            }
+      }
     >
       <div
         className={cn(
@@ -46,7 +82,7 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
             ? accent
               ? accent.glow
               : "from-zinc-800/30 via-transparent to-transparent"
-            : "from-white/55 via-zinc-100/20 to-transparent",
+            : "from-white/40 via-transparent to-transparent",
         )}
         aria-hidden
       />
@@ -73,65 +109,128 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
 
       <header
         className={cn(
-          "sticky top-0 z-30 border-b backdrop-blur-xl",
+          "sticky top-0 z-30 backdrop-blur-2xl",
           isLive
-            ? "border-white/[0.07] bg-zinc-950/58 py-2.5 supports-[backdrop-filter]:bg-zinc-950/48"
-            : "border-zinc-200/80 bg-white/78 py-3.5 supports-[backdrop-filter]:bg-white/65 sm:py-4",
+            ? "border-b border-white/[0.07] bg-zinc-950/58 py-2.5 supports-[backdrop-filter]:bg-zinc-950/48"
+            : "py-3 sm:py-3.5",
         )}
       >
+        {!isLive ? (
+          <>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-full bg-[linear-gradient(180deg,color-mix(in_oklab,#fffefb_85%,transparent)_0%,color-mix(in_oklab,#fdfcfa_55%,transparent)_100%)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_oklab,#fffefb_72%,transparent)_0%,color-mix(in_oklab,#fdfcfa_42%,transparent)_100%)]"
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-stone-900/12 to-transparent"
+            />
+          </>
+        ) : null}
         <div
           className={cn(
-            "mx-auto flex w-full items-center justify-between gap-4",
+            "relative mx-auto flex w-full items-center justify-between gap-4",
             isLive ? "max-w-none px-4 sm:px-5" : "max-w-6xl px-4 sm:px-6",
           )}
         >
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <Link
-              href="/live"
-              className={cn(
-                "truncate font-semibold tracking-tight text-base sm:text-lg",
-                isLive ? "text-zinc-50" : "text-zinc-900",
-                isLive ? roomosUi.focusRingDark : roomosUi.focusRingLight,
-                "rounded-md",
-              )}
-            >
-              Haven
-            </Link>
-            <p
-              className={cn(
-                "text-[0.6875rem] font-medium tracking-[0.12em] uppercase",
-                isLive ? "text-zinc-500" : "text-zinc-500",
-              )}
-            >
-              {isLive ? "Adaptive room intelligence" : "Local · Private · Adaptive"}
-            </p>
-          </div>
-          <nav
-            aria-label="Primary"
+          <Link
+            href="/live"
+            aria-label="Haven"
             className={cn(
-              "flex shrink-0 items-center gap-0.5 rounded-xl border p-0.5 sm:gap-1 sm:p-1",
+              "group inline-flex min-w-0 items-center gap-2.5 rounded-xl py-1 pl-1 pr-2",
+              "transition-[background-color] duration-200 ease-out",
               isLive
-                ? "border-white/[0.08] bg-zinc-950/45"
-                : "border-zinc-200/90 bg-white/90 shadow-sm",
+                ? cn(roomosUi.focusRingDark, "hover:bg-white/[0.04]")
+                : cn(roomosUi.focusRingLight, "hover:bg-stone-900/[0.04]"),
             )}
           >
+            <span
+              className={cn(
+                "relative flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-[0.7rem] px-2.5 ring-1",
+                isLive
+                  ? "bg-[linear-gradient(152deg,#2a2826_0%,#141312_48%,#0a0908_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-12px_rgba(0,0,0,0.5)] ring-white/12"
+                  : "bg-[linear-gradient(152deg,#242220_0%,#121110_48%,#0a0908_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-12px_rgba(0,0,0,0.45)] ring-white/14",
+              )}
+            >
+              <span className="pointer-events-none absolute inset-[1px] rounded-[0.6rem] bg-gradient-to-br from-white/10 to-transparent opacity-80" aria-hidden />
+              <Image
+                src="/haven-logo.png"
+                alt=""
+                width={424}
+                height={391}
+                className="relative z-[1] h-[26px] w-auto"
+                priority
+              />
+              <span
+                className={cn(
+                  "pointer-events-none absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full border border-white/25 bg-teal-500",
+                  isLive
+                    ? "shadow-[0_0_0_2px_rgba(9,9,11,0.95)]"
+                    : "shadow-[0_0_0_2px_rgba(247,243,235,0.95)]",
+                )}
+                aria-hidden
+              />
+            </span>
+            <span className="min-w-0 leading-none">
+              <span
+                className={cn(
+                  "mt-[3px] block truncate text-[10px] font-semibold uppercase tracking-[0.26em]",
+                  isLive ? "text-zinc-500" : "text-[color:var(--haven-faint)]",
+                )}
+              >
+                {isLive ? "Adaptive room intelligence" : "Local, private, adaptive"}
+              </span>
+            </span>
+          </Link>
+
+          <nav
+            ref={navWrapRef}
+            aria-label="Primary"
+            className={cn(
+              "relative flex shrink-0 items-center gap-0.5 rounded-full border p-0.5 sm:gap-1 sm:p-1",
+              isLive
+                ? "border-white/[0.08] bg-zinc-950/55 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+                : "border-stone-900/[0.1] bg-white/85 shadow-[inset_0_1px_0_0_rgba(255,255,255,1),0_10px_28px_-22px_rgba(15,23,42,0.18)] backdrop-blur-md",
+            )}
+          >
+            {indicator ? (
+              <motion.span
+                aria-hidden
+                className={cn(
+                  "absolute top-0.5 bottom-0.5 sm:top-1 sm:bottom-1 rounded-full",
+                  isLive
+                    ? "bg-white/[0.11] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                    : "bg-[linear-gradient(168deg,#1d1c1a_0%,#0d0c0b_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_8px_22px_-10px_rgba(0,0,0,0.45)]",
+                )}
+                initial={false}
+                animate={{ left: indicator.left, width: indicator.width }}
+                transition={
+                  reduceMotion
+                    ? { duration: 0 }
+                    : { type: "spring", stiffness: 380, damping: 32 }
+                }
+              />
+            ) : null}
             {nav.map((item) => {
               const active = pathname === item.href
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  ref={(el) => {
+                    tabRefs.current[item.href] = el
+                  }}
                   aria-current={active ? "page" : undefined}
                   className={cn(
+                    "relative z-[1] rounded-full px-3 py-1.5 text-[13px] font-semibold tracking-tight transition-colors duration-200 sm:px-4",
                     isLive ? roomosUi.focusRingDark : roomosUi.focusRingLight,
-                    "rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3",
                     isLive
                       ? active
-                        ? "bg-white/[0.11] text-zinc-50"
-                        : "text-zinc-500 transition-colors duration-200 hover:bg-white/[0.06] hover:text-zinc-200"
+                        ? "text-zinc-50"
+                        : "text-zinc-400 hover:text-zinc-200"
                       : active
-                        ? "bg-zinc-900 text-white shadow-sm"
-                        : "text-zinc-600 transition-colors duration-200 hover:bg-zinc-100 hover:text-zinc-900",
+                        ? "text-white"
+                        : "text-[color:var(--haven-muted)] hover:text-[color:var(--haven-ink)]",
                   )}
                 >
                   {item.label}
@@ -145,7 +244,9 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
       <main
         className={cn(
           "relative z-10 flex w-full flex-1 flex-col",
-          isLive ? "max-w-none min-h-0 p-0" : "mx-auto max-w-6xl min-h-0 px-4 py-8 sm:px-6 sm:py-10",
+          isLive
+            ? "max-w-none min-h-0 p-0"
+            : "mx-auto w-full max-w-6xl min-h-0 px-4 py-10 sm:px-6 sm:py-14",
         )}
       >
         {children}

@@ -1,14 +1,15 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
 import {
   landingBtnPrimaryNav,
   landingFocusRing,
-  landingFontDisplay,
   landingLayout,
 } from "@/components/landing/landing-primitives"
+import { Magnetic } from "@/components/landing/landing-text"
 import { LANDING_APP_ENTRY_KEY, getUserHasOpenedApp } from "@/lib/roomos/landing-app-entry"
 import { cn } from "@/lib/utils"
 
@@ -21,6 +22,7 @@ const navLinkClass = cn(
 
 export function LandingNav() {
   const [showPreferencesNav, setShowPreferencesNav] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
     const syncFromStorage = () => setShowPreferencesNav(getUserHasOpenedApp())
@@ -31,10 +33,14 @@ export function LandingNav() {
         setShowPreferencesNav(true)
       }
     }
+    const onScroll = () => setScrolled(window.scrollY > 16)
+    onScroll()
     window.addEventListener("storage", onStorage)
+    window.addEventListener("scroll", onScroll, { passive: true })
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener("storage", onStorage)
+      window.removeEventListener("scroll", onScroll)
     }
   }, [])
 
@@ -43,7 +49,11 @@ export function LandingNav() {
       <div className={cn(landingLayout.container, "pointer-events-auto")}>
         <div
           className={cn(
-            "relative flex h-[3.15rem] items-center rounded-[1.15rem] border border-[color:var(--landing-line-strong)] px-2 shadow-[var(--landing-shadow-card)] backdrop-blur-2xl backdrop-saturate-[1.25] sm:h-[3.45rem] sm:rounded-2xl sm:px-2.5 sm:shadow-[var(--landing-shadow-nav)]",
+            "relative flex h-[3.15rem] items-center rounded-[1.15rem] border border-[color:var(--landing-line-strong)] px-2 backdrop-blur-2xl backdrop-saturate-[1.25] sm:h-[3.45rem] sm:rounded-2xl sm:px-2.5",
+            "transition-[box-shadow,background-color,border-color] duration-300 ease-out",
+            scrolled
+              ? "shadow-[var(--landing-shadow-nav)]"
+              : "shadow-[var(--landing-shadow-card)]",
             "bg-[linear-gradient(180deg,color-mix(in_oklab,var(--landing-surface)_86%,transparent)_0%,color-mix(in_oklab,var(--landing-canvas)_68%,rgba(18,17,15,0.03))_100%)]",
             "supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_oklab,var(--landing-surface)_78%,transparent)_0%,color-mix(in_oklab,var(--landing-canvas)_58%,rgba(18,17,15,0.035))_100%)]",
             "ring-1 ring-[color:var(--landing-edge-light)]",
@@ -55,6 +65,7 @@ export function LandingNav() {
             <div className="min-w-0 justify-self-start">
               <Link
                 href="/"
+                aria-label="Haven"
                 className={cn(
                   "group inline-flex max-w-full items-center gap-2.5 rounded-xl py-1 pl-1 pr-2 sm:gap-3 sm:pl-1.5 sm:pr-2.5",
                   "transition-[background-color,box-shadow] duration-200 ease-out hover:bg-[color-mix(in_oklab,var(--landing-ink)_4%,transparent)]",
@@ -62,24 +73,26 @@ export function LandingNav() {
                 )}
               >
                 <span
-                  className="relative grid size-8 shrink-0 place-items-center rounded-[0.65rem] bg-[linear-gradient(152deg,#242220_0%,#121110_48%,#0a0908_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-12px_rgba(0,0,0,0.45)] ring-1 ring-white/14 sm:size-9"
-                  aria-hidden
+                  className={cn(
+                    "relative flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[0.65rem] px-2 sm:h-9 sm:px-2.5",
+                    "bg-[linear-gradient(152deg,#242220_0%,#121110_48%,#0a0908_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-12px_rgba(0,0,0,0.45)] ring-1 ring-white/14",
+                  )}
                 >
-                  <span className="absolute inset-[1px] rounded-[0.55rem] bg-gradient-to-br from-white/10 to-transparent opacity-80 sm:rounded-[0.6rem]" />
-                  <span className={cn(landingFontDisplay, "relative text-[14px] font-semibold tracking-[-0.08em] text-[#f7f4ef] sm:text-[15px]")}>
-                    H
-                  </span>
-                  <span className="absolute -bottom-0.5 -right-0.5 size-[5px] rounded-full border border-white/25 bg-teal-500 shadow-[0_0_0_2px_rgba(253,252,250,0.92)] sm:size-1.5" />
+                  <span className="pointer-events-none absolute inset-[1px] rounded-[0.55rem] bg-gradient-to-br from-white/10 to-transparent opacity-80 sm:rounded-[0.6rem]" aria-hidden />
+                  <Image
+                    src="/haven-logo.png"
+                    alt=""
+                    width={424}
+                    height={391}
+                    className="relative z-[1] h-[22px] w-auto sm:h-[26px]"
+                    priority
+                  />
+                  <span
+                    className="pointer-events-none absolute -bottom-0.5 -right-0.5 size-[5px] rounded-full border border-white/25 bg-teal-500 shadow-[0_0_0_2px_rgba(253,252,250,0.92)] sm:size-1.5"
+                    aria-hidden
+                  />
                 </span>
                 <span className="min-w-0 leading-none">
-                  <span
-                    className={cn(
-                      landingFontDisplay,
-                      "block truncate text-[15px] font-semibold tracking-[-0.04em] text-[color:var(--landing-ink)] transition-colors group-hover:text-[color:var(--landing-ink-soft)] sm:text-[16px]",
-                    )}
-                  >
-                    Haven
-                  </span>
                   <span className="mt-[3px] hidden truncate text-[9px] font-semibold uppercase tracking-[0.26em] text-[color:var(--landing-faint)] sm:block sm:text-[10px]">
                     Room OS
                   </span>
@@ -110,9 +123,23 @@ export function LandingNav() {
                   Preferences
                 </Link>
               ) : null}
-              <Link href="/live" className={cn(landingBtnPrimaryNav, landingFocusRing, "shrink-0")}>
-                Get Started
-              </Link>
+              <Magnetic strength={0.24} radius={90}>
+                <Link
+                  href="/live"
+                  data-cursor="hover"
+                  className={cn(
+                    landingBtnPrimaryNav,
+                    landingFocusRing,
+                    "group/cta relative isolate overflow-hidden shrink-0",
+                  )}
+                >
+                  <span
+                    className="pointer-events-none absolute inset-0 -translate-x-full bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.22)_50%,transparent_100%)] transition-transform duration-700 ease-out group-hover/cta:translate-x-full"
+                    aria-hidden
+                  />
+                  <span className="relative">Get Started</span>
+                </Link>
+              </Magnetic>
             </div>
           </div>
         </div>

@@ -56,14 +56,13 @@ export function PreferencesPreviewSection() {
       />
 
       <LandingContainer className="relative">
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between lg:gap-14">
-          <motion.div
-            className="max-w-xl"
-            variants={headStagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={landingViewport.headline}
-          >
+        <motion.div
+          className="max-w-2xl"
+          variants={headStagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={landingViewport.headline}
+        >
             <motion.div variants={headLine}>
               <LandingEyebrow>Preferences</LandingEyebrow>
             </motion.div>
@@ -74,31 +73,28 @@ export function PreferencesPreviewSection() {
               Each mood keeps its own envelope. Haven proposes baselines; you set light, airflow, and thermal targets that
               match how you actually live.
             </motion.p>
-            <motion.div variants={headLine} className="mt-8">
+            <motion.div variants={headLine} className="mt-8 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
               <Link
                 href="/preferences"
-                className={cn(landingBtnPrimaryMd, landingFocusRing, "inline-flex items-center gap-2")}
+                className={cn(landingBtnPrimaryMd, landingFocusRing, "inline-flex w-fit items-center gap-2")}
               >
                 <SlidersHorizontal className="size-4 opacity-90" strokeWidth={2} aria-hidden />
                 Open preferences
               </Link>
+              <p
+                className={cn(
+                  landingFontDisplay,
+                  "text-[14px] italic leading-snug text-[color:var(--landing-muted)] sm:max-w-[20rem] sm:text-[15px] lg:ml-auto lg:text-right",
+                )}
+              >
+                Five moods, five authored envelopes.
+              </p>
             </motion.div>
-          </motion.div>
+        </motion.div>
 
-          <motion.p
-            variants={headLine}
-            initial="hidden"
-            whileInView="show"
-            viewport={landingViewport.headline}
-            className={cn(landingFontDisplay, "max-w-[15rem] text-[15px] italic leading-snug text-[color:var(--landing-faint)] lg:text-right")}
-          >
-            Five moods · five authored envelopes.
-          </motion.p>
-        </div>
-
-        {/* Product tiles — marketing panels, not a form screenshot */}
+        {/* Product tiles: grid keeps cards wide enough so labels never clip */}
         <motion.div
-          className="mt-11 -mx-2 flex gap-4 overflow-x-auto pb-4 pt-2 sm:mx-0 sm:mt-12 sm:flex-wrap sm:overflow-visible sm:pb-0 lg:gap-5"
+          className="mt-11 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 xl:gap-5"
           variants={tileStagger}
           initial="hidden"
           whileInView="show"
@@ -112,29 +108,35 @@ export function PreferencesPreviewSection() {
                 key={id}
                 variants={tileLift}
                 className={cn(
-                  "relative min-w-[200px] flex-1 rounded-[1.35rem] border border-[color:var(--landing-line-strong)] bg-[linear-gradient(165deg,rgba(255,253,250,0.96)_0%,rgba(249,246,240,0.9)_100%)] p-5 shadow-[var(--landing-shadow-card)] backdrop-blur-md sm:min-w-0 sm:p-6",
+                  "relative flex min-h-0 flex-col rounded-[1.35rem] border border-[color:var(--landing-line-strong)] bg-[linear-gradient(165deg,rgba(255,253,250,0.96)_0%,rgba(249,246,240,0.9)_100%)] p-5 shadow-[var(--landing-shadow-card)] backdrop-blur-md sm:p-6",
                   "ring-1 ring-[color:var(--landing-edge-light)]",
+                  id === "away" && "opacity-[0.92] saturate-[0.88]",
                 )}
               >
                 <div className={cn("absolute left-0 top-6 h-[calc(100%-3rem)] w-[3px] rounded-full", skin.bar)} aria-hidden />
-                <header className="pl-4">
+                <header className="min-w-0 pl-4 pr-1">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--landing-faint)]">
                     Mood
                   </p>
-                  <h3 className={cn(landingFontDisplay, "mt-2 text-lg font-medium tracking-[-0.025em] text-[color:var(--landing-ink)]")}>
+                  <h3
+                    className={cn(
+                      landingFontDisplay,
+                      "mt-2 text-lg font-medium tracking-[-0.025em] text-[color:var(--landing-ink)] sm:text-xl",
+                    )}
+                  >
                     {ROOM_STATE_LABEL[id]}
                   </h3>
                 </header>
 
-                <div className="mt-5 flex items-center gap-4 pl-4">
+                <div className="mt-5 flex min-w-0 flex-1 flex-col gap-4 pl-4 pr-2 sm:flex-row sm:items-stretch sm:pr-3">
                   <div
-                    className="relative size-14 shrink-0 rounded-2xl border border-white/80 shadow-[inset_0_2px_8px_rgba(255,255,255,0.55)]"
+                    className="relative mx-auto size-14 shrink-0 rounded-2xl border border-white/80 shadow-[inset_0_2px_8px_rgba(255,255,255,0.55)] sm:mx-0"
                     style={{
                       background: `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.65), transparent), ${row.hex}`,
                     }}
                   />
                   <div className="min-w-0 flex-1 space-y-3">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--landing-faint)]">
                         Brightness
                       </p>
@@ -153,14 +155,14 @@ export function PreferencesPreviewSection() {
                         />
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-[12px] text-[color:var(--landing-muted)]">
-                      <span className="inline-flex items-center gap-1.5 tabular-nums">
-                        <Thermometer className="size-3.5 text-teal-800/65" strokeWidth={1.75} aria-hidden />
+                    <div className="flex min-w-0 flex-col gap-2 text-[13px] leading-tight text-[color:var(--landing-muted)] sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1">
+                      <span className="inline-flex min-w-0 shrink-0 items-center gap-1.5 tabular-nums">
+                        <Thermometer className="size-3.5 shrink-0 text-teal-800/65" strokeWidth={1.75} aria-hidden />
                         {row.temp}°F
                       </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <Fan className="size-3.5 text-sky-800/60" strokeWidth={1.75} aria-hidden />
-                        {row.fan ? "Air on" : "Still"}
+                      <span className="inline-flex min-w-0 items-center gap-1.5">
+                        <Fan className="size-3.5 shrink-0 text-sky-800/60" strokeWidth={1.75} aria-hidden />
+                        <span className="truncate">{row.fan ? "Air on" : "Still"}</span>
                       </span>
                     </div>
                   </div>
@@ -170,7 +172,7 @@ export function PreferencesPreviewSection() {
           })}
         </motion.div>
 
-        <p className="mt-6 text-center text-[12px] leading-relaxed text-[color:var(--landing-faint)] sm:mt-7 sm:text-left">
+        <p className="mt-6 max-w-[52rem] text-center text-[13px] leading-relaxed text-[color:var(--landing-muted)] sm:mt-7 sm:text-left">
           Illustrative snapshot: live preferences include presets, finer controls, and per room lanes as the product matures.
         </p>
       </LandingContainer>

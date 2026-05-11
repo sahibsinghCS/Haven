@@ -117,7 +117,7 @@ export function StackDemo() {
           <p className="text-muted-foreground max-w-2xl text-pretty text-base leading-relaxed">
             Next.js, Tailwind, shadcn/ui, Zustand, TanStack Query, React Hook
             Form + Zod, Framer Motion, Recharts, Sonner, Lucide, and a
-            reconnecting WebSocket client — ready for the real dashboard.
+            reconnecting WebSocket client, ready for the real dashboard.
           </p>
         </motion.header>
 
@@ -129,8 +129,7 @@ export function StackDemo() {
                 TanStack Query
               </CardTitle>
               <CardDescription>
-                Proxied <code className="text-xs">GET /api/health</code> →
-                FastAPI
+                Proxied <code className="text-xs">GET /api/health</code> against FastAPI
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -211,7 +210,7 @@ export function StackDemo() {
               <p className="text-muted-foreground">
                 Last event:{" "}
                 <span className="text-foreground font-medium">
-                  {lastMessage ?? "—"}
+                  {lastMessage ?? "No message yet"}
                 </span>
               </p>
             </CardContent>

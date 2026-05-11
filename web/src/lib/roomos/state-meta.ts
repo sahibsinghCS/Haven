@@ -12,9 +12,9 @@ export const ROOM_STATE_LABEL: Record<RoomStateId, string> = {
 export const ROOM_STATE_ACCENT: Record<
   RoomStateId,
   {
-    /** Top wash for dashboard backdrop — kept mostly neutral; state tint is subtle */
+    /** Top wash for dashboard backdrop: kept mostly neutral; state tint is subtle */
     glow: string
-    /** Full-bleed mesh behind the simulated camera — graphite base + controlled state hue */
+    /** Full-bleed mesh behind the simulated camera: graphite base + controlled state hue */
     heroMesh: string
     bar: string
     ring: string
@@ -105,33 +105,33 @@ export const ROOM_STATE_LANDING_ATMOSPHERE: Record<
   }
 > = {
   sleep: {
-    tagline: "Rest-first posture — depth without glare.",
+    tagline: "Rest-first posture: depth without glare.",
     light: "Low, moonlit wash; contrast where you need it.",
     air: "Near-still by default; movement only when you want it.",
-    thermal: "Biased cool — easier drift toward sleep-friendly temps.",
+    thermal: "Biased cool for easier drift toward sleep-friendly temps.",
   },
   gaming: {
-    tagline: "Contrast for play — energy without spectacle.",
+    tagline: "Contrast for play: energy without spectacle.",
     light: "Screen-safe brightness; no strobing gimmicks.",
     air: "Fresh circulation when sessions stretch long.",
     thermal: "Held steady so the room stays out of the way.",
   },
   work: {
     tagline: "Even field for deep focus.",
-    light: "Flat, gentle shadows — easy on long reads.",
+    light: "Flat, gentle shadows, easy on long reads.",
     air: "Quiet airflow you stop noticing.",
-    thermal: "Locked in — fewer thermal interruptions.",
+    thermal: "Locked in with fewer thermal interruptions.",
   },
   relaxing: {
-    tagline: "Recovery mode — warm, slow, wide.",
+    tagline: "Recovery mode: warm, slow, wide.",
     light: "Amber-biased gradients with soft edges.",
-    air: "Wide, slow movement — tactile calm.",
+    air: "Wide, slow movement and tactile calm.",
     thermal: "Open and cozy without going humid.",
   },
   away: {
     tagline: "Absent, but not unmanaged.",
     light: "Minimal baseline; presence without drama.",
     air: "Light-touch circulation on a sensible schedule.",
-    thermal: "Lean targets — comfort waiting when you return.",
+    thermal: "Lean targets with comfort waiting when you return.",
   },
 }

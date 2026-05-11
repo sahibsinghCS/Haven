@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  devIndicators: false,
   async rewrites() {
     return [
       {

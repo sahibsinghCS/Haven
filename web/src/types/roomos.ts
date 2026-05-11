@@ -16,7 +16,7 @@ export interface LiveStreamMeta {
   streamUrl?: string | null
   /** Optional poster for loading / paused states */
   posterUrl?: string | null
-  /** e.g. "16/9" — used for layout only */
+  /** e.g. "16/9", used for layout only */
   aspectLabel?: string
 }
 
@@ -39,7 +39,7 @@ export interface LiveInferenceSnapshot {
   /** Human-readable bullets for the overlay explainer */
   rationale: string[]
   appliedScene: RoomDeviceTargets
-  /** Rolling history for charts / debugging — timestamps ISO */
+  /** Rolling history for charts / debugging (timestamps ISO) */
   confidenceHistory: Array<{
     t: string
     sleep: number

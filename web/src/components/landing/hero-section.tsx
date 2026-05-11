@@ -12,21 +12,25 @@ import {
   useTransform,
 } from "framer-motion"
 import {
+  Activity,
   ArrowRight,
+  Briefcase,
+  ChevronDown,
+  DoorOpen,
+  Gamepad2,
   Lightbulb,
+  LockKeyhole,
   Moon,
   Palmtree,
+  Shield,
   Sparkles,
   Thermometer,
   Wind,
-  Gamepad2,
-  Briefcase,
-  DoorOpen,
 } from "lucide-react"
 
 import {
   landingDuration,
-  landingFadeScale,
+  landingFadeLift,
   landingFadeUp,
   landingStaggerParent,
 } from "@/components/landing/landing-motion"
@@ -34,10 +38,11 @@ import {
   landingBtnPrimaryHero,
   landingFocusRing,
   landingFontDisplay,
-  landingHeroSecondaryLink,
   LandingContainer,
   LandingEyebrow,
 } from "@/components/landing/landing-primitives"
+import { AmbientCursor } from "@/components/landing/ambient-cursor"
+import { Magnetic, SplitText } from "@/components/landing/landing-text"
 import { cn } from "@/lib/utils"
 
 const moodStrip = [
@@ -48,500 +53,376 @@ const moodStrip = [
   { id: "away", label: "Away", Icon: DoorOpen },
 ] as const
 
+const sceneRows = [
+  { label: "Light field", value: "74%", Icon: Lightbulb, tone: "text-amber-200" },
+  { label: "Airflow", value: "gentle", Icon: Wind, tone: "text-sky-200" },
+  { label: "Target", value: "72F", Icon: Thermometer, tone: "text-teal-200" },
+] as const
+
+/** One rail: posture + room read — same typography, no clipping, no overlap with scroll */
+const heroTelemetry = [
+  { label: "Video egress", value: "0", note: "Nothing leaves as video." },
+  { label: "Moods", value: "5", note: "One envelope each." },
+  { label: "Control plane", value: "1", note: "Light · air · thermal together." },
+  { label: "Occupancy", value: "Present", note: null },
+  { label: "Glare", value: "Low", note: null },
+  { label: "Air", value: "Steady", note: null },
+  { label: "Noise floor", value: "Quiet", note: null },
+] as const
+
 export function HeroSection() {
   const reduceMotion = useReducedMotion()
   const sectionRef = useRef<HTMLElement>(null)
-  const mx = useMotionValue(48)
-  const my = useMotionValue(38)
-  const sx = useSpring(mx, { stiffness: 30, damping: 30, mass: 0.5 })
-  const sy = useSpring(my, { stiffness: 30, damping: 30, mass: 0.5 })
+  const mx = useMotionValue(52)
+  const my = useMotionValue(42)
+  const sx = useSpring(mx, { stiffness: 28, damping: 32, mass: 0.5 })
+  const sy = useSpring(my, { stiffness: 28, damping: 32, mass: 0.5 })
 
-  const driftX = useMotionValue(0)
-  const driftY = useMotionValue(0)
-
-  const fragParallax = useTransform([sx, sy, driftX, driftY], ([x, y, dx, dy]) => {
-    const px = (Number(x) - 50) * -0.06 + Number(dx) * 0.012
-    const py = (Number(y) - 50) * -0.05 + Number(dy) * 0.01
-    return `translate3d(${px}px, ${py}px, 0)`
-  })
-
-  const wash = useMotionTemplate`radial-gradient(720px circle at ${sx}% ${sy}%, rgba(15,118,110,0.12), transparent 58%)`
-  const bloom = useMotionTemplate`radial-gradient(520px ellipse at ${sx}% ${sy}%, rgba(255,255,255,0.72), transparent 52%)`
+  const glow = useMotionTemplate`radial-gradient(820px circle at ${sx}% ${sy}%, rgba(20,184,166,0.28), transparent 62%)`
+  const pearl = useMotionTemplate`radial-gradient(620px ellipse at ${sx}% ${sy}%, rgba(255,248,232,0.18), transparent 58%)`
 
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ["start start", "end start"],
   })
-  const heroLift = useTransform(scrollYProgress, [0, 1], [0, -28])
-  const exploreOpacity = useTransform(scrollYProgress, [0, 0.15], [1, 0])
-  const bgParallaxDeep = useTransform(scrollYProgress, [0, 1], [0, 52])
-  const bgParallaxWarm = useTransform(scrollYProgress, [0, 1], [0, 36])
-  const meshParallax = useTransform(scrollYProgress, [0, 1], [0, 14])
+  const heroLift = useTransform(scrollYProgress, [0, 1], [0, -34])
+  const roomLift = useTransform(scrollYProgress, [0, 1], [0, 42])
+  const roomRotate = useTransform(scrollYProgress, [0, 1], [0, -1.8])
+  const continueOpacity = useTransform(scrollYProgress, [0, 0.14], [1, 0])
 
-  const copyStagger = useMemo(() => landingStaggerParent(reduceMotion, 0.09, 0.06), [reduceMotion])
-  const copyEyebrow = useMemo(() => landingFadeUp(reduceMotion, { y: 10, duration: landingDuration.micro }), [reduceMotion])
-  const copyTitle = useMemo(() => landingFadeUp(reduceMotion, { y: 28, duration: landingDuration.hero }), [reduceMotion])
-  const copyLead = useMemo(() => landingFadeUp(reduceMotion, { y: 14, duration: landingDuration.standard }), [reduceMotion])
-  const copyBody = useMemo(() => landingFadeUp(reduceMotion, { y: 12, duration: landingDuration.standard }), [reduceMotion])
-  const copyCtas = useMemo(() => landingFadeUp(reduceMotion, { y: 14, duration: landingDuration.slow }), [reduceMotion])
-  const visualShell = useMemo(() => landingFadeUp(reduceMotion, { y: 40, duration: landingDuration.hero }), [reduceMotion])
-  const visualStagger = useMemo(() => landingStaggerParent(reduceMotion, 0.11, 0.22), [reduceMotion])
-  const visualLayer = useMemo(() => landingFadeScale(reduceMotion, { scale: 0.979, duration: landingDuration.hero }), [reduceMotion])
+  const copyStagger = useMemo(() => landingStaggerParent(reduceMotion, 0.08, 0.08), [reduceMotion])
+  const copyLine = useMemo(() => landingFadeUp(reduceMotion, { y: 22, duration: landingDuration.hero }), [reduceMotion])
+  const visualReveal = useMemo(
+    () => landingFadeLift(reduceMotion, { y: 36, scale: 0.982, duration: landingDuration.hero }),
+    [reduceMotion],
+  )
 
   useEffect(() => {
     if (reduceMotion) return
     const el = sectionRef.current
     if (!el) return
-    const onMove = (e: PointerEvent) => {
+    const onMove = (event: PointerEvent) => {
       const r = el.getBoundingClientRect()
-      mx.set(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)))
-      my.set(Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)))
+      mx.set(Math.min(100, Math.max(0, ((event.clientX - r.left) / r.width) * 100)))
+      my.set(Math.min(100, Math.max(0, ((event.clientY - r.top) / r.height) * 100)))
     }
     el.addEventListener("pointermove", onMove)
     return () => el.removeEventListener("pointermove", onMove)
   }, [mx, my, reduceMotion])
 
-  useEffect(() => {
-    if (reduceMotion) return
-    let raf = 0
-    const t0 = performance.now()
-    const tick = (t: number) => {
-      const elapsed = (t - t0) / 1000
-      driftX.set(Math.sin(elapsed * 0.16) * 10)
-      driftY.set(Math.cos(elapsed * 0.13) * 8)
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [driftX, driftY, reduceMotion])
-
   return (
     <section
       ref={sectionRef}
+      id="hero"
       aria-labelledby="landing-hero-heading"
-      className="relative flex min-h-[100dvh] flex-col justify-center overflow-hidden pt-[4.35rem] pb-20 sm:pt-[4.75rem] sm:pb-28 lg:pb-20"
+      className="relative flex min-h-[100dvh] flex-col justify-center overflow-hidden bg-[#121110] pt-[5rem] pb-28 text-[#fbf7ef] sm:pt-[5.5rem] sm:pb-32 lg:pt-[5rem] lg:pb-24"
     >
-      {/* Layered light canvas */}
-      <div className="pointer-events-none absolute inset-0 bg-[color:var(--landing-canvas-pearl)]" aria-hidden />
-      <motion.div
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(168deg,var(--landing-canvas-pearl)_0%,var(--landing-canvas)_38%,var(--landing-canvas-mist)_74%,var(--landing-canvas-deep)_100%)]"
-        style={reduceMotion ? undefined : { y: bgParallaxDeep }}
-        aria-hidden
-      />
-      <motion.div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_95%_65%_at_85%_-8%,rgba(253,230,138,0.62),transparent_52%),radial-gradient(ellipse_70%_55%_at_5%_95%,rgba(167,243,208,0.28),transparent_48%),radial-gradient(ellipse_50%_40%_at_55%_48%,rgba(255,255,255,0.58),transparent_62%)]"
-        style={reduceMotion ? undefined : { y: bgParallaxWarm }}
-        aria-hidden
-      />
-      {/* Depth vignettes — keeps the hero from reading as flat ivory */}
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_88%_72%_at_50%_118%,rgba(18,17,15,0.09),transparent_58%),radial-gradient(ellipse_42%_48%_at_8%_12%,rgba(18,17,15,0.045),transparent_62%),radial-gradient(ellipse_38%_44%_at_96%_28%,rgba(15,118,110,0.06),transparent_55%)]"
-        aria-hidden
-      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_62%_at_50%_-10%,rgba(255,247,231,0.16),transparent_58%),radial-gradient(ellipse_70%_58%_at_8%_28%,rgba(20,184,166,0.18),transparent_54%),radial-gradient(ellipse_72%_64%_at_92%_76%,rgba(245,158,11,0.12),transparent_58%),linear-gradient(180deg,#11100e_0%,#0e0d0b_32%,#151412_58%,#1c1a17_78%,#23211e_92%,#2a2724_100%)]" />
       {!reduceMotion ? (
-        <motion.div className="pointer-events-none absolute inset-0 opacity-[0.78]" style={{ background: wash }} aria-hidden />
-      ) : (
-        <div
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(680px_circle_at_55%_38%,rgba(15,118,110,0.075),transparent_58%)]"
-          aria-hidden
-        />
-      )}
-      {!reduceMotion ? (
-        <motion.div className="pointer-events-none absolute inset-0 opacity-45 mix-blend-soft-light" style={{ background: bloom }} aria-hidden />
+        <>
+          <motion.div className="pointer-events-none absolute inset-0 opacity-80" style={{ background: glow }} />
+          <motion.div className="pointer-events-none absolute inset-0 opacity-90 mix-blend-screen" style={{ background: pearl }} />
+        </>
       ) : null}
-
-      {/* Quiet structure — not empty void */}
-      <motion.div
-        className="pointer-events-none absolute inset-0 opacity-[0.42]"
-        style={
-          reduceMotion
-            ? {
-                backgroundImage:
-                  "linear-gradient(to right, rgba(27,25,23,0.042) 1px, transparent 1px), linear-gradient(to bottom, rgba(27,25,23,0.036) 1px, transparent 1px)",
-                backgroundSize: "min(100%, 72rem) 100%",
-                backgroundPosition: "center top",
-              }
-            : {
-                y: meshParallax,
-                backgroundImage:
-                  "linear-gradient(to right, rgba(27,25,23,0.042) 1px, transparent 1px), linear-gradient(to bottom, rgba(27,25,23,0.036) 1px, transparent 1px)",
-                backgroundSize: "min(100%, 72rem) 100%",
-                backgroundPosition: "center top",
-              }
-        }
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.15]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)",
+          backgroundSize: "72px 72px",
+          maskImage: "radial-gradient(ellipse 80% 64% at 50% 44%, black 0%, transparent 72%)",
+        }}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--landing-line-strong)] to-transparent"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[min(38vh,15rem)] sm:h-[min(36vh,17rem)]"
+        style={{
+          background: `linear-gradient(
+            180deg,
+            transparent 0%,
+            rgba(18, 17, 15, 0.22) 14%,
+            rgba(32, 29, 26, 0.55) 32%,
+            rgba(48, 44, 40, 0.72) 52%,
+            rgba(72, 66, 58, 0.55) 68%,
+            rgba(120, 110, 98, 0.28) 82%,
+            rgba(190, 182, 168, 0.2) 91%,
+            color-mix(in oklab, var(--landing-canvas-pearl) 94%, #c4bbb0) 97%,
+            var(--landing-canvas-pearl) 100%
+          )`,
+        }}
         aria-hidden
       />
 
       <motion.div
-        className="relative z-10 w-full flex-1 py-8 lg:flex lg:items-center lg:py-12 xl:py-16"
+        className="relative z-10 w-full flex-1 py-8 lg:flex lg:items-center lg:py-10"
         style={reduceMotion ? undefined : { y: heroLift }}
       >
-        <LandingContainer className="grid w-full grid-cols-1 gap-14 lg:grid-cols-12 lg:items-center lg:gap-x-6 lg:gap-y-12 xl:gap-x-10 xl:gap-y-14">
-          {/* Copy — editorial index + dominant typographic lockup */}
-          <div className="relative z-[1] lg:col-span-4 xl:col-span-4">
-            <div
-              className="pointer-events-none absolute -left-[min(38vw,340px)] top-[-12%] hidden h-[125%] w-[min(100%,480px)] rounded-[50%_50%_48%_52%/50%_52%_48%_50%] bg-[radial-gradient(ellipse_70%_58%_at_20%_42%,rgba(15,118,110,0.11),transparent_72%)] blur-[1.5px] lg:block"
-              aria-hidden
-            />
-            <div
-              className="pointer-events-none absolute -left-2 top-0 hidden h-full w-1 rounded-full bg-gradient-to-b from-teal-800/90 via-stone-600/50 to-transparent shadow-[0_0_32px_rgba(15,118,110,0.25)] xl:-left-3 xl:block"
-              aria-hidden
-            />
+        <LandingContainer className="grid w-full grid-cols-1 gap-10 lg:grid-cols-12 lg:items-center lg:gap-8 xl:gap-12">
+          <motion.div
+            className="relative z-[2] max-w-[42rem] lg:col-span-5 lg:max-w-none"
+            variants={copyStagger}
+            initial="hidden"
+            animate="show"
+          >
+            <motion.div variants={copyLine} className="flex flex-wrap items-center gap-3">
+              <span className="font-mono text-[12px] font-semibold tabular-nums text-teal-200/70">01</span>
+              <span className="h-3 w-px bg-white/18" aria-hidden />
+              <LandingEyebrow className="m-0 text-teal-50/70">
+                Private ambient intelligence
+              </LandingEyebrow>
+            </motion.div>
+
+            <motion.h1
+              id="landing-hero-heading"
+              variants={copyLine}
+              className={cn(
+                landingFontDisplay,
+                "mt-7 max-w-[18ch] text-balance text-[#fff9ed]",
+              )}
+            >
+              <SplitText
+                as="span"
+                text="HAVEN"
+                immediate
+                delay={0.18}
+                stagger={0.06}
+                y={36}
+                tilt
+                shimmer
+                glossChars
+                shimmerColor="rgba(255,247,231,0.9)"
+                className="block text-[clamp(3.35rem,9.5vw,6.35rem)] font-semibold leading-[0.9] tracking-[0.04em]"
+              />
+              <SplitText
+                as="span"
+                text="learns your rhythm."
+                immediate
+                delay={0.62}
+                stagger={0.018}
+                y={18}
+                tilt={false}
+                className="mt-2 block text-[clamp(1.7rem,4.1vw,2.85rem)] font-medium leading-[1.08] tracking-[-0.03em] text-stone-200/92"
+              />
+            </motion.h1>
+
+            <motion.p
+              variants={copyLine}
+              className="mt-6 max-w-[30rem] text-pretty text-[1.02rem] font-semibold leading-snug tracking-[-0.018em] text-teal-50/88 sm:text-[1.1rem]"
+            >
+              Local context, one composed scene: light, air, and warmth moving together.
+            </motion.p>
+
+            <motion.p
+              variants={copyLine}
+              className="mt-3 max-w-[28rem] text-pretty text-[0.9375rem] leading-[1.65] text-stone-300/78 sm:text-[0.97rem]"
+            >
+              No dashboards. No feeds. A room that quietly improves when you nudge it.
+            </motion.p>
 
             <motion.div
-              variants={copyStagger}
-              initial="hidden"
-              animate="show"
-              className="relative max-w-[40rem] lg:max-w-none"
+              variants={copyLine}
+              className="mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
             >
-              <motion.div variants={copyEyebrow} className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span className="font-mono text-[12px] font-semibold tabular-nums text-[color:var(--landing-faint)] sm:text-[13px]">
-                  01
-                </span>
-                <span className="hidden h-3 w-px bg-[color:var(--landing-line-strong)] sm:block" aria-hidden />
-                <LandingEyebrow className="m-0 max-w-[20rem] leading-relaxed sm:max-w-none">
-                  Adaptive room intelligence · Local first
-                </LandingEyebrow>
-              </motion.div>
-
-              <motion.div variants={copyTitle} className="mt-7 sm:mt-8">
-                <h1 id="landing-hero-heading" className="text-[color:var(--landing-ink)]">
-                  <span
-                    className={cn(
-                      landingFontDisplay,
-                      "block bg-gradient-to-br from-[#080807] via-[#141211] to-[#115e59] bg-clip-text text-[clamp(3.85rem,12.5vw,7.75rem)] font-semibold leading-[0.9] tracking-[-0.052em] text-transparent",
-                    )}
-                  >
-                    Haven
-                  </span>
-                  <span
-                    className={cn(
-                      landingFontDisplay,
-                      "mt-6 block max-w-[18ch] text-balance text-[clamp(1.55rem,3.1vw,2.5rem)] font-medium leading-[1.12] tracking-[-0.034em] text-[color:var(--landing-ink-soft)] sm:mt-7",
-                    )}
-                  >
-                    Your room, read on your network, tuned with intent.
-                  </span>
-                </h1>
-              </motion.div>
-
-              <motion.p
-                variants={copyLead}
-                className="mt-8 max-w-[30rem] text-pretty text-[1.08rem] font-semibold leading-snug tracking-[-0.02em] text-[color:var(--landing-ink-soft)] sm:mt-9 sm:text-[1.15rem] lg:max-w-[28rem]"
-              >
-                Context in. Scene out. Adjust once. The baseline remembers.
-              </motion.p>
-
-              <motion.p
-                variants={copyBody}
-                className="mt-5 max-w-[28rem] text-pretty text-[0.9375rem] leading-[1.72] text-[color:var(--landing-muted)] sm:text-[1rem] lg:max-w-[26rem]"
-              >
-                Haven aligns light, airflow, and temperature as one quiet layer. Inference stays on your network, with
-                confidence you can read at a glance.
-              </motion.p>
-
-              <motion.div
-                variants={copyCtas}
-                className="mt-10 flex max-w-lg flex-col gap-4 sm:mt-11 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-3"
-              >
+              <Magnetic strength={0.28} radius={140}>
                 <Link
                   href="/live"
-                  className={cn(landingBtnPrimaryHero, landingFocusRing, "inline-flex w-full items-center justify-center gap-2 sm:w-auto")}
+                  data-cursor="hover"
+                  className={cn(
+                    landingBtnPrimaryHero,
+                    landingFocusRing,
+                    "group/cta relative isolate overflow-hidden w-full border-white/12 bg-[linear-gradient(168deg,#fff7ea_0%,#d7c6ad_46%,#8b7a63_100%)] text-[#15120e] shadow-[0_18px_52px_-18px_rgba(245,222,179,0.45),inset_0_1px_0_rgba(255,255,255,0.72)] ring-white/28 sm:w-auto",
+                  )}
                 >
-                  Get Started
-                  <ArrowRight className="size-[1.1rem] sm:size-[1.12rem]" strokeWidth={2} aria-hidden />
+                  <span className="pointer-events-none absolute inset-0 -translate-x-full bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.55)_50%,transparent_100%)] transition-transform duration-700 ease-out group-hover/cta:translate-x-full" aria-hidden />
+                  <span className="relative">Open live view</span>
+                  <ArrowRight className="relative size-[1.05rem] transition-transform duration-300 group-hover/cta:translate-x-0.5" strokeWidth={2} aria-hidden />
                 </Link>
+              </Magnetic>
+              <Magnetic strength={0.22} radius={120}>
                 <a
                   href="#how-it-works"
-                  className={cn(landingHeroSecondaryLink, landingFocusRing, "sm:pl-1")}
+                  data-cursor="hover"
+                  className={cn(
+                    "group inline-flex items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-5 py-3 text-[13px] font-semibold text-stone-100/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-md transition-[transform,color,background-color] duration-300 hover:bg-white/[0.1] hover:text-white motion-safe:hover:-translate-y-px",
+                    landingFocusRing,
+                  )}
                 >
-                  See how it works
-                  <ArrowRight
-                    className="size-4 opacity-70 transition-[opacity,transform] duration-300 group-hover/hs:translate-x-0.5 group-hover/hs:opacity-100"
-                    strokeWidth={2}
-                    aria-hidden
-                  />
+                  See the loop
+                  <ArrowRight className="size-4 opacity-70 transition-transform duration-300 group-hover:translate-x-0.5" />
                 </a>
-              </motion.div>
+              </Magnetic>
             </motion.div>
-          </div>
+          </motion.div>
 
-          {/* Visual — dark bezel “product window” + layered story (laptop scale) */}
-          <div className="relative z-0 min-h-0 lg:col-span-8 lg:-mr-1 xl:col-span-8 xl:-mr-4 2xl:-mr-0">
-            <svg
-              className="pointer-events-none absolute -right-[4%] top-[-2%] z-0 hidden h-[min(520px,62vh)] w-[min(520px,62vh)] text-teal-900 lg:block"
-              viewBox="0 0 200 200"
-              fill="none"
-              aria-hidden
-            >
-              <defs>
-                <linearGradient id="heroOrbitFr" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="currentColor" stopOpacity="0" />
-                  <stop offset="48%" stopColor="currentColor" stopOpacity="0.5" />
-                  <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <ellipse
-                cx="100"
-                cy="102"
-                rx="91"
-                ry="84"
-                stroke="url(#heroOrbitFr)"
-                strokeWidth="1.15"
-                strokeDasharray="7 16"
-                opacity="0.92"
-                transform="rotate(-13 100 102)"
-              />
-            </svg>
+          <motion.div
+            variants={visualReveal}
+            initial="hidden"
+            animate="show"
+            className="relative z-[1] lg:col-span-7"
+            style={reduceMotion ? undefined : { y: roomLift, rotate: roomRotate }}
+          >
+            <div className="landing-breathe pointer-events-none absolute -inset-8 rounded-[3rem] bg-[radial-gradient(ellipse_at_center,rgba(20,184,166,0.28),transparent_62%)] blur-2xl" />
+            <div className="relative mx-auto max-w-[44rem] overflow-hidden rounded-[2.25rem] border border-white/[0.12] bg-[linear-gradient(150deg,rgba(255,255,255,0.11),rgba(255,255,255,0.035)_36%,rgba(255,255,255,0.02))] p-2 shadow-[0_46px_120px_-44px_rgba(0,0,0,0.88),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl">
+              <div className="overflow-hidden rounded-[1.8rem] border border-white/[0.08] bg-[#0e0c0a] shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+                <div className="flex h-12 items-center gap-3 border-b border-white/[0.07] bg-white/[0.045] px-4">
+                  <div className="flex gap-1.5" aria-hidden>
+                    <span className="size-2 rounded-full bg-white/18" />
+                    <span className="size-2 rounded-full bg-white/12" />
+                    <span className="size-2 rounded-full bg-white/10" />
+                  </div>
+                  <p className="min-w-0 flex-1 truncate text-center text-[12px] font-semibold tracking-[-0.01em] text-stone-200/90">
+                    Haven scene engine
+                  </p>
+                  <span className="rounded-full border border-teal-300/18 bg-teal-300/[0.08] px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-teal-100/72">
+                    Local
+                  </span>
+                </div>
 
-            <motion.div
-              className="relative z-[1] mx-auto w-full max-w-[40rem] lg:mx-0 lg:max-w-none"
-              variants={visualShell}
-              initial="hidden"
-              animate="show"
-              transition={{ delay: reduceMotion ? 0 : 0.14 }}
-            >
-              <motion.div
-                className="relative min-h-[min(76dvh,620px)] sm:min-h-[600px] lg:min-h-[min(68vh,680px)] xl:min-h-[min(66vh,720px)]"
-                style={reduceMotion ? undefined : { transform: fragParallax }}
-                variants={visualStagger}
-                initial="hidden"
-                animate="show"
-              >
-                <motion.div variants={visualLayer} className="relative mx-auto w-full lg:translate-x-0">
-                  <div className="relative rounded-[2.45rem] bg-[linear-gradient(172deg,#343230_0%,#161514_38%,#070706_100%)] p-[10px] shadow-[var(--landing-shadow-bezel)] ring-1 ring-white/[0.1] sm:rounded-[2.65rem] sm:p-3">
-                    <div className="relative overflow-hidden rounded-[1.85rem] bg-[#0a0908] shadow-[inset_0_1px_0_rgba(255,255,255,0.07),inset_0_-32px_72px_rgba(0,0,0,0.48)] sm:rounded-[2.1rem]">
-                      {/* Product chrome — intentional framing, not decoration */}
-                      <div className="flex h-11 shrink-0 items-center gap-3 border-b border-white/[0.07] bg-gradient-to-b from-white/[0.09] to-transparent px-4 sm:h-12 sm:px-5">
-                        <div className="flex gap-1.5 opacity-90" aria-hidden>
-                          <span className="size-2.5 rounded-full bg-white/14 shadow-inner" />
-                          <span className="size-2.5 rounded-full bg-white/11 shadow-inner" />
-                          <span className="size-2.5 rounded-full bg-white/[0.09] shadow-inner" />
+                <div className="relative min-h-[430px] overflow-hidden sm:min-h-[500px]">
+                  <div className="absolute inset-0 bg-[linear-gradient(165deg,#f6efe2_0%,#d5c4aa_42%,#6e7f73_78%,#15120f_100%)]" />
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_65%_55%_at_42%_34%,rgba(255,255,255,0.86),transparent_58%),radial-gradient(ellipse_64%_48%_at_72%_70%,rgba(20,184,166,0.34),transparent_60%),radial-gradient(ellipse_52%_45%_at_18%_82%,rgba(245,158,11,0.24),transparent_56%)]" />
+                  <div className="absolute inset-x-[-10%] bottom-[-8%] h-[46%] rounded-[50%] bg-[radial-gradient(ellipse_at_center,rgba(10,8,6,0.5),transparent_66%)]" />
+
+                  <div className="absolute left-[8%] top-[11%] w-[min(84%,29rem)] rounded-[2rem] border border-white/58 bg-white/[0.72] p-5 text-stone-950 shadow-[0_34px_90px_-38px_rgba(0,0,0,0.54),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl sm:left-[9%] sm:p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-stone-500">
+                          Current read
+                        </p>
+                        <h2 className={cn(landingFontDisplay, "mt-2 text-[2rem] font-semibold tracking-[-0.045em] sm:text-[2.35rem]")}>
+                          Work / Studying
+                        </h2>
+                        <p className="mt-2 max-w-[21rem] text-[12.5px] leading-relaxed text-stone-600">
+                          Ambient posture favors clarity: high field light, softened glare, gentle air.
+                        </p>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-teal-900/12 bg-teal-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-teal-900">
+                        <Sparkles className="size-3" aria-hidden />
+                        87%
+                      </span>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      {sceneRows.map((row) => (
+                        <div
+                          key={row.label}
+                          className="rounded-2xl border border-stone-200/90 bg-white/72 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)]"
+                        >
+                          <row.Icon className={cn("size-4", row.tone === "text-amber-200" ? "text-amber-700" : row.tone === "text-sky-200" ? "text-sky-700" : "text-teal-700")} strokeWidth={1.8} />
+                          <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-stone-500">
+                            {row.label}
+                          </p>
+                          <p className="mt-1 text-[14px] font-semibold tracking-[-0.01em] text-stone-950">
+                            {row.value}
+                          </p>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="absolute bottom-[19%] right-[6%] w-[min(72%,18rem)] rounded-[1.5rem] border border-white/16 bg-[#11100e]/86 p-4 text-stone-100 shadow-[0_26px_70px_-34px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-teal-100/72">
+                        <Shield className="size-3.5" aria-hidden />
+                        Privacy boundary
+                      </span>
+                      <LockKeyhole className="size-4 text-teal-100/70" aria-hidden />
+                    </div>
+                    <p className="mt-3 text-[12px] leading-relaxed text-stone-300/84">
+                      Raw signal stays in the room. The interface exposes confidence, not a feed.
+                    </p>
+                  </div>
+
+                  <div className="absolute bottom-5 left-5 right-5 rounded-[1.35rem] border border-white/[0.12] bg-[#0c0a08]/78 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="mr-1 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">
+                        <Activity className="size-3.5 text-teal-200/70" aria-hidden />
+                        Moods
+                      </span>
+                      {moodStrip.map((mood) => (
+                        <span
+                          key={mood.id}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10.5px] font-semibold",
+                            "active" in mood && mood.active
+                              ? "border-teal-200/34 bg-teal-200/[0.12] text-teal-50 shadow-[0_0_24px_rgba(45,212,191,0.13)]"
+                              : "border-white/[0.09] bg-white/[0.04] text-stone-400",
+                          )}
+                        >
+                          <mood.Icon className="size-3" strokeWidth={2} aria-hidden />
+                          {mood.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            variants={copyLine}
+            initial="hidden"
+            animate="show"
+            className="lg:col-span-12"
+          >
+            <div className="mt-8 lg:mt-10">
+              <p className="mb-3 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.28em] text-stone-500 sm:mb-4 sm:text-left">
+                At a glance
+              </p>
+              <div className="rounded-[1.2rem] border border-white/[0.1] bg-gradient-to-b from-white/[0.08] to-white/[0.03] p-px shadow-[0_24px_70px_-40px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:rounded-[1.35rem]">
+                <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[1.12rem] bg-white/[0.12] sm:grid-cols-4 lg:grid-cols-7">
+                  {heroTelemetry.map((cell) => (
+                    <div
+                      key={cell.label}
+                      className="relative flex min-h-[6.75rem] flex-col justify-between gap-2 bg-[#141210]/95 px-3.5 py-4 sm:min-h-[7rem] sm:px-4 sm:py-4"
+                    >
+                      <p className="font-mono text-[10px] font-semibold uppercase leading-snug tracking-[0.2em] text-stone-500">
+                        {cell.label}
+                      </p>
+                      <div>
                         <p
                           className={cn(
                             landingFontDisplay,
-                            "min-w-0 flex-1 truncate text-center text-[12px] font-medium tracking-[-0.02em] text-white/[0.92] sm:text-[13px]",
+                            "text-[1.35rem] font-semibold leading-[1.15] tracking-[-0.03em] text-[#fff7ea] sm:text-[1.5rem]",
                           )}
                         >
-                          Evening settle
+                          {cell.value}
                         </p>
-                        <span className="inline-flex shrink-0 rounded-full border border-white/12 bg-white/[0.06] px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.24em] text-white/45 sm:text-[10px]">
-                          Preview
-                        </span>
-                      </div>
-
-                      {/* Moods — fused into the window (toolbar rhythm) */}
-                      <div className="border-b border-white/[0.06] bg-black/25 px-3 py-2.5 backdrop-blur-md sm:px-4 sm:py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="mr-0.5 inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50">
-                            <span className="size-1.5 rounded-full bg-teal-400 shadow-[0_0_0_2px_rgba(10,9,8,0.95)]" aria-hidden />
-                            Moods
-                          </span>
-                          <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                            {moodStrip.map((m) => (
-                              <span
-                                key={m.id}
-                                className={cn(
-                                  "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:px-2.5 sm:py-1 sm:text-[10.5px]",
-                                  "active" in m && m.active
-                                    ? "border-teal-400/40 bg-teal-950/55 text-teal-50 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14)] ring-1 ring-teal-400/25"
-                                    : "border-white/12 bg-white/[0.06] text-white/55 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]",
-                                )}
-                              >
-                                <m.Icon className="size-3 opacity-80" strokeWidth={2} aria-hidden />
-                                {m.label}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Room canvas + layered composition (anchor → support → depth) */}
-                      <div className="relative min-h-[280px] sm:min-h-[320px] lg:min-h-[380px] xl:min-h-[420px]">
-                        <div className="absolute inset-0 overflow-hidden">
-                          <div className="absolute inset-0 bg-[linear-gradient(188deg,#fffefb_0%,#ebe2d6_46%,#c8b8a8_100%)]" />
-                          <div className="absolute inset-x-0 bottom-0 h-[62%] bg-[linear-gradient(to_top,rgba(253,230,199,0.48)_0%,transparent_90%)]" />
-                          <div className="absolute inset-x-0 bottom-0 h-[52%] bg-[linear-gradient(to_top,rgba(18,16,14,0.2)_0%,transparent_95%)]" />
-                          <div className="absolute left-[6%] right-[20%] top-[18%] h-[46%] rounded-[40%_60%_70%_30%/55%_45%_35%_65%] bg-[radial-gradient(ellipse_at_30%_28%,rgba(255,255,255,0.97),rgba(255,250,240,0.28)_46%,transparent_72%)] opacity-[0.94] blur-[1px]" />
-                          <div className="absolute -left-[22%] bottom-[-10%] h-[58%] w-[82%] rounded-full bg-teal-400/18 blur-3xl" />
-                          <div className="absolute -right-[18%] top-[8%] h-[52%] w-[66%] rounded-full bg-amber-300/38 blur-3xl" />
-                          {/* Intelligence bloom — ties surfaces to “scene” without noise */}
-                          <div
-                            className="absolute bottom-[6%] left-1/2 z-[4] h-[58%] w-[118%] -translate-x-1/2 bg-[radial-gradient(ellipse_52%_72%_at_50%_92%,rgba(15,118,110,0.18),transparent_68%)]"
-                            aria-hidden
-                          />
-                          <div
-                            className="absolute inset-x-[6%] bottom-[10%] top-[22%] z-[5] rounded-[2rem] bg-[radial-gradient(ellipse_80%_72%_at_50%_78%,rgba(255,253,250,0.45),transparent_72%)] opacity-90 mix-blend-soft-light"
-                            aria-hidden
-                          />
-                          <div className="absolute left-[5%] right-[10%] top-[44%] z-[6] h-px bg-gradient-to-r from-transparent via-stone-900/22 to-transparent" />
-                          <div className="absolute left-1/2 top-[38%] z-[6] w-[min(92%,340px)] -translate-x-1/2">
-                            <svg viewBox="0 0 320 48" className="w-full text-teal-800/42" aria-hidden>
-                              <defs>
-                                <linearGradient id="heroArcBezel" x1="0%" y1="0%" x2="100%" y2="0%">
-                                  <stop offset="0%" stopColor="currentColor" stopOpacity="0" />
-                                  <stop offset="50%" stopColor="currentColor" stopOpacity="0.62" />
-                                  <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-                                </linearGradient>
-                              </defs>
-                              <path
-                                d="M 16 40 Q 160 -4 304 40"
-                                fill="none"
-                                stroke="url(#heroArcBezel)"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                            <p className="sr-only">Decorative arc suggesting ambient lighting</p>
-                          </div>
-                          {/* Floor shadow pool — grounds the stack */}
-                          <div
-                            className="absolute inset-x-[4%] bottom-0 z-[7] h-[28%] bg-[radial-gradient(ellipse_70%_95%_at_50%_100%,rgba(28,24,20,0.14),transparent_72%)]"
-                            aria-hidden
-                          />
-                        </div>
-
-                        {/* Tertiary — memory card recedes, peeking from behind anchor */}
-                        <motion.div
-                          variants={visualLayer}
-                          className={cn(
-                            "absolute left-[6%] top-[23%] z-[16] hidden w-[13.25rem] p-[1.05rem] sm:left-[8%] sm:top-[24%] sm:block sm:w-[14rem] sm:p-4",
-                            "rounded-[1.2rem] border border-white/50 bg-[linear-gradient(152deg,rgba(255,254,252,0.94)_0%,rgba(245,240,232,0.9)_100%)]",
-                            "shadow-[var(--landing-shadow-card)]",
-                            "ring-1 ring-[color:var(--landing-edge-light)] backdrop-blur-md",
-                            "-rotate-[3deg] scale-[0.96]",
-                          )}
-                        >
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--landing-faint)]">
-                            From feedback
-                          </p>
-                          <p className="mt-2 text-[12px] leading-snug text-[color:var(--landing-muted)]">
-                            Corrections stack quietly. Defaults drift toward how you actually live.
-                          </p>
-                        </motion.div>
-
-                        {/* Primary anchor — scene + control (dominant plane) */}
-                        <motion.div
-                          variants={visualLayer}
-                          className={cn(
-                            "absolute left-[10%] top-[26%] z-[30] w-[min(92%,22.5rem)] p-4 sm:left-[14%] sm:top-[27%] sm:w-[24.5rem] sm:p-5 lg:left-[12%] lg:top-[28%]",
-                            "rounded-[1.55rem] border border-stone-200/90",
-                            "bg-[linear-gradient(168deg,rgba(255,254,253,1)_0%,rgba(252,248,242,0.98)_42%,rgba(244,238,228,0.96)_100%)]",
-                            "shadow-[var(--landing-shadow-float)]",
-                            "ring-1 ring-[color:var(--landing-edge-light)] ring-offset-[2px] ring-offset-teal-950/[0.025]",
-                            "-rotate-[1.85deg]",
-                          )}
-                        >
-                          <div className="pointer-events-none absolute -right-8 -top-6 size-24 rounded-full bg-teal-400/15 blur-2xl" aria-hidden />
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--landing-muted)]">
-                                Now reading
-                              </p>
-                              <p className={cn(landingFontDisplay, "mt-1.5 text-[1.2rem] font-semibold tracking-[-0.034em] text-[color:var(--landing-ink)] sm:mt-2 sm:text-[1.28rem]")}>
-                                Work, studying
-                              </p>
-                              <p className="mt-1.5 max-w-[19rem] text-[11px] leading-relaxed text-[color:var(--landing-muted)] sm:mt-2 sm:text-[12px]">
-                                Scene trimmed for focus: light eases up, airflow steady.
-                              </p>
-                            </div>
-                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-teal-900/14 bg-[linear-gradient(168deg,rgba(255,253,250,1)_0%,rgba(236,253,245,0.88)_100%)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-teal-900 shadow-[var(--landing-shadow-card)] ring-1 ring-teal-700/18 backdrop-blur-sm">
-                              <Sparkles className="size-3 text-teal-700/90" strokeWidth={2} aria-hidden />
-                              Local
-                            </span>
-                          </div>
-
-                          <div className="mt-4 grid gap-2.5 sm:mt-5 sm:grid-cols-2 sm:gap-3">
-                            <div className="rounded-xl border border-stone-200/95 bg-[linear-gradient(180deg,rgba(255,254,252,0.99)_0%,rgba(250,246,240,0.95)_100%)] p-3 shadow-[var(--landing-shadow-card)] sm:p-3.5">
-                              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[color:var(--landing-faint)] sm:text-[10px]">
-                                Scene
-                              </p>
-                              <div className="mt-1.5 flex items-center gap-1.5 sm:mt-2 sm:gap-2">
-                                <Lightbulb className="size-3.5 text-amber-800/85 sm:size-4" strokeWidth={1.85} aria-hidden />
-                                <span className="text-[11px] font-semibold text-[color:var(--landing-ink-soft)] sm:text-[12px]">Brightness</span>
-                                <span className="ml-auto tabular-nums text-[10px] font-semibold text-[color:var(--landing-muted)] sm:text-[11px]">
-                                  74%
-                                </span>
-                              </div>
-                              <div className="mt-2 h-[5px] overflow-hidden rounded-full bg-stone-200/90 shadow-[inset_0_1px_2px_rgba(18,16,14,0.06)] sm:mt-2.5 sm:h-[6px]">
-                                <motion.div
-                                  className="h-full rounded-full bg-gradient-to-r from-teal-900/88 via-teal-700/75 to-teal-500/60 shadow-[0_0_18px_rgba(15,118,110,0.22)]"
-                                  initial={false}
-                                  animate={{ width: reduceMotion ? "74%" : ["68%", "79%", "72%", "76%"] }}
-                                  transition={
-                                    reduceMotion
-                                      ? { duration: 0 }
-                                      : { duration: 11, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
-                                  }
-                                />
-                              </div>
-                            </div>
-                            <div className="rounded-xl border border-stone-200/92 bg-[linear-gradient(180deg,rgba(255,254,252,0.98)_0%,rgba(248,244,238,0.94)_100%)] p-3 shadow-[var(--landing-shadow-card)] sm:p-3.5">
-                              <div className="flex items-center gap-1.5 text-[color:var(--landing-muted)] sm:gap-2">
-                                <Thermometer className="size-3.5 text-teal-800/85 sm:size-4" strokeWidth={1.75} aria-hidden />
-                                <span className="text-[9px] font-semibold uppercase tracking-[0.12em] sm:text-[10px]">Target</span>
-                                <span className="ml-auto text-[11px] font-semibold tabular-nums text-[color:var(--landing-ink)] sm:text-[12px]">
-                                  72°F
-                                </span>
-                              </div>
-                              <div className="mt-2.5 flex items-center gap-1.5 text-[color:var(--landing-muted)] sm:mt-3 sm:gap-2">
-                                <Wind className="size-3.5 text-sky-800/78 sm:size-4" strokeWidth={1.75} aria-hidden />
-                                <span className="text-[9px] font-semibold uppercase tracking-[0.12em] sm:text-[10px]">Airflow</span>
-                                <span className="ml-auto text-[11px] font-semibold text-[color:var(--landing-ink)] sm:text-[12px]">Gentle</span>
-                              </div>
-                            </div>
-                          </div>
-                        </motion.div>
-
-                        {/* Privacy — secondary plane, tucked under anchor corner */}
-                        <motion.div
-                          variants={visualLayer}
-                          className={cn(
-                            "absolute bottom-[5%] right-[3%] z-[24] w-[min(92%,16.25rem)] p-4 sm:bottom-[6%] sm:right-[5%] sm:w-[17.25rem] sm:p-[1.15rem]",
-                            "rounded-[1.25rem] border border-stone-300/80 bg-[linear-gradient(158deg,rgba(253,251,248,0.98)_0%,rgba(238,233,224,0.95)_100%)]",
-                            "shadow-[var(--landing-shadow-card)]",
-                            "ring-1 ring-[color:var(--landing-edge-light)]",
-                            "rotate-[2.25deg] sm:translate-x-1",
-                          )}
-                        >
-                          <div className="pointer-events-none absolute -left-10 bottom-0 h-16 w-16 rounded-full bg-violet-500/10 blur-2xl" aria-hidden />
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--landing-muted)]">
-                            On device
-                          </p>
-                          <p className="mt-2 text-[12px] font-semibold leading-snug text-[color:var(--landing-ink-soft)] sm:text-[13px]">
-                            Signal stays here, not packaged for a feed.
-                          </p>
-                          <p className="mt-2 text-[12px] leading-relaxed text-[color:var(--landing-muted)]">
-                            Enough context to adapt the room. Nothing staged for an outsider&apos;s dashboard.
-                          </p>
-                        </motion.div>
+                        {cell.note ? (
+                          <p className="mt-1.5 text-[11px] leading-snug text-stone-500/90">{cell.note}</p>
+                        ) : null}
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              </motion.div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <motion.div
+              className="mt-6 flex justify-center sm:mt-8"
+              style={reduceMotion ? undefined : { opacity: continueOpacity }}
+            >
+              <a
+                href="#how-it-works"
+                className={cn(
+                  "group inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.06] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.22em] text-stone-200/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-[color,transform,background-color] duration-300 hover:bg-white/[0.1] hover:text-white motion-safe:hover:-translate-y-px",
+                  landingFocusRing,
+                )}
+              >
+                <span className="relative flex size-1.5" aria-hidden>
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-teal-200/50 motion-reduce:hidden" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-teal-200/90" />
+                </span>
+                Continue
+                <ChevronDown className="size-3.5 opacity-70 transition-transform duration-300 group-hover:translate-y-0.5" strokeWidth={2.25} aria-hidden />
+              </a>
             </motion.div>
-          </div>
+          </motion.div>
         </LandingContainer>
       </motion.div>
 
-      <motion.a
-        href="#how-it-works"
-        style={reduceMotion ? undefined : { opacity: exploreOpacity }}
-        className={cn(
-          "absolute bottom-5 left-1/2 z-10 -translate-x-1/2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--landing-faint)] sm:bottom-8",
-          "transition-colors hover:text-[color:var(--landing-muted)]",
-          landingFocusRing,
-          "rounded-md px-2 py-1.5",
-        )}
-      >
-        Continue
-      </motion.a>
+      <AmbientCursor />
     </section>
   )
 }

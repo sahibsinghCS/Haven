@@ -38,6 +38,7 @@ export function FinalCtaSection() {
 
   return (
     <LandingSectionShell
+      id="final-cta"
       labelledBy="final-cta-heading"
       className="!border-t-0 !pb-0 !pt-[clamp(3.75rem,8vw,6.75rem)] sm:!pt-[clamp(4.25rem,8vw,7.25rem)]"
     >

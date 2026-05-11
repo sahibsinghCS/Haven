@@ -46,7 +46,7 @@ function StateInner({ id }: { id: RoomStateId }) {
       <>
         <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br opacity-[0.94]", skin.wash)} aria-hidden />
         <div className={cn("pointer-events-none absolute right-0 top-0 size-[min(55%,280px)] rounded-full blur-3xl opacity-60", skin.glow)} aria-hidden />
-        <div className="relative flex h-full min-h-[280px] flex-col lg:min-h-[340px] lg:flex-row lg:gap-10">
+        <div className="relative flex min-h-[280px] flex-col lg:min-h-[340px] lg:flex-row lg:gap-10">
           <div className="flex flex-1 flex-col justify-between">
             <div>
               <div className="flex items-center gap-3">
@@ -289,7 +289,7 @@ export function MoodsSection() {
           {ROOM_STATE_ORDER.map((id, i) => (
             <motion.li
               key={id}
-              className={cn("min-h-0 overflow-hidden", placement[id], shells[id])}
+              className={cn("overflow-hidden", placement[id], shells[id])}
               initial={
                 reduceMotion
                   ? false
@@ -307,7 +307,7 @@ export function MoodsSection() {
                 ease: i % 2 === 0 ? landingEase.lux : landingEase.grounded,
               }}
             >
-              <article className="relative h-full overflow-hidden rounded-[inherit]">
+              <article className="relative min-h-full overflow-hidden rounded-[inherit]">
                 <StateInner id={id} />
               </article>
             </motion.li>

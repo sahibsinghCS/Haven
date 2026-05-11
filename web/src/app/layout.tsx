@@ -22,10 +22,10 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: {
     default: "Haven",
-    template: "%s · Haven",
+    template: "%s | Haven",
   },
   description:
-    "Adaptive room intelligence — local inference, coherent scenes, and environments that refine from how you adjust them.",
+    "Adaptive room intelligence: local inference, coherent scenes, and environments that refine from how you adjust them.",
 };
 
 export default function RootLayout({

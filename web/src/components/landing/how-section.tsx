@@ -71,10 +71,14 @@ export function HowSection() {
       id="how-it-works"
       labelledBy="how-heading"
       rhythm="afterHero"
-      className="!border-t-0 -mt-[clamp(0.5rem,2vw,1.75rem)]"
+      className="!border-t-0 -mt-[clamp(1.25rem,4vw,2.75rem)]"
     >
       <div
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(178deg,var(--landing-canvas-pearl)_0%,var(--landing-canvas)_48%,var(--landing-canvas-mist)_88%,var(--landing-canvas-deep)_100%)]"
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(178deg,transparent_0px,color-mix(in_oklab,var(--landing-canvas-pearl)_38%,transparent)_4rem,color-mix(in_oklab,var(--landing-canvas-pearl)_78%,transparent)_7.25rem,var(--landing-canvas-pearl)_10.5rem,var(--landing-canvas-pearl)_22%,var(--landing-canvas)_48%,var(--landing-canvas-mist)_88%,var(--landing-canvas-deep)_100%)]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-[min(12rem,22vh)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--landing-ink)_12%,transparent)_0%,color-mix(in_oklab,var(--landing-ink)_4%,transparent)_38%,transparent_100%)]"
         aria-hidden
       />
       <div
@@ -97,7 +101,7 @@ export function HowSection() {
               </motion.div>
               <motion.div variants={headLine} className="mt-5">
                 <LandingDisplayH2 id="how-heading">
-                  Sense → infer → adapt → learn
+                  Sense, infer, adapt, learn
                 </LandingDisplayH2>
               </motion.div>
               <motion.div variants={headLine}>
@@ -106,7 +110,7 @@ export function HowSection() {
                 </LandingProse>
               </motion.div>
               <motion.p variants={headLine} className="mt-6 font-mono text-[11px] leading-relaxed text-[color:var(--landing-faint)]">
-                LOCAL · READABLE CONFIDENCE · SCENE COHERENCE · FEEDBACK MEMORY
+                LOCAL, READABLE CONFIDENCE, SCENE COHERENCE, FEEDBACK MEMORY
               </motion.p>
             </motion.div>
           </header>
@@ -236,7 +240,7 @@ export function HowSection() {
                   "rounded-sm",
                 )}
               >
-                Explore moods →
+                Explore moods
               </Link>
             </motion.div>
           </div>
