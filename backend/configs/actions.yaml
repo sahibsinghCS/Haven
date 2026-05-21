@@ -1,0 +1,75 @@
+extends: default.yaml
+
+actions:
+  dry_run: true                          # never call external services when true
+  events_log: data/events/actions.jsonl
+  default_cooldown_sec: 60.0
+  default_min_confidence: 0.55
+  default_sustain_windows: 1
+
+  # Each rule fires at most once per cooldown_sec. Rules are evaluated in order.
+  # Implemented action handlers (see roomos/actions/rules.py): log, webhook.
+  rules:
+    - name: focus_mode
+      when:
+        activity: work
+        min_confidence: 0.6
+        sustain_windows: 1
+      action:
+        type: log
+        message: "[focus_mode] enabling do-not-disturb (stub)"
+      cooldown_sec: 120
+
+    - name: dim_lights
+      when:
+        activity: sleep
+        min_confidence: 0.6
+        sustain_windows: 1
+      action:
+        type: log
+        message: "[dim_lights] dimming bedroom lights (stub)"
+      cooldown_sec: 300
+
+    - name: gamer_scene
+      when:
+        activity: gaming
+        min_confidence: 0.55
+        sustain_windows: 1
+      action:
+        type: log
+        message: "[gamer_scene] switching ambient to gaming preset (stub)"
+      cooldown_sec: 90
+
+    - name: cozy_scene
+      when:
+        activity: relaxing
+        min_confidence: 0.5
+        sustain_windows: 1
+      action:
+        type: log
+        message: "[cozy_scene] easing lights to relax preset (stub)"
+      cooldown_sec: 120
+
+    - name: energy_saver
+      when:
+        activity: away
+        min_confidence: 0.55
+        sustain_windows: 1
+      action:
+        type: log
+        message: "[energy_saver] entering low-power scene (stub)"
+      cooldown_sec: 300
+
+    # Example webhook rule (kept disabled). Set enabled: true *and* dry_run:false
+    # to actually fire. Even then it just POSTs JSON; no destructive defaults.
+    - name: webhook_example
+      enabled: false
+      when:
+        activity: work
+        min_confidence: 0.7
+        sustain_windows: 5
+      action:
+        type: webhook
+        url: "http://127.0.0.1:9999/roomos-event"
+        method: POST
+      cooldown_sec: 600

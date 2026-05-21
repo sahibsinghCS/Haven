@@ -28,17 +28,33 @@ export interface RoomDeviceTargets {
   temperatureF: number
 }
 
+export interface LivePersonalizationMeta {
+  applied?: boolean
+  examples?: number
+  matches?: number
+  nearestSimilarity?: number
+  influence?: number
+}
+
 export interface LiveInferenceSnapshot {
   schemaVersion: 1
+  /** Monotonic burst counter from the live engine (proves UI is receiving updates). */
+  sequence?: number
   capturedAt: string
   stream: LiveStreamMeta
   primaryState: RoomStateId
   /** 0–1 confidence in primaryState */
   primaryConfidence: number
+  /** Smoothed probabilities shown in the UI (sum ~1) */
   distribution: RoomStateDistribution
+  /** Raw model probabilities before personalization blend */
+  modelDistribution?: RoomStateDistribution
   /** Human-readable bullets for the overlay explainer */
   rationale: string[]
   appliedScene: RoomDeviceTargets
+  personalization?: LivePersonalizationMeta
+  /** `roomos-ml` when from FastAPI; absent on mock */
+  dataSource?: string
   /** Rolling history for charts / debugging (timestamps ISO) */
   confidenceHistory: Array<{
     t: string

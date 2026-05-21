@@ -66,7 +66,7 @@ export function PreferencesPresetToggle({
             aria-checked={isActive}
             onClick={() => onValueChange(valueByKey[t.id])}
             className={cn(
-              "group relative flex flex-col items-start gap-3 overflow-hidden rounded-2xl border p-5 text-left",
+              "group relative flex min-h-40 flex-col items-start gap-3 overflow-hidden rounded-[1.35rem] border p-5 text-left",
               "transition-[transform,box-shadow,border-color,background-color] duration-300 ease-out",
               "shadow-[var(--haven-shadow-card)]",
               "ring-1 ring-[color:var(--haven-edge-light)]",
@@ -85,6 +85,10 @@ export function PreferencesPresetToggle({
                   ),
             )}
           >
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.9),transparent_64%)] opacity-70 blur-xl transition-opacity duration-300 group-hover:opacity-100"
+            />
             <div className="flex w-full items-start justify-between gap-3">
               <span
                 className={cn(

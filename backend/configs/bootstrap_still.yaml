@@ -1,0 +1,15 @@
+# Still-photo bootstrap: public images under data/base_images/<label>/
+# Train with:
+#   py -3.11 scripts/train_personal_images.py --images-dir data/base_images -c configs/bootstrap_still.yaml
+extends: train.yaml
+
+training:
+  features_path: data/features/bootstrap_image_features.parquet
+  output_dir: data/models/latest
+
+features:
+  enabled:
+    clip: true
+    pose: false
+    motion: true
+    posture: false

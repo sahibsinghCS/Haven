@@ -1,0 +1,31 @@
+extends: default.yaml
+
+training:
+  features_path: data/features            # directory or single .parquet/.csv file
+  labels_path: data/labels/labels.csv     # CSV: source,start_sec,end_sec,label
+  output_dir: data/models/latest
+  random_state: 42
+
+  split:
+    # Either "random" or "by_source" (recommended: by_source to avoid leakage
+    # between splits when many burst rows share the same source video).
+    strategy: by_source
+    val_size: 0.15
+    test_size: 0.15
+
+  class_weighting: balanced    # "none" | "balanced" | dict-like in YAML
+
+  xgboost:
+    objective: multi:softprob
+    eval_metric: mlogloss
+    n_estimators: 600
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.85
+    colsample_bytree: 0.85
+    min_child_weight: 2
+    reg_lambda: 1.0
+    reg_alpha: 0.0
+    n_jobs: 0                  # 0 -> all cores
+    tree_method: hist
+    early_stopping_rounds: 40

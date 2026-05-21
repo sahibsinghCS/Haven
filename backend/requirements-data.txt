@@ -1,0 +1,4 @@
+# Optional data-ingestion dependencies for public/base image imports.
+# Install only when you want to download large external datasets.
+-r requirements.txt
+fiftyone>=1.1,<2

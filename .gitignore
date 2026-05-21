@@ -22,3 +22,4 @@ Thumbs.db
 .ruff_cache/
 coverage/
 .eslintcache
+backend/data/

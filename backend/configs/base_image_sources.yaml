@@ -1,0 +1,82 @@
+roomos_labels:
+  work:
+    description: People working, studying, reading, writing, or using a computer.
+    open_images_classes:
+      - Person
+      - Laptop
+      - Computer keyboard
+      - Computer monitor
+      - Desk
+      - Book
+    wikimedia_categories:
+      - People using computers
+      - People working
+      - People at desks
+      - People reading
+      - People writing
+    zenodo_activity_terms:
+      - reading
+      - sitting
+
+  gaming:
+    description: People playing video games or using gaming setups/controllers.
+    open_images_classes:
+      - Person
+      - Computer keyboard
+      - Computer monitor
+      - Video game console
+      - Television
+      - Headphones
+    wikimedia_categories:
+      - People playing video games
+      - Video game players
+      - Esports players
+
+  sleep:
+    description: People sleeping or lying in bed.
+    open_images_classes:
+      - Person
+      - Bed
+      - Bedroom
+    wikimedia_categories:
+      - People sleeping
+      - Sleeping people
+      - People in beds
+    zenodo_activity_terms:
+      - sleeping
+
+  relaxing:
+    description: People resting, watching TV, casually reading, lounging on couch/bed (awake).
+    open_images_classes:
+      - Person
+      - Couch
+      - Television
+      - Bed
+      - Book
+      - Mobile phone
+    wikimedia_categories:
+      - People resting
+      - People watching television
+      - People reading
+      - People sitting
+      - People in bed
+      - People lying on beds
+      - People using mobile phones in bed
+    zenodo_activity_terms:
+      - sitting
+      - reading
+
+  away:
+    description: Empty rooms, bedrooms, offices, desks, and living spaces with no person.
+    open_images_classes:
+      - Bedroom
+      - Living room
+      - Office
+      - Desk
+      - Bed
+      - Couch
+    wikimedia_categories:
+      - Empty rooms
+      - Bedrooms
+      - Offices
+      - Living rooms

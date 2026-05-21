@@ -17,7 +17,11 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import type { PreferenceMatrixFormValues } from "@/lib/roomos/preferences-schema"
 import { preferenceCardShell } from "@/lib/roomos/roomos-ui"
-import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import {
+  ROOM_STATE_LABEL,
+  ROOM_STATE_LANDING_ATMOSPHERE,
+  ROOM_STATE_LANDING_SKIN,
+} from "@/lib/roomos/state-meta"
 import { cn } from "@/lib/utils"
 import type { RoomStateId } from "@/types/roomos"
 
@@ -41,12 +45,20 @@ export function StatePreferenceCard({ stateId }: { stateId: RoomStateId }) {
   const { control } = useFormContext<PreferenceMatrixFormValues>()
   const watched = useWatch({ control, name: stateId })
   const title = ROOM_STATE_LABEL[stateId]
+  const skin = ROOM_STATE_LANDING_SKIN[stateId]
+  const atmosphere = ROOM_STATE_LANDING_ATMOSPHERE[stateId]
 
   return (
     <fieldset className={cn(preferenceCardShell(stateId), "relative overflow-hidden")}>
       <legend className="sr-only">{title}: lighting and comfort</legend>
+      <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br opacity-[0.34]", skin.wash)} aria-hidden />
+      <div className={cn("pointer-events-none absolute -right-14 -top-16 size-36 rounded-full blur-3xl opacity-50", skin.glow)} aria-hidden />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/90 to-transparent"
+      />
 
-      <header className="flex flex-col gap-5 border-b border-[color:var(--haven-line)] pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <header className="relative flex flex-col gap-5 border-b border-[color:var(--haven-line)] pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0 space-y-2">
           <div className="flex items-center gap-2.5">
             <span className="font-mono text-[11px] font-semibold tabular-nums text-[color:var(--haven-faint)]">
@@ -63,6 +75,14 @@ export function StatePreferenceCard({ stateId }: { stateId: RoomStateId }) {
           <p className="max-w-md text-[13px] leading-relaxed text-[color:var(--haven-muted)]">
             {STATE_DESCRIPTION[stateId]}
           </p>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            <span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ring-1 ring-inset", skin.tag)}>
+              {atmosphere.light.split(";")[0]}
+            </span>
+            <span className="rounded-full bg-white/65 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--haven-muted)] ring-1 ring-inset ring-[color:var(--haven-line)]">
+              {atmosphere.air.split(";")[0]}
+            </span>
+          </div>
         </div>
         <LightTonePreview
           hex={watched?.lightColorHex ?? "#71717a"}
@@ -71,7 +91,7 @@ export function StatePreferenceCard({ stateId }: { stateId: RoomStateId }) {
         />
       </header>
 
-      <div className="grid gap-5 pt-5 sm:grid-cols-2 sm:gap-6 sm:pt-6">
+      <div className="relative grid gap-5 pt-5 sm:grid-cols-2 sm:gap-6 sm:pt-6">
         <FormField
           control={control}
           name={`${stateId}.lightColorHex`}
@@ -85,7 +105,7 @@ export function StatePreferenceCard({ stateId }: { stateId: RoomStateId }) {
                 <FormControl>
                   <Input
                     {...field}
-                    className="h-10 rounded-xl border-stone-300 bg-white font-mono text-[13px] tracking-tight text-[color:var(--haven-ink)] shadow-[inset_0_1px_0_rgba(255,255,255,1),0_1px_2px_rgba(18,17,15,0.04)]"
+                    className="h-10 rounded-xl border-stone-300 bg-white/88 font-mono text-[13px] tracking-tight text-[color:var(--haven-ink)] shadow-[inset_0_1px_0_rgba(255,255,255,1),0_1px_2px_rgba(18,17,15,0.04)] backdrop-blur-sm"
                     autoComplete="off"
                     spellCheck={false}
                     aria-describedby={`${stateId}-color-hint`}
@@ -190,7 +210,7 @@ export function StatePreferenceCard({ stateId }: { stateId: RoomStateId }) {
           name={`${stateId}.fanOn`}
           render={({ field }) => (
             <FormItem className="sm:col-span-2">
-              <div className="flex flex-col gap-4 rounded-xl border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_88%,transparent)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.96)] sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-4 rounded-[1rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_82%,transparent)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_8px_20px_-18px_rgba(18,17,15,0.22)] backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
                   <span
                     className={cn(

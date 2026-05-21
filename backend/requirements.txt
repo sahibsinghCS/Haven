@@ -1,3 +1,4 @@
+# --- FastAPI / web stack ----------------------------------------------------
 fastapi>=0.115,<1
 uvicorn[standard]>=0.34,<1
 python-multipart>=0.0.20
@@ -5,3 +6,35 @@ websockets>=14,<16
 pydantic-settings>=2.7,<3
 httpx>=0.28,<1
 python-dotenv>=1.0,<2
+
+# --- CLI / config -----------------------------------------------------------
+typer>=0.12,<1
+pyyaml>=6.0.1,<7
+rich>=13.7,<15
+
+# --- Data / numerics --------------------------------------------------------
+numpy>=1.26,<3
+pandas>=2.1,<3
+scikit-learn>=1.4,<2
+joblib>=1.3,<2
+
+# --- ML ---------------------------------------------------------------------
+xgboost>=2.0,<3
+
+# --- Vision / perception ----------------------------------------------------
+# Pinned to "compatible" ranges; the heavy deps (torch, mediapipe) are
+# intentionally loose so users can pick wheels for their platform / Python.
+opencv-python>=4.9,<5
+# torch is intentionally not pinned to a CUDA build; install per platform.
+torch>=2.2
+open_clip_torch>=2.24,<3
+# mediapipe ships limited wheels on some platforms. The pipeline degrades
+# gracefully if mediapipe is unavailable; see roomos/features/pose_extractor.py.
+mediapipe>=0.10.14 ; python_version < "3.13"
+
+# --- Visualization / debug --------------------------------------------------
+matplotlib>=3.8,<4
+seaborn>=0.13,<1
+
+# --- Testing ----------------------------------------------------------------
+pytest>=8.0,<9

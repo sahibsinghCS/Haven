@@ -8,16 +8,21 @@ import type { RoomStateId } from "@/types/roomos"
 export const roomosUi = {
   /** Floating panels over the live video stage */
   liveOverlayGlass:
-    "rounded-2xl border border-white/[0.11] bg-zinc-950/82 shadow-[0_26px_72px_-18px_rgba(0,0,0,0.72),inset_0_1px_0_0_rgba(255,255,255,0.07)] backdrop-blur-2xl supports-[backdrop-filter]:bg-zinc-950/68",
+    "rounded-[1.35rem] border border-white/[0.12] bg-zinc-950/84 shadow-[0_28px_80px_-20px_rgba(0,0,0,0.74),inset_0_1px_0_0_rgba(255,255,255,0.075),inset_0_-1px_0_rgba(255,255,255,0.035)] backdrop-blur-2xl supports-[backdrop-filter]:bg-zinc-950/66 ring-1 ring-white/[0.035]",
   /** Compact status / trust chips on Live */
   liveStatusPill:
-    "rounded-full border border-white/[0.11] bg-zinc-950/72 text-xs font-medium text-zinc-100 shadow-[0_8px_22px_-12px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl supports-[backdrop-filter]:bg-zinc-950/55",
+    "rounded-full border border-white/[0.12] bg-zinc-950/74 text-xs font-medium text-zinc-100 shadow-[0_10px_28px_-14px_rgba(0,0,0,0.68),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl supports-[backdrop-filter]:bg-zinc-950/55 ring-1 ring-white/[0.025]",
+  /** Live HUD over full-bleed video: glass with modest see-through */
+  liveOverlayGlassTranslucent:
+    "rounded-[1.35rem] border border-white/[0.12] bg-zinc-950/82 shadow-[0_28px_80px_-20px_rgba(0,0,0,0.68),inset_0_1px_0_0_rgba(255,255,255,0.07)] backdrop-blur-2xl supports-[backdrop-filter]:bg-zinc-950/72 ring-1 ring-white/[0.06]",
+  liveStatusPillTranslucent:
+    "rounded-full border border-white/[0.12] bg-zinc-950/76 text-xs font-medium text-zinc-100 shadow-[0_10px_28px_-14px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl supports-[backdrop-filter]:bg-zinc-950/64 ring-1 ring-white/[0.05]",
   /** Preferences: informational callouts, notes */
   prefsCallout:
     "rounded-2xl border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_82%,transparent)] text-[color:var(--haven-muted)] shadow-[var(--haven-shadow-card)] backdrop-blur-sm",
   /** Preferences: preset choice tiles (base) */
   prefsPresetCard:
-    "rounded-2xl border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_92%,transparent)] text-left shadow-[var(--haven-shadow-card)] backdrop-blur-sm transition-[border-color,box-shadow,background-color,transform] duration-300 ease-out",
+    "rounded-[1.35rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_92%,transparent)] text-left shadow-[var(--haven-shadow-card)] backdrop-blur-sm transition-[border-color,box-shadow,background-color,transform] duration-300 ease-out",
   /** Preferences: sticky save bar */
   prefsStickyBar:
     "rounded-2xl border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_94%,transparent)] text-[color:var(--haven-muted)] shadow-[var(--haven-shadow-float)] backdrop-blur-xl supports-[backdrop-filter]:bg-[color-mix(in_oklab,#fffefb_82%,transparent)] ring-1 ring-[color:var(--haven-edge-light)]",
@@ -45,7 +50,7 @@ const PREFERENCE_ACCENT_LEFT: Record<RoomStateId, string> = {
 
 export function preferenceCardShell(stateId: RoomStateId) {
   return cn(
-    "relative isolate rounded-[1.4rem] border border-[color:var(--haven-line-strong)] bg-[linear-gradient(168deg,rgba(255,254,251,1)_0%,rgba(252,249,243,0.96)_60%,rgba(245,239,228,0.92)_100%)]",
+    "relative isolate rounded-[1.55rem] border border-[color:var(--haven-line-strong)] bg-[linear-gradient(168deg,rgba(255,254,251,1)_0%,rgba(252,249,243,0.96)_58%,rgba(245,239,228,0.92)_100%)]",
     "px-5 py-5 sm:px-6 sm:py-6",
     "shadow-[var(--haven-shadow-card)]",
     "ring-1 ring-[color:var(--haven-edge-light)]",

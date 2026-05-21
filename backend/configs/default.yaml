@@ -1,0 +1,94 @@
+# RoomOS — default configuration.
+# Everything in this file is overridable from train.yaml / inference.yaml or via
+# CLI flags. Keep magic constants here, not in code.
+
+project:
+  name: roomos
+  data_dir: data
+  log_dir: data/logs
+
+video:
+  # Acceptable values:
+  #   integer  -> webcam index (e.g. 0)
+  #   "rtsp://..."        -> network stream
+  #   "/path/to/file.mp4" -> local video
+  #   "droidcam:auto"     -> picks first available droidcam http stream
+  source: 0
+  sample_fps: 6           # frames per second to *process* (sampled from source)
+  resize_width: 480       # downscale long edge for perception
+  read_timeout_sec: 5.0   # consider stream dead if no frame within this window
+
+# Burst-based multi-frame classification (not dense continuous video modeling).
+# Each burst = one XGBoost sample: collect frames over burst_duration_seconds,
+# then subsample to burst_frame_count frames for fusion + training/inference.
+burst:
+  frame_count: 5
+  duration_seconds: 2.5
+  # How to pick ``frame_count`` frames from those collected in the interval:
+  #   uniform    — evenly spaced in time order
+  #   endpoints  — first and last frame always included, interior evenly spaced
+  sampling_strategy: uniform
+  # Time between consecutive burst starts (stream time). Overlap when stride < duration.
+  stride_seconds: 1.5
+  # Minimum raw frames inside [start, start+duration] before emitting a burst.
+  min_collected_frames: 4
+
+labels:
+  # IMPORTANT: This taxonomy is mirrored in the Next.js frontend
+  # (web/src/types/roomos.ts ROOM_STATE_ORDER). Keep them in sync.
+  classes:
+    - work
+    - sleep
+    - gaming
+    - relaxing
+    - away
+  unknown_class: unknown   # abstain bucket — never trained, only produced at inference
+
+features:
+  enabled:
+    clip: true
+    pose: true
+    motion: true
+    posture: true
+
+  clip:
+    model_name: ViT-B-32
+    pretrained: laion2b_s34b_b79k
+    device: auto            # auto | cpu | cuda
+    # Free-form prompts whose cosine similarity with the frame embedding becomes
+    # a per-frame feature. Order matters (it defines feature columns).
+    prompts:
+      - "a person sitting at a desk working on a computer"
+      - "a person typing at a laptop"
+      - "a person lying in bed sleeping"
+      - "a person playing video games with a controller"
+      - "a person watching television and relaxing"
+      - "a person relaxing while lying on a bed awake"
+      - "a person reading a book in bed"
+      - "a person scrolling on a phone while lying in bed"
+      - "a person reading a book on a couch"
+      - "a person eating a meal"
+      - "a person exercising or stretching"
+      - "an empty room with no people"
+      - "a dimly lit bedroom at night"
+      - "a bright room during the day"
+    # Whether to also keep the raw CLIP embedding components.
+    # Embeddings are ~512-D; fusion summarizes them into a few scalars per burst.
+    keep_embedding: true
+
+  pose:
+    model_complexity: 1     # mediapipe model_complexity (0|1|2)
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+
+  motion:
+    diff_blur_ksize: 5      # gaussian blur kernel for frame-diff smoothing
+    grid: [4, 4]            # motion magnitude grid (rows, cols) -> 16 features
+
+smoothing:
+  min_confidence: 0.45      # below this -> unknown
+  prob_ema_alpha: 0.35      # exponential moving average for class probs (0..1)
+  # One burst already contains the 5-frame memory span. Switch only after a
+  # completed burst agrees strongly enough.
+  confirm_bursts: 1
+  cooldown_sec: 4.0         # min seconds between label changes

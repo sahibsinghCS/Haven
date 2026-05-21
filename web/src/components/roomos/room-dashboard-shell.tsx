@@ -111,7 +111,7 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
         className={cn(
           "sticky top-0 z-30 backdrop-blur-2xl",
           isLive
-            ? "border-b border-white/[0.07] bg-zinc-950/58 py-2.5 supports-[backdrop-filter]:bg-zinc-950/48"
+            ? "border-b border-white/[0.07] bg-zinc-950/55 py-2.5 supports-[backdrop-filter]:bg-zinc-950/44"
             : "py-3 sm:py-3.5",
         )}
       >
@@ -189,7 +189,7 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
             className={cn(
               "relative flex shrink-0 items-center gap-0.5 rounded-full border p-0.5 sm:gap-1 sm:p-1",
               isLive
-                ? "border-white/[0.08] bg-zinc-950/55 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+                ? "border-white/[0.1] bg-zinc-950/58 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] supports-[backdrop-filter]:bg-zinc-950/46"
                 : "border-stone-900/[0.1] bg-white/85 shadow-[inset_0_1px_0_0_rgba(255,255,255,1),0_10px_28px_-22px_rgba(15,23,42,0.18)] backdrop-blur-md",
             )}
           >

@@ -8,7 +8,11 @@ import { ROOM_STATE_ACCENT, ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
 import type { RoomStateDistribution, RoomStateId } from "@/types/roomos"
 import { ROOM_STATE_ORDER } from "@/types/roomos"
 
-function formatPct(value: number) {
+function formatPct(value: number, fine = false) {
+  if (fine) {
+    const pct = Math.round(value * 1000) / 10
+    return `${pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1)}%`
+  }
   return `${Math.round(value * 100)}%`
 }
 
@@ -16,10 +20,17 @@ export function SecondaryStateConfidence({
   variant = "inline",
   distribution,
   primary,
+  overlayShellClassName,
+  className,
+  finePercent = false,
 }: {
   variant?: "inline" | "overlay"
   distribution: RoomStateDistribution
   primary: RoomStateId
+  overlayShellClassName?: string
+  className?: string
+  /** Show one decimal place (live overlay). */
+  finePercent?: boolean
 }) {
   const reduceMotion = useReducedMotion()
   const barTransition = reduceMotion
@@ -31,14 +42,18 @@ export function SecondaryStateConfidence({
       <motion.div
         layout={!reduceMotion}
         transition={reduceMotion ? { duration: 0.15 } : { duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className={cn(roomosUi.liveOverlayGlass, "w-full p-4 sm:p-5")}
+        className={cn(
+          overlayShellClassName ?? roomosUi.liveOverlayGlass,
+          "w-full p-4 sm:p-5",
+          className,
+        )}
       >
         <div className="flex items-center justify-between gap-3 px-0.5 pb-3.5">
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-zinc-400">
             Also considering
           </p>
           <span className="text-[0.65rem] font-medium uppercase tracking-[0.14em] text-zinc-600">
-            Distribution
+            {finePercent ? "This burst" : "Distribution"}
           </span>
         </div>
         <div
@@ -51,7 +66,7 @@ export function SecondaryStateConfidence({
             const active = id === primary
             const accent = ROOM_STATE_ACCENT[id]
             const label = ROOM_STATE_LABEL[id]
-            const pct = formatPct(value)
+            const pct = formatPct(value, finePercent)
             return (
               <div
                 key={id}
@@ -64,8 +79,8 @@ export function SecondaryStateConfidence({
                 className={cn(
                   "group/sec relative flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2 transition-colors duration-300",
                   active
-                    ? "border-white/[0.16] bg-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
-                    : "border-white/[0.06] bg-white/[0.025] hover:bg-white/[0.04]",
+                    ? "border-white/[0.18] bg-white/[0.12] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07)]"
+                    : "border-white/[0.08] bg-white/[0.055] hover:bg-white/[0.09]",
                 )}
               >
                 <span

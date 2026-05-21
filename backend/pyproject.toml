@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roomos"
+version = "0.1.0"
+description = "Local-first room activity recognition pipeline (perception + XGBoost + actions)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "RoomOS" }]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["roomos*", "app*"]
+exclude = ["data*", "tests*", "scripts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+  "ignore::DeprecationWarning",
+  "ignore::UserWarning",
+]
