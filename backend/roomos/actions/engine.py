@@ -16,6 +16,34 @@ from .rules import ActionEvent, ActionHandler, build_handler
 log = get_logger("roomos.actions.engine")
 
 
+def _automation_summary(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact payload for live UI + logs."""
+    result = dict(record.get("result") or {})
+    executed = bool(result.get("executed"))
+    skipped = bool(result.get("skipped")) or bool(result.get("dry_run")) and not executed
+    summary = result.get("message") or result.get("error") or result.get("target") or result.get("url")
+    if not summary and record.get("action_type") == "home_assistant":
+        summary = result.get("mode", "home_assistant")
+    if skipped and record.get("dry_run"):
+        summary = f"Dry-run: would run {record.get('action_type')} ({record.get('rule')})"
+    elif skipped:
+        summary = f"Skipped: {result.get('reason', 'disabled')}"
+    elif executed:
+        summary = f"Sent {record.get('action_type')} ({record.get('rule')})"
+    else:
+        summary = f"Failed: {result.get('error', 'unknown')}"
+    return {
+        "at": record.get("t"),
+        "rule": record.get("rule"),
+        "activity": record.get("activity"),
+        "actionType": record.get("action_type"),
+        "dryRun": bool(record.get("dry_run")),
+        "executed": executed,
+        "skipped": skipped,
+        "summary": str(summary),
+    }
+
+
 @dataclass
 class ActionRule:
     name: str
@@ -65,16 +93,20 @@ class ActionEngine:
         *,
         dry_run: bool = True,
         events_log: Optional[Path] = None,
+        integrations: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.rules = rules
         self.dry_run = bool(dry_run)
         self.events_log = Path(events_log) if events_log else None
+        self.integrations = dict(integrations or {})
+        self.last_automation: Optional[Dict[str, Any]] = None
 
     # --- factory -------------------------------------------------------
 
     @classmethod
     def from_config(cls, cfg: Config) -> "ActionEngine":
         ac = cfg.actions
+        integrations = dict(ac.get("integrations", {}) or {})
         defaults = {
             "min_confidence": float(ac.get("default_min_confidence", 0.55)),
             "sustain_windows": int(ac.get("default_sustain_windows", 3)),
@@ -89,7 +121,7 @@ class ActionEngine:
                 continue
             action_cfg = dict(raw.get("action", {"type": "log"}))
             try:
-                handler = build_handler(action_cfg)
+                handler = build_handler(action_cfg, integrations=integrations)
             except Exception as e:
                 log.warning("Skipping rule %s: handler build failed (%s)", raw.get("name"), e)
                 continue
@@ -113,10 +145,18 @@ class ActionEngine:
             events_log = Path(events_log_raw)
             if not events_log.is_absolute() and cfg.project_root is not None:
                 events_log = cfg.project_root / events_log
+        ha = integrations.get("home_assistant") or {}
+        log.info(
+            "Action engine: %d rules, dry_run=%s, home_assistant.enabled=%s",
+            len(rules),
+            bool(ac.get("dry_run", True)),
+            bool(ha.get("enabled")) if isinstance(ha, dict) else False,
+        )
         return cls(
             rules=rules,
             dry_run=bool(ac.get("dry_run", True)),
             events_log=events_log,
+            integrations=integrations,
         )
 
     # --- per-prediction hook ------------------------------------------
@@ -144,6 +184,7 @@ class ActionEngine:
                 "result": result,
             }
             fired.append(record)
+            self.last_automation = _automation_summary(record)
             if self.events_log:
                 try:
                     append_jsonl(self.events_log, record)

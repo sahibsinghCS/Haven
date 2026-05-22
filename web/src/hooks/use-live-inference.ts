@@ -14,7 +14,6 @@ import type { LiveInferenceSnapshot } from "@/types/roomos"
 export type LiveInferenceStatus =
   | "connecting"
   | "live"
-  | "fallback"
   | "no-data"
   | "error"
 
@@ -32,10 +31,18 @@ function applySnapshot(
   setSnapshot: (s: LiveInferenceSnapshot) => void,
   setStatus: (s: LiveInferenceStatus) => void,
   setMessage: (m: string | null) => void,
-  via: "live" | "fallback",
 ) {
+  if (process.env.NODE_ENV !== "production") {
+    // eslint-disable-next-line no-console
+    console.debug(
+      "[roomos] snapshot applied",
+      "seq=", snap.sequence,
+      "primary=", snap.primaryState,
+      "src=", snap.dataSource,
+    )
+  }
   setSnapshot(snap)
-  setStatus(via)
+  setStatus("live")
   setMessage(null)
 }
 
@@ -55,7 +62,7 @@ export function useLiveInference(): UseLiveInferenceResult {
     let cancelled = false
     const ac = new AbortController()
 
-    const onSnap = (raw: unknown, via: "live" | "fallback") => {
+    const onSnap = (raw: unknown) => {
       if (cancelled) return
       try {
         const snap = normalizeSnapshot(raw)
@@ -69,7 +76,7 @@ export function useLiveInference(): UseLiveInferenceResult {
         if (typeof snap.sequence === "number" && snap.sequence > 0) {
           lastSeqRef.current = snap.sequence
         }
-        applySnapshot(snap, setSnapshot, setStatus, setMessage, via)
+        applySnapshot(snap, setSnapshot, setStatus, setMessage)
       } catch (err) {
         setMessage(err instanceof Error ? err.message : "Bad snapshot payload")
       }
@@ -80,14 +87,12 @@ export function useLiveInference(): UseLiveInferenceResult {
         if (cancelled) return
         setMessage(null)
       },
-      onMessage: (data) => onSnap(data, "live"),
+      onMessage: (data) => onSnap(data),
       onError: () => {
         if (cancelled) return
         setStatus((s) => (s === "live" ? s : "error"))
         setMessage(
-          "Cannot reach RoomOS API at " +
-            API_BASE +
-            ". Start the backend: cd backend, activate .venv, then python run.py",
+          `Cannot reach RoomOS API at ${API_BASE}. From repo root run: npm run demo`,
         )
       },
       onClose: (e) => {
@@ -103,16 +108,16 @@ export function useLiveInference(): UseLiveInferenceResult {
       try {
         const snap = await fetchLiveSnapshot(ac.signal)
         if (cancelled || !snap) return
-        onSnap(snap, "live")
+        onSnap(snap)
       } catch (err) {
         if (cancelled) return
         setStatus((s) => (s === "live" ? s : "error"))
         setMessage(
           err instanceof Error
             ? err.message.includes("fetch")
-              ? `RoomOS API is not running (${API_BASE}). In backend/: .venv\\Scripts\\Activate.ps1 then python run.py`
+              ? `RoomOS API is not running (${API_BASE}). From repo root: npm run demo`
               : err.message
-            : "Could not reach the RoomOS API",
+            : "Could not reach the RoomOS API. Run: npm run demo",
         )
       }
     }
@@ -130,7 +135,6 @@ export function useLiveInference(): UseLiveInferenceResult {
         // ignore
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only subscription
   }, [])
 
   return { snapshot, status, message }

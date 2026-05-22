@@ -166,7 +166,7 @@ export function PersonalizeSection() {
           transition={{ duration: landingDuration.standard, ease: landingEase.lux, delay: reduceMotion ? 0 : 0.12 }}
         >
           <p className="max-w-md text-[14px] leading-relaxed text-[color:var(--landing-muted)]">
-            Preferences stay on this device until you connect a hub or account. Haven is explicit about what it knows, and
+            Preferences stay on this device in the local RoomOS API. Haven is explicit about what it knows, and
             where uncertainty remains.
           </p>
           <Link

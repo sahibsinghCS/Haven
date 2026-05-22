@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "label": "Hackathon room walkthrough (deterministic)",
+  "loop": true,
+  "default_hold_sec": 6,
+  "steps": [
+    {
+      "state": "work",
+      "hold_sec": 7,
+      "primary_confidence": 0.84,
+      "distribution": { "work": 0.81, "relaxing": 0.09, "gaming": 0.04, "sleep": 0.03, "away": 0.03 },
+      "rationale": [
+        "Scene context matches desk / monitor lighting.",
+        "Low motion over the burst window — seated focus.",
+        "Room response: Work preset (bright neutral light)."
+      ],
+      "applied_scene": {
+        "lightColorHex": "#E8E4DC",
+        "brightness": 78,
+        "fanOn": false,
+        "temperatureF": 70
+      },
+      "automation_mode": "dry_run",
+      "last_automation": {
+        "summary": "[dry-run] work → set scene targets",
+        "dryRun": true,
+        "executed": false
+      }
+    },
+    {
+      "state": "gaming",
+      "hold_sec": 6,
+      "primary_confidence": 0.79,
+      "distribution": { "gaming": 0.76, "work": 0.1, "relaxing": 0.06, "sleep": 0.04, "away": 0.04 },
+      "rationale": [
+        "Higher motion + saturated accent lighting in frame.",
+        "Gaming preset: cooler light, fan on for comfort.",
+        "Demo replay — scripted burst, not live inference."
+      ],
+      "applied_scene": {
+        "lightColorHex": "#6B4CFF",
+        "brightness": 55,
+        "fanOn": true,
+        "temperatureF": 68
+      }
+    },
+    {
+      "state": "relaxing",
+      "hold_sec": 6,
+      "primary_confidence": 0.81,
+      "distribution": { "relaxing": 0.78, "work": 0.08, "sleep": 0.07, "gaming": 0.04, "away": 0.03 },
+      "rationale": [
+        "Warm scene tones and reclined posture cues.",
+        "Motion subdued — couch / lounge context.",
+        "Room response: Relaxing preset."
+      ],
+      "applied_scene": {
+        "lightColorHex": "#FFB86C",
+        "brightness": 42,
+        "fanOn": false,
+        "temperatureF": 72
+      }
+    },
+    {
+      "state": "sleep",
+      "hold_sec": 6,
+      "primary_confidence": 0.86,
+      "distribution": { "sleep": 0.83, "relaxing": 0.1, "away": 0.03, "work": 0.02, "gaming": 0.02 },
+      "rationale": [
+        "Dark scene, minimal motion across five frames.",
+        "Sleep preset: lights down, temperature slightly cooler.",
+        "High confidence — good moment to show rationale panel."
+      ],
+      "applied_scene": {
+        "lightColorHex": "#1A2030",
+        "brightness": 8,
+        "fanOn": false,
+        "temperatureF": 66
+      }
+    },
+    {
+      "state": "away",
+      "hold_sec": 5,
+      "primary_confidence": 0.77,
+      "distribution": { "away": 0.74, "sleep": 0.1, "relaxing": 0.08, "work": 0.04, "gaming": 0.04 },
+      "rationale": [
+        "Empty room / no person visible in burst.",
+        "Energy-saving scene targets applied.",
+        "Useful when the live camera fails — same UI path."
+      ],
+      "applied_scene": {
+        "lightColorHex": "#2A2A2A",
+        "brightness": 12,
+        "fanOn": false,
+        "temperatureF": 65
+      }
+    }
+  ]
+}

@@ -2,6 +2,8 @@
 
 import { create } from "zustand"
 
+import { savePreferenceDocument } from "@/lib/roomos/api-client"
+import { buildPreferenceDocument } from "@/lib/roomos/preferences-document-schema"
 import {
   loadRoomOsPreferences,
   saveRoomOsPreferences,
@@ -22,77 +24,80 @@ function migratePresetsFromStorage(presets: PreferencePreset[]): PreferencePrese
   )
 }
 
-function normalizeSelectedId(selectedPresetId: string, presets: PreferencePreset[]): string {
+function normalizeActiveId(activePresetId: string, presets: PreferencePreset[]): string {
   const ids = new Set(presets.map((p) => p.id))
-  if (ids.has(selectedPresetId)) return selectedPresetId
-  if (selectedPresetId === "preset_focus" && ids.has("preset_custom")) return "preset_custom"
-  return presets.find((p) => p.isDefault)?.id ?? presets[0]?.id ?? selectedPresetId
+  if (ids.has(activePresetId)) return activePresetId
+  if (activePresetId === "preset_focus" && ids.has("preset_custom")) return "preset_custom"
+  return presets.find((p) => p.isDefault)?.id ?? presets[0]?.id ?? activePresetId
+}
+
+function resolveActiveFromDoc(doc: PreferenceDocument): string {
+  if (doc.activePresetId) {
+    return normalizeActiveId(doc.activePresetId, doc.presets)
+  }
+  return normalizeActiveId("", doc.presets)
 }
 
 type RoomOsPreferencesState = {
   presets: PreferencePreset[] | null
-  selectedPresetId: string | null
-  /** True after first hydrate from server or disk */
+  activePresetId: string | null
   hasHydrated: boolean
   hydrate: (doc: PreferenceDocument) => void
   selectPreset: (id: string) => void
   replacePreset: (preset: PreferencePreset) => void
 }
 
-function persistSnapshot(presets: PreferencePreset[], selectedPresetId: string) {
+function persistLocalCache(presets: PreferencePreset[], activePresetId: string) {
   const payload: PersistedPreferencesV1 = {
     version: 1,
     presets,
-    selectedPresetId,
+    activePresetId,
   }
   saveRoomOsPreferences(payload)
 }
 
+async function syncDocumentToApi(presets: PreferencePreset[], activePresetId: string) {
+  await savePreferenceDocument(buildPreferenceDocument(presets, activePresetId))
+}
+
 export const useRoomOsPreferencesStore = create<RoomOsPreferencesState>((set, get) => ({
   presets: null,
-  selectedPresetId: null,
+  activePresetId: null,
   hasHydrated: false,
+
   hydrate: (doc) => {
     if (get().hasHydrated) return
 
-    const fromDisk = loadRoomOsPreferences()
-    if (fromDisk) {
-      const presets = migratePresetsFromStorage(fromDisk.presets)
-      const selectedPresetId = normalizeSelectedId(fromDisk.selectedPresetId, presets)
-      set({
-        presets,
-        selectedPresetId,
-        hasHydrated: true,
-      })
-      if (
-        selectedPresetId !== fromDisk.selectedPresetId ||
-        JSON.stringify(presets) !== JSON.stringify(fromDisk.presets)
-      ) {
-        persistSnapshot(presets, selectedPresetId)
-      }
-      return
-    }
+    const presets = migratePresetsFromStorage(doc.presets)
+    const activePresetId = resolveActiveFromDoc({ ...doc, presets })
 
-    const defaultId =
-      doc.presets.find((p) => p.isDefault)?.id ?? doc.presets[0]?.id ?? null
-    set({
-      presets: doc.presets,
-      selectedPresetId: defaultId,
-      hasHydrated: true,
-    })
+    set({ presets, activePresetId, hasHydrated: true })
+    persistLocalCache(presets, activePresetId)
   },
+
   selectPreset: (id) => {
     const presets = get().presets
-    set({ selectedPresetId: id })
-    if (presets) persistSnapshot(presets, id)
+    if (!presets) return
+    const activePresetId = normalizeActiveId(id, presets)
+    set({ activePresetId })
+    persistLocalCache(presets, activePresetId)
+    void syncDocumentToApi(presets, activePresetId).catch(() => {
+      /* offline: local file will sync on next successful save */
+    })
   },
+
   replacePreset: (preset) => {
     const nextPresets = (get().presets ?? []).map((p) => (p.id === preset.id ? preset : p))
-    const selected = get().selectedPresetId ?? preset.id
+    const activePresetId = get().activePresetId ?? preset.id
     set({ presets: nextPresets })
-    persistSnapshot(nextPresets, selected)
+    persistLocalCache(nextPresets, activePresetId)
   },
 }))
+
+/** @deprecated Use activePresetId — alias for components mid-migration */
+export function useSelectedPresetId(): string | null {
+  return useRoomOsPreferencesStore((s) => s.activePresetId)
+}
 
 export const useRoomOsAmbientStore = create<{
   primaryState: RoomStateId | null

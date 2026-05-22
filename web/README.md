@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RoomOS web UI (Next.js)
 
-## Getting Started
+Canonical frontend for the hackathon demo. Started by `npm run demo` or `npm run dev` from the **repo root** (not from this folder alone).
 
-First, run the development server:
+## Routes
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Marketing landing (static) |
+| `/live` | Live inference HUD — **real FastAPI snapshots + backend camera preview** |
+| `/preferences` | Mood presets → saved via `PUT /api/preferences` |
+
+## Environment
+
+| Variable | Default |
+|----------|---------|
+| `NEXT_PUBLIC_ROOMOS_API_BASE` | `http://127.0.0.1:8000` |
+| `NEXT_PUBLIC_ROOMOS_WS_BASE` | derived from API base (`ws` / `wss`) |
+
+## Development
+
+From repo root:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev        # web + API (no preflight)
+npm run build      # production build (lint via npm run lint)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+From this directory only (API must already run on :8000):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Data flow (`/live`)
 
-## Learn More
+1. `useLiveEngineAutostart` — `POST /api/live/start` if needed  
+2. `useLiveInference` — WebSocket `/api/live/ws` + 2s HTTP poll on `/api/live/snapshot`  
+3. `useInferenceCameraPreview` — polls `/api/live/preview.jpg`  
 
-To learn more about Next.js, take a look at the following resources:
+No mock inference path. Removed unused code is documented in [`src/_archive/README.md`](src/_archive/README.md).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Handoff
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [`../docs/HANDOFF.md`](../docs/HANDOFF.md) and [`../docs/DEMO.md`](../docs/DEMO.md).

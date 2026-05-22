@@ -15,6 +15,7 @@ from ..dataset.schemas import FEATURE_META_COLUMNS
 from ..utils.io import write_json
 from ..utils.logging import get_logger
 from ..utils.visualization import save_confusion_matrix, save_feature_importance
+from .eval_report import write_eval_report
 from .registry import save_model_bundle
 
 log = get_logger("roomos.model.train")
@@ -142,12 +143,15 @@ def train_model(
     feature_cols = _select_feature_columns(df)
     log.info("Using %d feature columns.", len(feature_cols))
 
-    # Encode labels.
-    from sklearn.preprocessing import LabelEncoder
-
-    le = LabelEncoder()
-    df["_y"] = le.fit_transform(df["label"].astype(str))
-    classes = list(le.classes_)
+    # Encode labels — class index order must match config.labels.classes (and live UI).
+    present = sorted(set(df["label"].astype(str)))
+    config_order = [c for c in config.labels.classes if c in present]
+    extra = sorted(set(present) - set(config_order))
+    classes = config_order + extra
+    if not classes:
+        raise ValueError("No label classes after encoding.")
+    label_to_idx = {c: i for i, c in enumerate(classes)}
+    df["_y"] = df["label"].astype(str).map(label_to_idx).astype(np.int32)
     log.info("Class counts:\n%s", df["label"].value_counts().to_string())
 
     # Split.
@@ -219,12 +223,15 @@ def train_model(
     if output_dir is None:
         output_dir = Path(train_cfg.get("output_dir", "data/models/latest"))
     output_dir = Path(output_dir)
+    train_cfg_dict = config.to_dict()
+    if config.source_path is not None:
+        train_cfg_dict["_source_config"] = str(config.source_path)
     save_model_bundle(
         output_dir,
         clf=clf,
         classes=classes,
         feature_columns=feature_cols,
-        train_config=config.to_dict(),
+        train_config=train_cfg_dict,
         metrics=metrics,
     )
 
@@ -241,18 +248,31 @@ def train_model(
         log.warning("Could not save feature importances: %s", e)
 
     write_json(output_dir / "metrics.json", metrics)
-    write_json(
-        output_dir / "training_summary.json",
-        {
-            "n_rows_total": int(len(df)),
-            "n_train": int(len(train_df)),
-            "n_val": int(len(val_df)),
-            "n_test": int(len(test_df)),
-            "class_counts": df["label"].value_counts().to_dict(),
-            "classes": classes,
-            "n_features": len(feature_cols),
-        },
-    )
+    training_summary = {
+        "n_rows_total": int(len(df)),
+        "n_train": int(len(train_df)),
+        "n_val": int(len(val_df)),
+        "n_test": int(len(test_df)),
+        "class_counts": df["label"].value_counts().to_dict(),
+        "classes": classes,
+        "n_features": len(feature_cols),
+    }
+    write_json(output_dir / "training_summary.json", training_summary)
+
+    split_name = "test" if "test" in metrics else ("val" if "val" in metrics else "train")
+    try:
+        write_eval_report(
+            output_dir,
+            metrics[split_name],
+            split_name=split_name,
+            classes=classes,
+            training_summary=training_summary,
+            booster=clf,
+            feature_columns=feature_cols,
+            full_metrics=metrics,
+        )
+    except Exception as e:
+        log.warning("Could not write eval_report: %s", e)
 
     return TrainResult(
         bundle_dir=output_dir,

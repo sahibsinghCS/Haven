@@ -79,7 +79,7 @@ def test_bundle_roundtrip(tmp_path):
     result = train_model(df, cfg)
 
     model = load_model_bundle(result.bundle_dir)
-    assert sorted(model.classes) == sorted(["work", "sleep", "gaming", "relaxing", "away"])
+    assert model.classes == ["work", "sleep", "gaming", "relaxing", "away"]
     assert model.feature_columns == result.feature_columns
 
     # Predict using only some of the features (others should default to 0).

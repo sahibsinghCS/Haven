@@ -40,7 +40,8 @@ def main(
 
     model = load_model_bundle(bundle)
     log.info("Loaded model bundle %s (classes=%s)", bundle, model.classes)
-    metrics = evaluate_model(model, df, output_dir=out or bundle)
+    report_root = Path(out) if out else Path(bundle)
+    metrics = evaluate_model(model, df, output_dir=report_root)
     log.info(
         "acc=%.3f  macro_f1=%.3f  weighted_f1=%.3f  n=%d",
         metrics["accuracy"], metrics["macro_f1"], metrics["weighted_f1"], metrics["n_samples"],

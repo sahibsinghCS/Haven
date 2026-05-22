@@ -31,10 +31,26 @@ export interface RoomDeviceTargets {
 export interface LivePersonalizationMeta {
   applied?: boolean
   examples?: number
+  memoryExamples?: number
   matches?: number
   nearestSimilarity?: number
   influence?: number
+  boostedLabel?: string
 }
+
+/** Last fired automation rule (honest dry-run / live / failed state). */
+export interface LastAutomationEvent {
+  at?: string
+  rule?: string
+  activity?: string
+  actionType?: string
+  dryRun: boolean
+  executed: boolean
+  skipped?: boolean
+  summary: string
+}
+
+export type AutomationMode = "dry_run" | "live" | "off"
 
 export interface LiveInferenceSnapshot {
   schemaVersion: 1
@@ -53,8 +69,10 @@ export interface LiveInferenceSnapshot {
   rationale: string[]
   appliedScene: RoomDeviceTargets
   personalization?: LivePersonalizationMeta
-  /** `roomos-ml` when from FastAPI; absent on mock */
-  dataSource?: string
+  lastAutomation?: LastAutomationEvent
+  automationMode?: AutomationMode
+  /** `roomos-ml` = live model; `demo-replay` = prerecorded sequence */
+  dataSource?: "roomos-ml" | "demo-replay" | string
   /** Rolling history for charts / debugging (timestamps ISO) */
   confidenceHistory: Array<{
     t: string
@@ -87,4 +105,6 @@ export interface PreferenceDocument {
   schemaVersion: 1
   updatedAt: string
   presets: PreferencePreset[]
+  /** Preset id used by live inference for appliedScene (canonical active preset). */
+  activePresetId: string
 }

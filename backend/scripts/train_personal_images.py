@@ -25,7 +25,11 @@ from roomos.config import load_config
 from roomos.dataset.builder import FeatureExtractionPipeline, save_features
 from roomos.features import FrameBurst
 from roomos.model.train import train_model
+from roomos.training.finalize import finalize_training, log_training_metrics
 from roomos.utils.logging import get_logger, setup_logging
+
+DEFAULT_TRAIN_CONFIG = Path("configs/train_personal.yaml")
+DEFAULT_INFERENCE_CONFIG = Path("configs/inference.yaml")
 
 app = typer.Typer(
     add_completion=False,
@@ -41,7 +45,18 @@ def main(
     images_dir: Path = typer.Option(Path("data/raw_images"), "--images-dir"),
     features_out: Path = typer.Option(Path("data/features/personal_image_features.parquet"), "--features-out"),
     model_out: Path = typer.Option(Path("data/models/latest"), "--model-out"),
-    config: Path = typer.Option(Path("configs/train.yaml"), "--config", "-c"),
+    config: Path = typer.Option(
+        DEFAULT_TRAIN_CONFIG,
+        "--config",
+        "-c",
+        help="Use configs/train_personal.yaml (matches live inference).",
+    ),
+    inference_config: Path = typer.Option(
+        DEFAULT_INFERENCE_CONFIG,
+        "--inference-config",
+        help="Live config to verify against after training.",
+    ),
+    skip_verify: bool = typer.Option(False, "--skip-verify", help="Skip train/serve compatibility check."),
     frame_count: int = typer.Option(0, "--frame-count", help="0 means use config burst.frame_count."),
     stride: int = typer.Option(5, "--stride", help="Image step between consecutive bursts."),
     min_bursts_per_class: int = typer.Option(6, "--min-bursts-per-class"),
@@ -76,18 +91,13 @@ def main(
     log.info("Class coverage:\n%s", df["label"].value_counts(dropna=False).to_string())
 
     result = train_model(df, cfg, output_dir=model_out)
-    log.info("Training complete -> %s", result.bundle_dir)
-    for split in ("train", "val", "test"):
-        if split in result.metrics:
-            m = result.metrics[split]
-            log.info(
-                "%-5s acc=%.3f macro_f1=%.3f weighted_f1=%.3f n=%d",
-                split,
-                m["accuracy"],
-                m["macro_f1"],
-                m["weighted_f1"],
-                m["n_samples"],
-            )
+    log_training_metrics(result)
+    finalize_training(
+        result,
+        cfg,
+        inference_config=inference_config,
+        skip_verify=skip_verify,
+    )
 
 
 def _extract_image_burst(
@@ -167,7 +177,8 @@ def _validate_coverage(
         raise typer.BadParameter(
             "Not enough image bursts. "
             f"Need at least {min_bursts_per_class} bursts per class "
-            f"(about {needed_images} images/class with this stride). Current: {pretty}"
+            f"(about {needed_images} images/class with this stride). Current: {pretty}. "
+            "Capture more: npm run data:capture-stills (from repo root)."
         )
 
 

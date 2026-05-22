@@ -1,0 +1,14 @@
+# Demo bootstrap: synthetic stills, random split (many tiny sources break by_source).
+extends: bootstrap_still.yaml
+
+training:
+  features_path: data/features/bootstrap_demo_features.parquet
+  output_dir: data/models/latest
+  split:
+    strategy: random
+    val_size: 0.15
+    test_size: 0.15
+  xgboost:
+    n_estimators: 180
+    max_depth: 5
+    early_stopping_rounds: null

@@ -29,7 +29,7 @@ const pipeline = [
     glyph: "○",
     accent: "from-teal-600/90 to-teal-500/50",
     ring: "ring-teal-600/35",
-    body: "Light, motion, sound, presence: ordinary signals, interpreted where you live.",
+    body: "Video, motion, and scene context from your room camera — interpreted on this machine.",
     aside: "No exotic hardware pitch, just context done locally.",
   },
   {

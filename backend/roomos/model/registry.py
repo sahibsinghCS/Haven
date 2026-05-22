@@ -62,6 +62,9 @@ def save_model_bundle(
     metrics: Optional[dict] = None,
 ) -> Path:
     out = ensure_dir(bundle_dir)
+    # XGBoost 2.x requires ``_estimator_type`` before native JSON save (same as load).
+    if not getattr(clf, "_estimator_type", None):
+        clf._estimator_type = "classifier"
     clf.save_model(str(out / "model.json"))
     write_json(out / "label_encoder.json", {"classes": list(classes)})
     write_json(out / "feature_columns.json", {"columns": list(feature_columns)})

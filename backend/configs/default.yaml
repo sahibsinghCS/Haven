@@ -15,8 +15,24 @@ video:
   #   "droidcam:auto"     -> picks first available droidcam http stream
   source: 0
   sample_fps: 6           # frames per second to *process* (sampled from source)
-  resize_width: 480       # downscale long edge for perception
+  resize_width: 480       # downscale long edge for ML bursts (keep moderate for CPU)
   read_timeout_sec: 5.0   # consider stream dead if no frame within this window
+  # Optional driver negotiation (webcam indices; may be ignored by the device)
+  # capture_width: 1280
+  # capture_height: 720
+  # capture_fps: 30
+  # Live /live preview (separate from ML — higher FPS/res than sample_fps)
+  preview:
+    max_fps: 20           # UI preview update rate from camera
+    max_width: 1280       # JPEG long edge before encode
+    jpeg_quality: 88
+  # OpenCV capture backend hint. "auto" picks the right native API per OS:
+  # Windows -> DirectShow (CAP_DSHOW), macOS -> AVFoundation, Linux -> V4L2.
+  # Using the default ("any") on Windows often yields black frames from
+  # integrated webcams. Override to "msmf" if your camera has issues with
+  # DSHOW. Run `npm run probe:cameras` to see what each backend reports.
+  # Valid: auto | any | dshow | msmf | v4l2 | avfoundation
+  backend: auto
 
 # Burst-based multi-frame classification (not dense continuous video modeling).
 # Each burst = one XGBoost sample: collect frames over burst_duration_seconds,

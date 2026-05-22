@@ -1,0 +1,13 @@
+# Personal room training — feature flags MUST match configs/inference.yaml for /live.
+extends: train.yaml
+
+features:
+  enabled:
+    clip: true
+    pose: false
+    motion: true
+    posture: false
+
+training:
+  output_dir: data/models/latest
+  features_path: data/features/personal_features.parquet

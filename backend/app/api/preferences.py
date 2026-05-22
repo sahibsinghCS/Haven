@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from roomos.preferences.document import PreferenceValidationError, normalize_preference_document
 from roomos.utils.io import read_json, write_json
 from roomos.utils.logging import get_logger
 
@@ -42,29 +43,52 @@ _DEFAULT_DOC = {
                 "away":     {"lightColorHex": "#2A2A2A", "brightness": 0,  "fanOn": False, "temperatureF": 76},
             },
         },
+        {
+            "id": "preset_custom",
+            "name": "Custom",
+            "description": "Your personal mix. Adjust any mood, then save.",
+            "isDefault": False,
+            "preferences": {
+                "sleep":    {"lightColorHex": "#0F172A", "brightness": 4,  "fanOn": True,  "temperatureF": 67},
+                "gaming":   {"lightColorHex": "#7C3AED", "brightness": 88, "fanOn": True,  "temperatureF": 69},
+                "work":     {"lightColorHex": "#D7F9FF", "brightness": 85, "fanOn": False, "temperatureF": 71},
+                "relaxing": {"lightColorHex": "#14B8A6", "brightness": 35, "fanOn": False, "temperatureF": 74},
+                "away":     {"lightColorHex": "#18181B", "brightness": 0,  "fanOn": False, "temperatureF": 78},
+            },
+        },
     ],
+    "activePresetId": "preset_basic",
 }
+
+
+def _read_document() -> dict[str, Any]:
+    p = _store_path()
+    if not p.exists():
+        return dict(_DEFAULT_DOC)
+    try:
+        raw = read_json(p)
+        return normalize_preference_document(raw)
+    except PreferenceValidationError as e:
+        log.warning("Preferences invalid (%s); returning defaults.", e)
+        return dict(_DEFAULT_DOC)
+    except Exception as e:
+        log.warning("Preferences read failed (%s); returning defaults.", e)
+        return dict(_DEFAULT_DOC)
 
 
 @router.get("")
 def get_preferences() -> dict[str, Any]:
-    p = _store_path()
-    if not p.exists():
-        return _DEFAULT_DOC
-    try:
-        return read_json(p)
-    except Exception as e:
-        log.warning("Preferences read failed (%s); returning defaults.", e)
-        return _DEFAULT_DOC
+    return _read_document()
 
 
 @router.put("")
 def put_preferences(doc: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(doc, dict) or "presets" not in doc:
         raise HTTPException(status_code=400, detail="Body must be a PreferenceDocument with 'presets'.")
-    doc = dict(doc)
-    doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    doc.setdefault("schemaVersion", 1)
-    p = _store_path()
-    write_json(p, doc)
-    return doc
+    try:
+        normalized = normalize_preference_document(doc)
+    except PreferenceValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    normalized["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    write_json(_store_path(), normalized)
+    return normalized

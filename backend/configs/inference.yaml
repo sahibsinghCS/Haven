@@ -1,5 +1,32 @@
 extends: default.yaml
 
+# DroidCam — pick ONE (start DroidCam Client on PC *before* npm run demo):
+#
+# A) Virtual webcam (recommended while Client shows live video):
+#    npm run probe:cameras  — use the bright row (often index 1 + msmf on Windows)
+video:
+  source: 1
+  backend: msmf
+  # ML stays light; preview can be sharper (see default.yaml preview.*)
+  capture_width: 1280
+  capture_height: 720
+  capture_fps: 30
+  preview:
+    max_fps: 24
+    max_width: 1280
+    jpeg_quality: 90
+#
+# B) HTTP stream — only when DroidCam Client is fully quit (File → Exit).
+#    Browser must show video at the URL, not "Busy".
+# video:
+#   source: "http://192.168.1.18:4747/video"
+#   backend: any
+#
+# C) USB on same PC:
+# video:
+#   source: "http://127.0.0.1:4747/video"
+#   backend: any
+
 # Match bootstrap training (data/models/latest): CLIP + motion only until
 # MediaPipe classic pose API is restored or migrated to mediapipe.tasks.
 features:
@@ -29,7 +56,7 @@ inference:
     dir: data/feedback
     # Strong personalization: corrections should visibly steer similar bursts.
     influence: 0.85            # per-match reward scale (0–1)
-    similarity_floor: 0.50     # lower = apply more stored corrections
+    similarity_floor: 0.42     # lower = apply more stored corrections (demo-visible)
     nearest_k: 20
     max_examples: 1500
     penalty_factor: 0.72       # how hard to pull down the previously wrong label

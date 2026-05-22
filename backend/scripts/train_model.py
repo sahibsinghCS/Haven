@@ -12,7 +12,10 @@ from roomos.config import load_config
 from roomos.dataset.builder import load_features
 from roomos.dataset.schemas import load_label_segments
 from roomos.model.train import train_model
+from roomos.training.finalize import finalize_training, log_training_metrics
 from roomos.utils.logging import get_logger, setup_logging
+
+DEFAULT_INFERENCE_CONFIG = Path("configs/inference.yaml")
 
 app = typer.Typer(add_completion=False, help="Train the XGBoost activity classifier.")
 log = get_logger("roomos.scripts.train")
@@ -24,6 +27,12 @@ def main(
     features: Optional[Path] = typer.Option(None, "--features", "-f", help="Override features path."),
     labels: Optional[Path] = typer.Option(None, "--labels", "-l", help="Optional labels CSV to merge."),
     out: Optional[Path] = typer.Option(None, "--out", "-o", help="Override model output dir."),
+    inference_config: Path = typer.Option(
+        DEFAULT_INFERENCE_CONFIG,
+        "--inference-config",
+        help="Live config used for post-train compatibility check.",
+    ),
+    skip_verify: bool = typer.Option(False, "--skip-verify"),
     log_level: str = typer.Option("INFO", "--log-level"),
 ) -> None:
     setup_logging(level=log_level)
@@ -42,19 +51,13 @@ def main(
         df = merge_labels_into_features(df, segs)
 
     result = train_model(df, cfg, output_dir=out)
-    log.info("Training complete -> %s", result.bundle_dir)
-    metrics = result.metrics
-    for split in ("train", "val", "test"):
-        if split in metrics:
-            m = metrics[split]
-            log.info(
-                "  %-5s  acc=%.3f  macro_f1=%.3f  weighted_f1=%.3f  n=%d",
-                split,
-                m["accuracy"],
-                m["macro_f1"],
-                m["weighted_f1"],
-                m["n_samples"],
-            )
+    log_training_metrics(result)
+    finalize_training(
+        result,
+        cfg,
+        inference_config=inference_config,
+        skip_verify=skip_verify,
+    )
 
 
 if __name__ == "__main__":

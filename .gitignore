@@ -11,6 +11,8 @@ __pycache__/
 !.env.example
 .env.local
 *.log
+fastapi-test.out
+fastapi-test.err
 *.tsbuildinfo
 .DS_Store
 Thumbs.db

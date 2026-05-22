@@ -31,8 +31,8 @@ const principles = [
     body: "No voyeuristic timelines or panic dashboards. Signal appears where it earns space, and stays quiet elsewhere.",
   },
   {
-    title: "Cloud on your terms",
-    body: "Connected services are optional. Uploads happen when you choose them, never as the cost of turning the product on.",
+    title: "No cloud required for the demo",
+    body: "This hackathon build runs on your machine. A future optional sync layer is not part of the live path.",
   },
 ] as const
 
@@ -89,7 +89,7 @@ export function PrivacySection() {
                 viewport={landingViewport.assured}
                 className="flex flex-wrap gap-2 border-b border-[color:var(--landing-line)] px-8 py-6 sm:px-10 lg:px-12 lg:pt-10"
               >
-                {["Local first posture", "Readable confidence", "Optional cloud"].map((label) => (
+                {["Local first posture", "Readable confidence", "Demo: no upload"].map((label) => (
                   <motion.span
                     key={label}
                     variants={pillFade}

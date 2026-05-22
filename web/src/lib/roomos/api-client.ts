@@ -1,3 +1,4 @@
+import { parsePreferenceDocument } from "@/lib/roomos/preferences-document-schema"
 import type {
   LiveInferenceSnapshot,
   PreferenceDocument,
@@ -85,6 +86,12 @@ function normalizeSnapshot(raw: unknown): LiveInferenceSnapshot {
     .slice(-120)
 
   const personalizationRaw = (s.personalization ?? {}) as Record<string, unknown>
+  const autoRaw = (s.lastAutomation ?? {}) as Record<string, unknown>
+  const automationModeRaw = String(s.automationMode ?? "off")
+  const automationMode =
+    automationModeRaw === "live" || automationModeRaw === "dry_run"
+      ? automationModeRaw
+      : "off"
 
   return {
     schemaVersion: 1,
@@ -103,12 +110,38 @@ function normalizeSnapshot(raw: unknown): LiveInferenceSnapshot {
     appliedScene,
     personalization: {
       applied: Boolean(personalizationRaw.applied),
-      examples: Number(personalizationRaw.examples ?? 0),
+      examples: Number(personalizationRaw.examples ?? personalizationRaw.memory_examples ?? 0),
+      memoryExamples: Number(
+        personalizationRaw.memory_examples ?? personalizationRaw.examples ?? 0,
+      ),
       matches: Number(personalizationRaw.matches ?? 0),
-      nearestSimilarity: Number(personalizationRaw.nearest_similarity ?? personalizationRaw.nearestSimilarity ?? 0),
+      nearestSimilarity: Number(
+        personalizationRaw.nearest_similarity ?? personalizationRaw.nearestSimilarity ?? 0,
+      ),
       influence: Number(personalizationRaw.influence ?? 0),
+      boostedLabel:
+        typeof personalizationRaw.boosted_label === "string"
+          ? personalizationRaw.boosted_label
+          : typeof personalizationRaw.boostedLabel === "string"
+            ? personalizationRaw.boostedLabel
+            : undefined,
     },
     dataSource: typeof s.dataSource === "string" ? s.dataSource : "roomos-ml",
+    lastAutomation:
+      autoRaw.summary || autoRaw.rule
+        ? {
+            at: typeof autoRaw.at === "string" ? autoRaw.at : undefined,
+            rule: typeof autoRaw.rule === "string" ? autoRaw.rule : undefined,
+            activity: typeof autoRaw.activity === "string" ? autoRaw.activity : undefined,
+            actionType:
+              typeof autoRaw.actionType === "string" ? autoRaw.actionType : undefined,
+            dryRun: Boolean(autoRaw.dryRun),
+            executed: Boolean(autoRaw.executed),
+            skipped: Boolean(autoRaw.skipped),
+            summary: String(autoRaw.summary ?? ""),
+          }
+        : undefined,
+    automationMode,
     confidenceHistory,
   }
 }
@@ -157,11 +190,67 @@ export async function fetchLiveSnapshot(signal?: AbortSignal): Promise<LiveInfer
   return normalizeSnapshot(raw)
 }
 
+export type CompatMismatch = {
+  category: string
+  field: string
+  train: string
+  inference: string
+  detail?: string
+}
+
+export type CompatReport = {
+  ok: boolean
+  bundle_dir: string
+  inference_config: string
+  train_config_source: string
+  bundle_classes: string[]
+  inference_classes: string[]
+  n_bundle_columns: number
+  n_expected_columns: number
+  mismatches: CompatMismatch[]
+}
+
+export type LiveMode = "off" | "live" | "replay"
+
+export type BootPhase =
+  | "off"
+  | "starting"
+  | "opening_camera"
+  | "warming_up"
+  | "streaming"
+
+export type ModelKind = "bootstrap" | "trained" | "replay" | "unknown"
+
 export type LiveEngineStatus = {
   engine_running: boolean
   engine_error: string | null
   has_snapshot: boolean
+  live_mode?: LiveMode
+  demo_mode?: boolean
+  demo_replay_active?: boolean
+  compat_ok?: boolean | null
+  compat_report?: CompatReport | null
+  /** OpenCV source label or demo replay label */
+  inference_source?: string | null
+  preview_available?: boolean
+  /** True when /preview.jpg is the same OpenCV feed as burst inference */
+  preview_is_inference_feed?: boolean
+  /** 0..255 average brightness of the latest preview frame (null until first frame). */
+  preview_mean_luma?: number | null
+  /** True when preview frames are effectively black (typical Windows MSMF symptom). */
+  preview_dark?: boolean
+  preview_frames_seen?: number
+  /** Coarse engine boot phase for boot-screen copy. */
+  boot_phase?: BootPhase
+  /** Source of the loaded model: bootstrap demo vs real training. */
+  model_kind?: ModelKind
+  /** Whether MediaPipe pose features are active in this inference run. */
+  pose_enabled?: boolean | null
+  data_source?: string | null
+  demo_fixture?: string | null
 }
+
+export const LIVE_PREVIEW_URL = `${API_BASE}/api/live/preview.jpg`
 
 export async function fetchEngineStatus(signal?: AbortSignal): Promise<LiveEngineStatus> {
   const res = await fetch(`${API_BASE}/api/live/status`, { signal, cache: "no-store" })
@@ -179,6 +268,53 @@ export async function stopEngine(): Promise<unknown> {
   return res.json()
 }
 
+export type SetLiveModeResult = {
+  status: string
+  live_mode?: LiveMode
+  error?: string
+  inference_source?: string
+}
+
+/** Switch between live camera + model and deterministic demo replay. */
+export async function setLiveMode(mode: "live" | "replay" | "off"): Promise<SetLiveModeResult> {
+  const res = await fetch(`${API_BASE}/api/live/mode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  })
+  const body = (await res.json()) as SetLiveModeResult
+  if (!res.ok) {
+    throw new Error(body.error ?? `setLiveMode failed: ${res.status}`)
+  }
+  return body
+}
+
+export type FeedbackProbabilityPreview = {
+  before: RoomStateDistribution
+  after: RoomStateDistribution
+  corrected_label: string
+  appliedAfterSave?: boolean
+  applied_after_save?: boolean
+  nearest_similarity?: number
+}
+
+function normalizeFeedbackProbs(raw: unknown): RoomStateDistribution {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
+  return {
+    sleep: Number(r.sleep ?? 0),
+    gaming: Number(r.gaming ?? 0),
+    work: Number(r.work ?? 0),
+    relaxing: Number(r.relaxing ?? 0),
+    away: Number(r.away ?? 0),
+  }
+}
+
+export type FeedbackEffects = {
+  immediate: string
+  ongoing: string
+  notIncluded: string
+}
+
 export type FeedbackResponse = {
   status: "recorded"
   id: string
@@ -187,6 +323,49 @@ export type FeedbackResponse = {
   correctedLabel: string
   screenshotCount: number
   influence: number
+  memoryExamples: number
+  retrainsModel: boolean
+  effects: FeedbackEffects
+  probabilityPreview?: FeedbackProbabilityPreview
+  storage?: {
+    dir?: string
+    examplesFile?: string
+    eventsLog?: string
+    screenshotsDir?: string
+  }
+}
+
+export type FeedbackStatus = {
+  enabled: boolean
+  memoryExamples: number
+  hasEvidence?: boolean
+  similarityFloor?: number
+  influence?: number
+  storageDir?: string
+  lastCorrection?: {
+    id?: string
+    at?: string
+    predicted_label?: string
+    corrected_label?: string
+  } | null
+}
+
+export async function fetchFeedbackStatus(signal?: AbortSignal): Promise<FeedbackStatus> {
+  const res = await fetch(`${API_BASE}/api/live/feedback/status`, { signal, cache: "no-store" })
+  if (!res.ok) throw new Error(`feedback status failed: ${res.status}`)
+  const raw = (await res.json()) as Record<string, unknown>
+  return {
+    enabled: Boolean(raw.enabled),
+    memoryExamples: Number(raw.memory_examples ?? raw.examples ?? 0),
+    hasEvidence: Boolean(raw.has_evidence),
+    similarityFloor: Number(raw.similarity_floor ?? 0),
+    influence: Number(raw.influence ?? 0),
+    storageDir: typeof raw.storage_dir === "string" ? raw.storage_dir : undefined,
+    lastCorrection:
+      raw.last_correction && typeof raw.last_correction === "object"
+        ? (raw.last_correction as FeedbackStatus["lastCorrection"])
+        : null,
+  }
 }
 
 export async function submitLiveFeedback(input: {
@@ -209,13 +388,50 @@ export async function submitLiveFeedback(input: {
         : `feedback submit failed: ${res.status}`
     throw new Error(msg)
   }
-  return (await res.json()) as FeedbackResponse
+  const raw = (await res.json()) as Record<string, unknown>
+  const previewRaw = raw.probabilityPreview ?? raw.probability_preview
+  const effectsRaw = raw.effects as Record<string, string> | undefined
+  let probabilityPreview: FeedbackResponse["probabilityPreview"]
+  if (previewRaw && typeof previewRaw === "object") {
+    const p = previewRaw as Record<string, unknown>
+    probabilityPreview = {
+      before: normalizeFeedbackProbs(p.before),
+      after: normalizeFeedbackProbs(p.after),
+      corrected_label: String(p.corrected_label ?? p.correctedLabel ?? ""),
+      appliedAfterSave: Boolean(p.appliedAfterSave ?? p.applied_after_save),
+      nearest_similarity: Number(p.nearest_similarity ?? 0),
+    }
+  }
+  return {
+    status: "recorded",
+    id: String(raw.id ?? ""),
+    createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
+    predictedLabel: String(raw.predictedLabel ?? raw.predicted_label ?? ""),
+    correctedLabel: String(raw.correctedLabel ?? raw.corrected_label ?? ""),
+    screenshotCount: Number(raw.screenshotCount ?? raw.screenshot_count ?? 0),
+    influence: Number(raw.influence ?? 0),
+    memoryExamples: Number(raw.memoryExamples ?? raw.memory_examples ?? 0),
+    retrainsModel: Boolean(raw.retrainsModel ?? raw.retrains_model),
+    effects: {
+      immediate: String(effectsRaw?.immediate ?? ""),
+      ongoing: String(effectsRaw?.ongoing ?? ""),
+      notIncluded: String(effectsRaw?.notIncluded ?? effectsRaw?.not_included ?? ""),
+    },
+    probabilityPreview,
+    storage:
+      raw.storage && typeof raw.storage === "object"
+        ? (raw.storage as FeedbackResponse["storage"])
+        : undefined,
+  }
 }
 
 export async function fetchPreferenceDocument(signal?: AbortSignal): Promise<PreferenceDocument> {
   const res = await fetch(`${API_BASE}/api/preferences`, { signal, cache: "no-store" })
   if (!res.ok) throw new Error(`preferences fetch failed: ${res.status}`)
-  return (await res.json()) as PreferenceDocument
+  const raw: unknown = await res.json()
+  const doc = parsePreferenceDocument(raw)
+  if (!doc) throw new Error("preferences response failed validation")
+  return doc
 }
 
 export async function savePreferenceDocument(doc: PreferenceDocument): Promise<PreferenceDocument> {
@@ -225,7 +441,10 @@ export async function savePreferenceDocument(doc: PreferenceDocument): Promise<P
     body: JSON.stringify(doc),
   })
   if (!res.ok) throw new Error(`preferences save failed: ${res.status}`)
-  return (await res.json()) as PreferenceDocument
+  const raw: unknown = await res.json()
+  const parsed = parsePreferenceDocument(raw)
+  if (!parsed) throw new Error("preferences save response failed validation")
+  return parsed
 }
 
 export { normalizeSnapshot }

@@ -1,0 +1,48 @@
+extends: default.yaml
+
+# Local hackathon demo: POST to demo_action_receiver on :9999 (no Home Assistant).
+# Usage:
+#   Terminal 1:  npm run demo:receiver
+#   Terminal 2:  set ROOMOS_ACTIONS_CONFIG=configs/actions.demo-local.yaml  (Windows)
+#                export ROOMOS_ACTIONS_CONFIG=configs/actions.demo-local.yaml  (macOS/Linux)
+#                npm run demo
+
+actions:
+  dry_run: false
+  default_sustain_windows: 1
+  default_cooldown_sec: 45.0
+
+  integrations:
+    home_assistant:
+      enabled: false
+
+  rules:
+    - name: work_local_webhook
+      when:
+        activity: work
+        min_confidence: 0.5
+        sustain_windows: 1
+      action:
+        type: webhook
+        url: "http://127.0.0.1:9999/roomos"
+      cooldown_sec: 45
+
+    - name: sleep_local_webhook
+      when:
+        activity: sleep
+        min_confidence: 0.5
+        sustain_windows: 1
+      action:
+        type: webhook
+        url: "http://127.0.0.1:9999/roomos"
+      cooldown_sec: 60
+
+    - name: gaming_local_webhook
+      when:
+        activity: gaming
+        min_confidence: 0.5
+        sustain_windows: 1
+      action:
+        type: webhook
+        url: "http://127.0.0.1:9999/roomos"
+      cooldown_sec: 45

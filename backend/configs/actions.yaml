@@ -1,75 +1,95 @@
 extends: default.yaml
 
+# Room automation — safe defaults: dry_run=true, HA integration disabled.
+# See docs/AUTOMATION.md for Home Assistant webhook demo steps.
+
 actions:
-  dry_run: true                          # never call external services when true
+  dry_run: true
   events_log: data/events/actions.jsonl
   default_cooldown_sec: 60.0
   default_min_confidence: 0.55
   default_sustain_windows: 1
 
-  # Each rule fires at most once per cooldown_sec. Rules are evaluated in order.
-  # Implemented action handlers (see roomos/actions/rules.py): log, webhook.
+  integrations:
+    home_assistant:
+      enabled: false
+      base_url: "http://127.0.0.1:8123"
+      verify_ssl: false
+      timeout_sec: 8.0
+      token: ""
+      token_env: "HOME_ASSISTANT_TOKEN"
+
   rules:
-    - name: focus_mode
+    # --- Always-on: visible log lines (no external calls) -----------------
+    - name: focus_mode_log
       when:
         activity: work
         min_confidence: 0.6
         sustain_windows: 1
       action:
         type: log
-        message: "[focus_mode] enabling do-not-disturb (stub)"
+        message: "[focus_mode] work detected — configure HA rule to automate lights"
       cooldown_sec: 120
 
-    - name: dim_lights
+    - name: sleep_mode_log
       when:
         activity: sleep
         min_confidence: 0.6
         sustain_windows: 1
       action:
         type: log
-        message: "[dim_lights] dimming bedroom lights (stub)"
+        message: "[sleep_mode] sleep detected"
       cooldown_sec: 300
 
-    - name: gamer_scene
+    - name: gaming_mode_log
       when:
         activity: gaming
         min_confidence: 0.55
         sustain_windows: 1
       action:
         type: log
-        message: "[gamer_scene] switching ambient to gaming preset (stub)"
+        message: "[gaming_mode] gaming detected"
       cooldown_sec: 90
 
-    - name: cozy_scene
-      when:
-        activity: relaxing
-        min_confidence: 0.5
-        sustain_windows: 1
-      action:
-        type: log
-        message: "[cozy_scene] easing lights to relax preset (stub)"
-      cooldown_sec: 120
-
-    - name: energy_saver
-      when:
-        activity: away
-        min_confidence: 0.55
-        sustain_windows: 1
-      action:
-        type: log
-        message: "[energy_saver] entering low-power scene (stub)"
-      cooldown_sec: 300
-
-    # Example webhook rule (kept disabled). Set enabled: true *and* dry_run:false
-    # to actually fire. Even then it just POSTs JSON; no destructive defaults.
-    - name: webhook_example
+    # --- Real Home Assistant (opt-in) ----------------------------------
+    # 1) In HA: Settings → Automations → Create → Trigger: Webhook → id: roomos_work
+    # 2) Set integrations.home_assistant.enabled: true AND dry_run: false
+    # 3) Set enabled: true on the rule below
+    - name: focus_mode_ha
       enabled: false
       when:
         activity: work
-        min_confidence: 0.7
-        sustain_windows: 5
+        min_confidence: 0.6
+        sustain_windows: 1
+      action:
+        type: home_assistant
+        mode: webhook
+        webhook_id: roomos_work
+        data:
+          scene: focus
+      cooldown_sec: 180
+
+    - name: sleep_mode_ha
+      enabled: false
+      when:
+        activity: sleep
+        min_confidence: 0.6
+        sustain_windows: 1
+      action:
+        type: home_assistant
+        mode: webhook
+        webhook_id: roomos_sleep
+      cooldown_sec: 300
+
+    # --- Local demo without HA (see scripts/demo_action_receiver.py) -----
+    - name: local_webhook_demo
+      enabled: false
+      when:
+        activity: work
+        min_confidence: 0.55
+        sustain_windows: 1
       action:
         type: webhook
-        url: "http://127.0.0.1:9999/roomos-event"
+        url: "http://127.0.0.1:9999/roomos"
         method: POST
-      cooldown_sec: 600
+      cooldown_sec: 30

@@ -178,7 +178,7 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
                   isLive ? "text-zinc-500" : "text-[color:var(--haven-faint)]",
                 )}
               >
-                {isLive ? "Adaptive room intelligence" : "Local, private, adaptive"}
+                {isLive ? "Live demo" : "Local, private, adaptive"}
               </span>
             </span>
           </Link>

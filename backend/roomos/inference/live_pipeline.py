@@ -19,6 +19,7 @@ from ..features import BurstAggregator
 from ..model.predict import predict_proba_row
 from ..model.registry import ActivityModel, load_model_bundle
 from ..personalization import FeedbackCorrection, FeedbackReinforcementModel
+from ..preferences.document import active_preset_preferences
 from ..utils.io import append_jsonl, read_json
 from ..utils.logging import get_logger
 from ..video import open_video_source
@@ -45,6 +46,9 @@ class LiveSnapshot:
     personalization: Dict[str, object] = field(default_factory=dict)
     model_probs: Dict[str, float] = field(default_factory=dict)
     sequence: int = 0
+    last_automation: Dict[str, object] = field(default_factory=dict)
+    automation_mode: str = "dry_run"  # dry_run | live | off
+    data_source: str = "roomos-ml"  # roomos-ml | demo-replay
 
     def to_frontend_dict(self) -> dict:
         dist = _normalize_ui_distribution(self.distribution)
@@ -65,7 +69,9 @@ class LiveSnapshot:
             "appliedScene": dict(self.applied_scene),
             "confidenceHistory": list(self.confidence_history),
             "personalization": dict(self.personalization),
-            "dataSource": "roomos-ml",
+            "lastAutomation": dict(self.last_automation),
+            "automationMode": self.automation_mode,
+            "dataSource": self.data_source,
         }
 
 
@@ -91,6 +97,7 @@ class LiveInferenceEngine:
         actions: Optional[ActionEngine] = None,
         on_snapshot: Optional[SnapshotCallback] = None,
         on_frame: Optional[Callable[[np.ndarray, SmoothedPrediction], None]] = None,
+        on_preview_frame: Optional[Callable[[np.ndarray], None]] = None,
     ) -> None:
         self.config = config
         self._stop_event = threading.Event()
@@ -105,6 +112,22 @@ class LiveInferenceEngine:
         self._actions = actions
         self._on_snapshot = on_snapshot
         self._on_frame = on_frame
+        self._on_preview_frame = on_preview_frame
+
+        feat_cfg = (config.get("features", {}) or {}).get("enabled", {}) or {}
+        self._pose_enabled = bool(feat_cfg.get("pose", True))
+
+        # Boot phase exposed via state.status_payload so the UI can show
+        # specific copy ("Loading models", "Camera up — first burst pending",
+        # "Streaming") instead of an indefinite spinner.
+        self._boot_phase: str = "starting"  # starting | opening_camera | warming_up | streaming
+        self._first_frame_at: Optional[float] = None
+        self._first_burst_at: Optional[float] = None
+
+        # Bootstrap model heuristic — looks at the config that produced the
+        # bundle (we tag it in `_source_config` during finalize). UI shows a
+        # banner so demos make clear it's a synthetic-stills model.
+        self._is_bootstrap_model = _looks_like_bootstrap_bundle(self._model)
 
         smooth_cfg = config.smoothing
         unknown_label = str(config.labels.get("unknown_class", "unknown"))
@@ -162,15 +185,24 @@ class LiveInferenceEngine:
         self._evidence_lock = threading.RLock()
         self._latest_evidence: Optional[dict] = None
         self._recent_screenshots: Deque[np.ndarray] = deque(maxlen=5)
+        self._run_error: Optional[str] = None
 
     def start_background(self) -> None:
         if self._thread and self._thread.is_alive():
             log.warning("Live engine already running; ignoring start_background().")
             return
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self.run, name="roomos-live", daemon=True)
+        self._run_error = None
+        self._thread = threading.Thread(target=self._run_guarded, name="roomos-live", daemon=True)
         self._thread.start()
         log.info("Live engine started in background thread.")
+
+    def _run_guarded(self) -> None:
+        try:
+            self.run()
+        except Exception as e:
+            self._run_error = str(e)
+            log.exception("Live inference thread failed: %s", e)
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -180,6 +212,25 @@ class LiveInferenceEngine:
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
+
+    # --- status surface used by app.core.state.status_payload ----------
+
+    @property
+    def boot_phase(self) -> str:
+        """starting | opening_camera | warming_up | streaming."""
+        return self._boot_phase
+
+    @property
+    def is_bootstrap_model(self) -> bool:
+        return self._is_bootstrap_model
+
+    @property
+    def model_kind(self) -> str:
+        return "bootstrap" if self._is_bootstrap_model else "trained"
+
+    @property
+    def pose_enabled(self) -> bool:
+        return self._pose_enabled
 
     def run(self) -> None:
         cfg = self.config
@@ -197,28 +248,57 @@ class LiveInferenceEngine:
             min_collected_frames=int(bcfg.min_collected_frames),
         )
 
-        source = video_cfg.source
+        import os
+
+        env_source = os.environ.get("ROOMOS_VIDEO_SOURCE")
+        env_backend = os.environ.get("ROOMOS_VIDEO_BACKEND")
+        source = video_cfg.source if env_source is None else env_source
+        if isinstance(source, str) and source.isdigit():
+            source = int(source)
         sid = f"live::{source}"
+        # video_cfg is an _AttrDict (also a real dict) so .get is safe.
+        backend_hint = env_backend or str(video_cfg.get("backend", "auto") or "auto")
         log.info(
-            "Live inference (burst): source=%s  frames/burst=%d  duration=%.2fs  stride=%.2fs",
+            "Live inference (burst): source=%s backend=%s frames/burst=%d duration=%.2fs stride=%.2fs",
             source,
+            backend_hint,
             int(bcfg.frame_count),
             float(bcfg.duration_seconds),
             float(bcfg.stride_seconds),
         )
 
         last_pred: Optional[SmoothedPrediction] = None
+        self._boot_phase = "opening_camera"
+
+        preview_cfg = video_cfg.get("preview", {}) or {}
+        preview_fps = float(
+            preview_cfg.get("max_fps", video_cfg.get("preview_max_fps", 20))
+        )
+        capture_width = video_cfg.get("capture_width")
+        capture_height = video_cfg.get("capture_height")
+        capture_fps = video_cfg.get("capture_fps")
 
         with open_video_source(
             source,
             sample_fps=float(video_cfg.sample_fps),
             resize_width=int(video_cfg.resize_width),
             read_timeout_sec=float(video_cfg.read_timeout_sec),
+            backend=backend_hint,
+            preview_fps=preview_fps if self._on_preview_frame else None,
+            preview_callback=self._on_preview_frame,
+            capture_width=int(capture_width) if capture_width else None,
+            capture_height=int(capture_height) if capture_height else None,
+            capture_fps=float(capture_fps) if capture_fps else None,
         ) as fs:
             pipe.reset_motion()
             for sf in fs:
                 if self._stop_event.is_set():
                     break
+
+                if self._first_frame_at is None:
+                    self._first_frame_at = time.monotonic()
+                    if self._boot_phase in ("starting", "opening_camera"):
+                        self._boot_phase = "warming_up"
 
                 rec = pipe.frame_to_record(
                     image_bgr=sf.image,
@@ -284,11 +364,29 @@ class LiveInferenceEngine:
         self._history.append(hist_entry)
 
         self._snapshot_seq += 1
+        if self._first_burst_at is None:
+            self._first_burst_at = time.monotonic()
+        self._boot_phase = "streaming"
         smoothed = {
             c: float(pred.smoothed_probs.get(c, 0.0)) for c in self._ui_classes
         }
         model_only = {c: float(raw_probs.get(c, 0.0)) for c in self._ui_classes}
         raw_primary_conf = float(model_only.get(pred.label, pred.confidence))
+        last_automation: Dict[str, object] = {}
+        automation_mode = "off"
+        if self._actions is not None:
+            try:
+                self._actions.on_prediction(
+                    label=pred.label,
+                    confidence=pred.confidence,
+                    at=time.monotonic(),
+                )
+                if self._actions.last_automation:
+                    last_automation = dict(self._actions.last_automation)
+                automation_mode = "dry_run" if self._actions.dry_run else "live"
+            except Exception as e:
+                log.warning("Action engine raised: %s", e)
+
         snap = LiveSnapshot(
             captured_at=now_iso,
             sequence=self._snapshot_seq,
@@ -300,6 +398,8 @@ class LiveInferenceEngine:
             applied_scene=self._scene_for(pred.label),
             confidence_history=list(self._history),
             personalization=dict(personalization or {}),
+            last_automation=last_automation,
+            automation_mode=automation_mode,
         )
 
         self._remember_evidence(now_iso, burst, fused, snap, personalization)
@@ -325,16 +425,6 @@ class LiveInferenceEngine:
             except Exception as e:
                 log.debug("Failed to log prediction: %s", e)
 
-        if self._actions is not None:
-            try:
-                self._actions.on_prediction(
-                    label=pred.label,
-                    confidence=pred.confidence,
-                    at=time.monotonic(),
-                )
-            except Exception as e:
-                log.warning("Action engine raised: %s", e)
-
         if self._on_snapshot is not None:
             try:
                 self._on_snapshot(snap)
@@ -347,7 +437,12 @@ class LiveInferenceEngine:
         raw_probs: Dict[str, float],
     ) -> tuple[Dict[str, float], dict]:
         if self._feedback_model is None:
-            return raw_probs, {"applied": False, "examples": 0, "nearest_similarity": 0.0}
+            return raw_probs, {
+                "applied": False,
+                "examples": 0,
+                "memory_examples": 0,
+                "nearest_similarity": 0.0,
+            }
         try:
             return self._feedback_model.adjust_probabilities(features, raw_probs)
         except Exception as e:
@@ -372,7 +467,7 @@ class LiveInferenceEngine:
                 "personalization": dict(personalization or {}),
             }
 
-    def record_feedback(self, *, corrected_label: str, notes: str = "") -> FeedbackCorrection:
+    def record_feedback(self, *, corrected_label: str, notes: str = "") -> dict:
         if self._feedback_model is None:
             raise RuntimeError("Feedback personalization is disabled.")
         with self._evidence_lock:
@@ -382,11 +477,15 @@ class LiveInferenceEngine:
         snap = evidence.get("snapshot")
         if not isinstance(snap, LiveSnapshot):
             raise RuntimeError("Latest inference evidence is incomplete.")
+        features = dict(evidence.get("features", {}))
+        raw_probs = dict(snap.model_probs) if snap.model_probs else dict(snap.distribution)
+
+        before_probs, before_info = self._feedback_model.adjust_probabilities(features, raw_probs)
         correction = self._feedback_model.record_correction(
             predicted_label=snap.primary_state,
             corrected_label=corrected_label,
             confidence=snap.primary_confidence,
-            features=evidence.get("features", {}),
+            features=features,
             screenshots_bgr=evidence.get("screenshots", []),
             notes=notes,
             metadata={
@@ -395,20 +494,38 @@ class LiveInferenceEngine:
                 "personalization": evidence.get("personalization", {}),
             },
         )
+        after_probs, after_info = self._feedback_model.adjust_probabilities(features, raw_probs)
         log.info(
-            "Recorded feedback correction %s: %s -> %s",
+            "Recorded feedback correction %s: %s -> %s (memory=%d examples)",
             correction.id,
             correction.predicted_label,
             correction.corrected_label,
+            self._feedback_model.count,
         )
-        return correction
+        return {
+            "correction": correction,
+            "memory_examples": self._feedback_model.count,
+            "probability_preview": {
+                "before": {k: round(float(before_probs.get(k, 0.0)), 4) for k in self._ui_classes},
+                "after": {k: round(float(after_probs.get(k, 0.0)), 4) for k in self._ui_classes},
+                "corrected_label": corrected_label,
+                "applied_after_save": bool(after_info.get("applied")),
+                "nearest_similarity": float(after_info.get("nearest_similarity", 0.0)),
+            },
+            "storage": self._feedback_model.status_payload(),
+        }
 
     def feedback_status(self) -> dict:
-        return {
-            "enabled": self._feedback_model is not None,
-            "examples": self._feedback_model.count if self._feedback_model is not None else 0,
-            "has_evidence": self._latest_evidence is not None,
-        }
+        if self._feedback_model is None:
+            return {
+                "enabled": False,
+                "memory_examples": 0,
+                "has_evidence": self._latest_evidence is not None,
+            }
+        payload = self._feedback_model.status_payload()
+        payload["enabled"] = True
+        payload["has_evidence"] = self._latest_evidence is not None
+        return payload
 
     def _rationale(
         self,
@@ -420,11 +537,15 @@ class LiveInferenceEngine:
         bullets: List[str] = []
         row = fused.as_dict()
 
-        person = row.get("pose_present_ratio", 0.0)
-        if person <= 0.2:
-            bullets.append("No clear person detected across the burst.")
-        elif person >= 0.8:
-            bullets.append("Person visible in most burst frames.")
+        # Pose-based bullets are only meaningful when the pose feature group is
+        # actually enabled in the inference config. Otherwise pose_present_ratio
+        # is constantly 0 and we'd lie ("no person detected") every burst.
+        if self._pose_enabled:
+            person = row.get("pose_present_ratio", 0.0)
+            if person <= 0.2:
+                bullets.append("No clear person detected across the burst.")
+            elif person >= 0.8:
+                bullets.append("Person visible in most burst frames.")
 
         motion = row.get("motion_mean_mean", 0.0)
         if motion <= 0.005:
@@ -432,12 +553,13 @@ class LiveInferenceEngine:
         elif motion >= 0.05:
             bullets.append("High motion in the burst.")
 
-        if row.get("posture_lying_ratio", 0.0) > 0.5:
-            bullets.append("Posture skews toward lying down.")
-        elif row.get("posture_sitting_ratio", 0.0) > 0.5:
-            bullets.append("Posture skews toward sitting.")
-        elif row.get("posture_standing_ratio", 0.0) > 0.5:
-            bullets.append("Posture skews toward standing.")
+        if self._pose_enabled:
+            if row.get("posture_lying_ratio", 0.0) > 0.5:
+                bullets.append("Posture skews toward lying down.")
+            elif row.get("posture_sitting_ratio", 0.0) > 0.5:
+                bullets.append("Posture skews toward sitting.")
+            elif row.get("posture_standing_ratio", 0.0) > 0.5:
+                bullets.append("Posture skews toward standing.")
 
         top_clip = None
         top_val = -1.0
@@ -459,9 +581,22 @@ class LiveInferenceEngine:
                         f"Close call vs '{sorted_p[1][0]}' (delta={margin:.2f})."
                     )
 
+        mem = int(personalization.get("memory_examples", personalization.get("examples", 0)) or 0)
         if personalization.get("applied"):
             matches = int(personalization.get("matches", 0) or 0)
-            bullets.append(f"Personal feedback adjusted this read using {matches} similar correction(s).")
+            boosted = personalization.get("boosted_label")
+            sim = float(personalization.get("nearest_similarity", 0.0) or 0.0)
+            if boosted:
+                bullets.append(
+                    f"Room memory ({mem} saved) nudged this burst toward '{boosted}' "
+                    f"({matches} similar correction(s), sim={sim:.2f})."
+                )
+            else:
+                bullets.append(
+                    f"Room memory adjusted this read ({matches} similar correction(s) in {mem} saved)."
+                )
+        elif mem > 0:
+            bullets.append(f"Room memory has {mem} saved correction(s); none similar enough to this burst yet.")
 
         return bullets[:5]
 
@@ -496,22 +631,7 @@ class LiveInferenceEngine:
             return {}
         try:
             doc = read_json(path)
-            presets = doc.get("presets", [])
-            if not isinstance(presets, list) or not presets:
-                self._preferences_cache = (mtime, {})
-                return {}
-            active = next((p for p in presets if p.get("isDefault")), presets[0])
-            prefs = active.get("preferences", {}) if isinstance(active, dict) else {}
-            out: dict[str, dict[str, object]] = {}
-            if isinstance(prefs, dict):
-                for state, scene in prefs.items():
-                    if isinstance(scene, dict) and state in _UI_STATE_ORDER:
-                        out[str(state)] = {
-                            "lightColorHex": str(scene.get("lightColorHex", "#2A2A2A")),
-                            "brightness": int(scene.get("brightness", 30)),
-                            "fanOn": bool(scene.get("fanOn", False)),
-                            "temperatureF": int(scene.get("temperatureF", 72)),
-                        }
+            out = active_preset_preferences(doc)
             self._preferences_cache = (mtime, out)
             return out
         except Exception as e:
@@ -524,6 +644,7 @@ def build_engine(
     config: Config,
     actions_config_path: Optional[str] = None,
     on_snapshot: Optional[SnapshotCallback] = None,
+    on_preview_frame: Optional[Callable[[np.ndarray], None]] = None,
 ) -> LiveInferenceEngine:
     try:
         ac = load_actions_config(actions_config_path)
@@ -531,7 +652,34 @@ def build_engine(
     except FileNotFoundError:
         log.info("No actions config found; running without action engine.")
         actions = None
-    return LiveInferenceEngine(config, actions=actions, on_snapshot=on_snapshot)
+    return LiveInferenceEngine(
+        config,
+        actions=actions,
+        on_snapshot=on_snapshot,
+        on_preview_frame=on_preview_frame,
+    )
+
+
+def _looks_like_bootstrap_bundle(model: ActivityModel) -> bool:
+    """True if this bundle was produced by ``bootstrap_demo_model.py``.
+
+    The bootstrap script writes a ``_source_config`` field with the path to
+    ``configs/bootstrap_demo.yaml`` (or any file with ``bootstrap`` in its
+    name). Users who run ``train:images`` / ``train:videos`` get a different
+    source config so this flag flips off automatically.
+    """
+    try:
+        source = str((model.train_config or {}).get("_source_config", "")).lower()
+        if "bootstrap" in source:
+            return True
+        # Defensive: also flag features files that include "bootstrap".
+        training = (model.train_config or {}).get("training", {}) or {}
+        feats = str(training.get("features_path", "")).lower()
+        if "bootstrap" in feats:
+            return True
+    except Exception:
+        return False
+    return False
 
 
 def _feedback_screenshot(image_bgr: np.ndarray) -> np.ndarray:

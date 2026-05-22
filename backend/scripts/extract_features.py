@@ -26,7 +26,12 @@ def main(
     inputs: List[Path] = typer.Argument(..., help="Video files to process."),
     out: Path = typer.Option(Path("data/features/features.parquet"), "--out", "-o"),
     labels: Optional[Path] = typer.Option(None, "--labels", "-l", help="Optional labels CSV."),
-    config: Path = typer.Option(Path("configs/default.yaml"), "--config", "-c"),
+    config: Path = typer.Option(
+        Path("configs/train_personal.yaml"),
+        "--config",
+        "-c",
+        help="Must match the config used for training and live inference.",
+    ),
     log_level: str = typer.Option("INFO", "--log-level"),
     log_every: int = typer.Option(60, "--log-every", help="Heartbeat log frequency (frames)."),
 ) -> None:

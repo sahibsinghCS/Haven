@@ -89,6 +89,7 @@ class FeedbackReinforcementModel:
             return _normalize_probabilities(probabilities, self.classes), {
                 "applied": False,
                 "examples": 0,
+                "memory_examples": 0,
                 "nearest_similarity": 0.0,
             }
 
@@ -97,6 +98,7 @@ class FeedbackReinforcementModel:
             return _normalize_probabilities(probabilities, self.classes), {
                 "applied": False,
                 "examples": len(examples),
+                "memory_examples": len(examples),
                 "nearest_similarity": 0.0,
             }
 
@@ -114,6 +116,7 @@ class FeedbackReinforcementModel:
             return _normalize_probabilities(probabilities, self.classes), {
                 "applied": False,
                 "examples": len(examples),
+                "memory_examples": len(examples),
                 "nearest_similarity": float(nearest),
             }
 
@@ -148,9 +151,11 @@ class FeedbackReinforcementModel:
         return adjusted, {
             "applied": total_weight > 0.0,
             "examples": len(examples),
+            "memory_examples": len(examples),
             "matches": len(matches),
             "nearest_similarity": float(matches[0][0]),
             "influence": float(min(1.0, self.influence * total_weight)),
+            "boosted_label": self._top_gain(base, adjusted),
         }
 
     def record_correction(
@@ -192,6 +197,11 @@ class FeedbackReinforcementModel:
             self._persist_locked()
 
         append_jsonl(self.events_path, example)
+        log.info(
+            "Feedback memory: %d examples on disk at %s",
+            len(self._examples),
+            self.examples_path,
+        )
         return FeedbackCorrection(
             id=correction_id,
             created_at=now,
@@ -214,6 +224,42 @@ class FeedbackReinforcementModel:
                 self._examples = examples[-self.max_examples :]
         except Exception as e:
             log.warning("Could not load feedback examples: %s", e)
+
+    def status_payload(self) -> dict[str, Any]:
+        with self._lock:
+            examples = list(self._examples)
+        last = examples[-1] if examples else None
+        return {
+            "memory_examples": len(examples),
+            "similarity_floor": self.similarity_floor,
+            "influence": self.influence,
+            "personalization_blend": self.personalization_blend,
+            "storage_dir": str(self.root_dir.resolve()),
+            "examples_file": str(self.examples_path.resolve()),
+            "events_log": str(self.events_path.resolve()),
+            "screenshots_dir": str(self.screenshot_dir.resolve()),
+            "last_correction": (
+                {
+                    "id": last.get("id"),
+                    "at": last.get("created_at"),
+                    "predicted_label": last.get("predicted_label"),
+                    "corrected_label": last.get("corrected_label"),
+                }
+                if isinstance(last, dict)
+                else None
+            ),
+        }
+
+    @staticmethod
+    def _top_gain(base: Mapping[str, float], adjusted: Mapping[str, float]) -> Optional[str]:
+        best_label: Optional[str] = None
+        best_delta = 0.0
+        for cls in base:
+            delta = float(adjusted.get(cls, 0.0)) - float(base.get(cls, 0.0))
+            if delta > best_delta:
+                best_delta = delta
+                best_label = str(cls)
+        return best_label if best_delta >= 0.02 else None
 
     def _persist_locked(self) -> None:
         write_json(

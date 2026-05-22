@@ -32,7 +32,7 @@ export function LiveStageSkeleton() {
             <div className={cn("h-40 w-full max-w-md rounded-2xl border border-white/[0.06] lg:max-w-sm", SHIMMER_DARK)} />
           </div>
         </div>
-        <span className="sr-only">Opening live view…</span>
+        <p className="sr-only">Opening live view: starting camera and model.</p>
       </div>
     </>
   )

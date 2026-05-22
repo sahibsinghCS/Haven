@@ -10,7 +10,7 @@ import pandas as pd
 
 from ..utils.io import write_json
 from ..utils.logging import get_logger
-from ..utils.visualization import save_confusion_matrix
+from .eval_report import write_eval_report
 from .registry import ActivityModel, align_features
 
 log = get_logger("roomos.model.evaluate")
@@ -68,11 +68,14 @@ def evaluate_model(
 
     if output_dir is not None:
         out = Path(output_dir)
-        out.mkdir(parents=True, exist_ok=True)
         write_json(out / "eval_metrics.json", metrics)
-        cm = np.array(metrics["confusion_matrix"], dtype=int)
-        save_confusion_matrix(cm, model.classes, out / "eval_confusion_matrix.png",
-                              title="Evaluation confusion matrix (normalized)")
-        log.info("Evaluation artifacts -> %s", out)
+        write_eval_report(
+            out,
+            metrics,
+            split_name="eval",
+            classes=model.classes,
+            booster=model.booster,
+            feature_columns=model.feature_columns,
+        )
 
     return metrics

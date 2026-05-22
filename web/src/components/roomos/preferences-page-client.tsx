@@ -12,13 +12,15 @@ import { StatePreferenceCard } from "@/components/roomos/preferences/state-prefe
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
 import { Button } from "@/components/ui/button"
 import { Form } from "@/components/ui/form"
-import { fetchMockPreferenceDocument } from "@/lib/mock/roomos-mock"
 import { fetchPreferenceDocument, savePreferenceDocument } from "@/lib/roomos/api-client"
+import { buildPreferenceDocument } from "@/lib/roomos/preferences-document-schema"
 import {
+  defaultPreferenceDocument,
   EMPTY_PREFERENCE_MATRIX,
   preferenceMatrixSchema,
   type PreferenceMatrixFormValues,
 } from "@/lib/roomos/preferences-schema"
+import { loadRoomOsPreferences } from "@/lib/roomos/preferences-persistence"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
 import { useRoomOsPreferencesStore } from "@/stores/roomos-store"
@@ -49,7 +51,7 @@ function presetToFormValues(preset: PreferencePreset): PreferenceMatrixFormValue
 
 export function PreferencesPageClient() {
   const presets = useRoomOsPreferencesStore((s) => s.presets)
-  const selectedPresetId = useRoomOsPreferencesStore((s) => s.selectedPresetId)
+  const activePresetId = useRoomOsPreferencesStore((s) => s.activePresetId)
   const hydrate = useRoomOsPreferencesStore((s) => s.hydrate)
   const selectPreset = useRoomOsPreferencesStore((s) => s.selectPreset)
   const replacePreset = useRoomOsPreferencesStore((s) => s.replacePreset)
@@ -58,22 +60,35 @@ export function PreferencesPageClient() {
     queryKey: ["roomos", "preferences"],
     queryFn: async () => {
       try {
-        return await fetchPreferenceDocument()
+        const doc = await fetchPreferenceDocument()
+        return { doc, apiOnline: true as const }
       } catch {
-        return await fetchMockPreferenceDocument()
+        const disk = loadRoomOsPreferences()
+        if (disk) {
+          return {
+            doc: {
+              schemaVersion: 1 as const,
+              updatedAt: new Date().toISOString(),
+              presets: disk.presets,
+              activePresetId: disk.activePresetId,
+            },
+            apiOnline: false as const,
+          }
+        }
+        return { doc: defaultPreferenceDocument(), apiOnline: false as const }
       }
     },
     staleTime: 60_000,
   })
 
   useEffect(() => {
-    if (docQuery.data) hydrate(docQuery.data)
+    if (docQuery.data) hydrate(docQuery.data.doc)
   }, [docQuery.data, hydrate])
 
   const activePreset = useMemo(() => {
-    if (!presets || !selectedPresetId) return null
-    return presets.find((p) => p.id === selectedPresetId) ?? null
-  }, [presets, selectedPresetId])
+    if (!presets || !activePresetId) return null
+    return presets.find((p) => p.id === activePresetId) ?? null
+  }, [presets, activePresetId])
 
   const basicId = useMemo(() => {
     return presets?.find((p) => p.id === BASIC_PRESET_ID)?.id ?? presets?.[0]?.id ?? BASIC_PRESET_ID
@@ -92,13 +107,13 @@ export function PreferencesPageClient() {
   const { isDirty, isSubmitting } = form.formState
 
   useEffect(() => {
-    if (!selectedPresetId) return
+    if (!activePresetId) return
     const preset = useRoomOsPreferencesStore
       .getState()
-      .presets?.find((p) => p.id === selectedPresetId)
+      .presets?.find((p) => p.id === activePresetId)
     if (!preset) return
     form.reset(presetToFormValues(preset))
-  }, [selectedPresetId, form])
+  }, [activePresetId, form])
 
   if (docQuery.isPending || !presets) {
     return <PreferencesSkeleton />
@@ -120,15 +135,30 @@ export function PreferencesPageClient() {
     )
   }
 
-  if (!presets.length || !selectedPresetId || !activePreset) {
+  if (!presets.length || !activePresetId || !activePreset) {
     return null
   }
 
   const isBasic = activePreset.id === basicId
   const presetSummary = summarizePreset(activePreset)
 
+  const apiOnline = docQuery.data?.apiOnline ?? true
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 pb-32">
+      {!apiOnline ? (
+        <p
+          className={cn(
+            roomosUi.prefsCallout,
+            "border-amber-500/25 bg-amber-50/90 px-4 py-3 text-[13px] leading-relaxed text-amber-950",
+          )}
+          role="status"
+        >
+          RoomOS API is offline — showing defaults saved in this browser. Start the
+          backend (<span className="font-mono text-[12px]">npm run dev</span> from the
+          repo root) to sync preferences to disk on this machine.
+        </p>
+      ) : null}
       <header className="relative overflow-hidden rounded-[2.15rem] border border-[color:var(--haven-line-strong)] bg-[linear-gradient(165deg,rgba(255,254,251,0.995)_0%,rgba(251,246,238,0.97)_44%,rgba(236,228,218,0.94)_100%)] p-6 shadow-[var(--haven-shadow-float)] ring-1 ring-[color:var(--haven-edge-light)] sm:p-8 lg:p-10">
         <div
           aria-hidden
@@ -168,7 +198,7 @@ export function PreferencesPageClient() {
             </h1>
             <p className="max-w-[40rem] text-pretty text-[15px] leading-[1.72] text-[color:var(--haven-muted)] sm:text-[16.5px]">
               Set how each mood should feel: light, airflow, and temperature moving as one
-              composed scene. Everything you save stays local until you connect a hub or account.
+              composed scene. Saves go to the local RoomOS API on this machine (and your browser).
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_92%,transparent)] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[color:var(--haven-muted)] shadow-[var(--haven-shadow-card)]">
@@ -282,7 +312,7 @@ export function PreferencesPageClient() {
         </div>
         <div className="mt-6">
           <PreferencesPresetToggle
-            value={selectedPresetId}
+            value={activePresetId}
             basicPresetId={basicId}
             customPresetId={customId}
             onValueChange={(id) => {
@@ -298,7 +328,7 @@ export function PreferencesPageClient() {
         >
           {isBasic
             ? "Basic Preference is the profile we recommend starting with: calm, familiar, and ready for real homes."
-            : "Custom is for when you know exactly how you like the room. Adjust any mood, then save. Haven keeps it here on this device."}
+            : "Custom is for when you know exactly how you like the room. Adjust any mood, then save. Switching presets updates the live engine immediately."}
         </p>
       </section>
 
@@ -315,12 +345,12 @@ export function PreferencesPageClient() {
 
             const allPresets = useRoomOsPreferencesStore.getState().presets ?? [updated]
             const nextPresets = allPresets.map((p) => (p.id === updated.id ? updated : p))
+            const activeId =
+              useRoomOsPreferencesStore.getState().activePresetId ?? updated.id
             try {
-              await savePreferenceDocument({
-                schemaVersion: 1,
-                updatedAt: new Date().toISOString(),
-                presets: nextPresets,
-              })
+              await savePreferenceDocument(
+                buildPreferenceDocument(nextPresets, activeId),
+              )
               toast.success("Preferences saved", {
                 description: "Synced to the local RoomOS backend.",
               })
@@ -387,7 +417,9 @@ export function PreferencesPageClient() {
                 <p className="text-[11.5px] leading-relaxed text-[color:var(--haven-muted)]">
                   {isDirty
                     ? "Save to update the active preset. Reset to discard."
-                    : "Encrypted at rest in your browser. Never sent unless you opt in."}
+                    : apiOnline
+                      ? "Saved in this browser and on the local RoomOS API."
+                      : "Saved in this browser until the API is running."}
                 </p>
               </div>
             </div>

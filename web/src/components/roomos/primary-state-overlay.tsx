@@ -30,7 +30,7 @@ export function PrimaryStateOverlay({
   const accent = ROOM_STATE_ACCENT[state]
 
   return (
-    <div className="pointer-events-none flex w-full min-w-0 max-w-lg flex-col lg:max-w-xl">
+    <div className="pointer-events-none flex w-full min-w-0 max-w-lg flex-col lg:max-w-2xl 2xl:max-w-3xl">
       <motion.article
         key={state}
         layout={!reduceMotion}
@@ -77,12 +77,12 @@ export function PrimaryStateOverlay({
           </div>
           <p
             id="roomos-live-trust"
-            className="mt-2 max-w-md text-xs leading-relaxed text-zinc-400 sm:text-[0.8125rem]"
+            className="mt-2 max-w-md text-xs leading-relaxed text-zinc-500 sm:text-[0.8125rem]"
           >
-            Inferred on this device from your camera and signals. Nothing is uploaded as video.
+            Local burst classifier · same camera as preview · nothing uploaded
           </p>
           <div className="mt-5 flex flex-wrap items-end gap-x-6 gap-y-3">
-            <h3 className="haven-display text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.04em] text-zinc-50 sm:text-5xl lg:text-[3.65rem]">
+            <h3 className="haven-display text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.04em] text-zinc-50 sm:text-5xl lg:text-[3.75rem] xl:text-[4.25rem] 2xl:text-[4.75rem]">
               {ROOM_STATE_LABEL[state]}
             </h3>
             <p
@@ -90,7 +90,7 @@ export function PrimaryStateOverlay({
               className="mb-1 flex items-baseline gap-2 tabular-nums text-zinc-100"
             >
               <span
-                className="text-3xl font-semibold tracking-tight sm:text-[2.4rem]"
+                className="text-3xl font-semibold tracking-tight sm:text-[2.5rem] xl:text-[2.75rem] 2xl:text-[3rem]"
                 aria-label={pctLabel}
               >
                 {pct}

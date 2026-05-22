@@ -44,7 +44,7 @@ const footerColumns: {
     items: [
       { label: "Local first by default", href: "#privacy" },
       { label: "Readable confidence", href: "#how-it-works" },
-      { label: "Optional cloud", href: "#privacy" },
+      { label: "Local demo only", href: "#privacy" },
     ],
   },
 ]

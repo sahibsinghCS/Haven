@@ -1,14 +1,14 @@
 """Concrete action handlers — kept intentionally safe.
 
 Each handler implements ``execute(event: ActionEvent, *, dry_run: bool)``.
-No handler in this file performs destructive or irreversible operations.
+Destructive HA defaults are off; real calls need explicit config (see docs/AUTOMATION.md).
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..utils.logging import get_logger
 
@@ -47,7 +47,7 @@ class LogHandler(ActionHandler):
 
 
 class WebhookHandler(ActionHandler):
-    """Optional outgoing webhook. Disabled in dry_run mode."""
+    """POST JSON to any URL (local demo receiver, Zapier, etc.). Skipped when dry_run."""
 
     type_name = "webhook"
 
@@ -60,33 +60,52 @@ class WebhookHandler(ActionHandler):
 
     def execute(self, event: ActionEvent, *, dry_run: bool) -> Dict[str, Any]:
         body = {
+            "source": "roomos",
             "rule": event.rule_name,
             "activity": event.activity,
-            "confidence": event.confidence,
+            "confidence": round(float(event.confidence), 4),
             "at": event.iso_time,
         }
         if dry_run:
             log.info(
                 "[%s] webhook DRY-RUN would %s %s payload=%s",
-                event.rule_name, self.method, self.url, body,
+                event.rule_name,
+                self.method,
+                self.url,
+                body,
             )
-            return {"executed": False, "dry_run": True, "url": self.url, "method": self.method, "body": body}
+            return {
+                "executed": False,
+                "dry_run": True,
+                "skipped": True,
+                "reason": "dry_run",
+                "url": self.url,
+                "method": self.method,
+                "body": body,
+            }
 
         try:
-            import httpx
+            from .integrations import post_json
 
-            with httpx.Client(timeout=self.timeout_sec) as cli:
-                resp = cli.request(self.method, self.url, json=body)
+            result = post_json(
+                url=self.url,
+                body=body,
+                method=self.method,
+                timeout_sec=self.timeout_sec,
+            )
             log.info(
-                "[%s] webhook -> %s %s -> %d",
-                event.rule_name, self.method, self.url, resp.status_code,
+                "[%s] webhook -> %s %s status=%s",
+                event.rule_name,
+                self.method,
+                self.url,
+                result.get("status"),
             )
             return {
                 "executed": True,
                 "dry_run": False,
                 "url": self.url,
                 "method": self.method,
-                "status": resp.status_code,
+                **result,
             }
         except Exception as e:
             log.warning("[%s] webhook FAILED %s: %s", event.rule_name, self.url, e)
@@ -99,11 +118,22 @@ _HANDLERS: Dict[str, type[ActionHandler]] = {
 }
 
 
-def build_handler(action_cfg: Dict[str, Any]) -> ActionHandler:
+def build_handler(
+    action_cfg: Dict[str, Any],
+    *,
+    integrations: Optional[Dict[str, Any]] = None,
+) -> ActionHandler:
     """Instantiate a handler from its ``action:`` YAML block."""
     type_name = str(action_cfg.get("type", "log"))
+    kwargs = {k: v for k, v in action_cfg.items() if k != "type"}
+    if type_name == "home_assistant":
+        from .home_assistant import HomeAssistantHandler
+
+        ha = (integrations or {}).get("home_assistant") if integrations else {}
+        kwargs["integration"] = dict(ha) if isinstance(ha, dict) else {}
+        return HomeAssistantHandler(**kwargs)
     cls = _HANDLERS.get(type_name)
     if cls is None:
-        raise ValueError(f"Unknown action type: {type_name!r}. Known: {sorted(_HANDLERS)}")
-    kwargs = {k: v for k, v in action_cfg.items() if k != "type"}
+        known = sorted(_HANDLERS) + ["home_assistant"]
+        raise ValueError(f"Unknown action type: {type_name!r}. Known: {known}")
     return cls(**kwargs)

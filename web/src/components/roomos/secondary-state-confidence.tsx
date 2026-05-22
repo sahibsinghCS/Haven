@@ -23,6 +23,7 @@ export function SecondaryStateConfidence({
   overlayShellClassName,
   className,
   finePercent = false,
+  subtitle,
 }: {
   variant?: "inline" | "overlay"
   distribution: RoomStateDistribution
@@ -31,6 +32,7 @@ export function SecondaryStateConfidence({
   className?: string
   /** Show one decimal place (live overlay). */
   finePercent?: boolean
+  subtitle?: string
 }) {
   const reduceMotion = useReducedMotion()
   const barTransition = reduceMotion
@@ -50,10 +52,10 @@ export function SecondaryStateConfidence({
       >
         <div className="flex items-center justify-between gap-3 px-0.5 pb-3.5">
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            Also considering
+            All states
           </p>
           <span className="text-[0.65rem] font-medium uppercase tracking-[0.14em] text-zinc-600">
-            {finePercent ? "This burst" : "Distribution"}
+            {subtitle ?? (finePercent ? "This burst" : "Likelihood")}
           </span>
         </div>
         <div

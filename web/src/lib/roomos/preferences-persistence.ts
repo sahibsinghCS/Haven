@@ -10,11 +10,26 @@ const preferencePresetSchema = z.object({
   preferences: preferenceMatrixSchema,
 })
 
-export const persistedPreferencesSchema = z.object({
+const persistedV1Schema = z.object({
   version: z.literal(1),
   presets: z.array(preferencePresetSchema).min(1),
-  selectedPresetId: z.string(),
+  activePresetId: z.string().min(1),
 })
+
+/** Legacy localStorage shape (selectedPresetId → activePresetId). */
+const persistedLegacySchema = z.object({
+  version: z.literal(1),
+  presets: z.array(preferencePresetSchema).min(1),
+  selectedPresetId: z.string().min(1),
+})
+
+export const persistedPreferencesSchema = z.union([persistedV1Schema, persistedLegacySchema]).transform(
+  (data) => ({
+    version: 1 as const,
+    presets: data.presets,
+    activePresetId: "activePresetId" in data ? data.activePresetId : data.selectedPresetId,
+  }),
+)
 
 export type PersistedPreferencesV1 = z.infer<typeof persistedPreferencesSchema>
 

@@ -1,18 +1,22 @@
 # RoomOS — local-first room activity recognition
 
 Real-time room-activity recognition from a webcam / DroidCam / RTSP / video
-file, served end-to-end on your machine. Perception uses pretrained OpenCLIP
-(scene/context) and MediaPipe Pose (body). The trainable head is a **burst-level**
+file, served end-to-end on your machine. The trainable head is a **burst-level**
 XGBoost classifier: each sample is a **short multi-frame burst** (default five
 frames spread over ~2.5 s of stream time), not a dense continuous video model.
 Predictions are smoothed across successive bursts, optionally trigger safe local
 actions, and stream to the Next.js frontend via FastAPI.
 
+**Hackathon live path** (`configs/inference.yaml`): **OpenCLIP + motion only**
+(pose/posture disabled for train/serve parity). The codebase can enable pose/posture
+per config when MediaPipe is available.
+
 ```
-camera → frame sampling → [ OpenCLIP + pose + motion + posture per frame ]
-       → burst interval [t, t+duration] → subsample N frames → fuse → XGBoost
-       → (live: repeat)   (file: stride between burst starts)
+camera → frame sampling → [ enabled feature modules per config ]
+       → burst [t, t+duration] → fuse N frames → XGBoost → smooth → FastAPI / UI
 ```
+
+Handoff: [`../docs/HANDOFF.md`](../docs/HANDOFF.md).
 
 ## Why burst-based (not full video modeling)
 
@@ -50,17 +54,55 @@ backend/
 
 ## Install
 
-```powershell
+```bash
 cd backend
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+# Windows:  .venv\Scripts\activate
+# macOS/Linux:  source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
 ```
 
+From repo root, `npm run demo` uses `backend/.venv` automatically (cross-platform).
+
 If `mediapipe` is unavailable, pose features zero out; heavy deps load lazily.
 
-## End-to-end workflow (CWD = `backend/`)
+### Hackathon demo bootstrap (no videos required)
+
+From the repo root (after the venv install above):
+
+```bash
+npm run setup:model
+# or: npm run bootstrap:demo
+```
+
+This writes synthetic labeled stills under `data/demo_bootstrap/`, trains
+`data/models/latest/` with CLIP+motion features (same schema as live inference),
+and is enough for judges to run `/live` end-to-end. Replace with your own room
+images later via `npm run train:images` (wraps `scripts/train_personal_images.py`).
+
+## Training (start here)
+
+Canonical hackathon guide: [`../docs/TRAINING.md`](../docs/TRAINING.md).
+
+Quick commands from **repo root**:
+
+```powershell
+npm run train:demo      # no raw data — synthetic bootstrap
+npm run train:images    # data/raw_images/<label>/*.jpg
+npm run train:videos    # data/raw/<label>/*.mp4
+npm run train:verify    # check bundle vs live inference
+npm run eval:report     # refresh judge-ready eval_report/ (see ../docs/EVALUATION.md)
+npm run train:layout    # print expected folders
+```
+
+After training, open **`data/models/latest/eval_report/REPORT.md`** for confusion matrix, per-class metrics, and limitations.
+
+Always train with **`configs/train_personal.yaml`** (or `train_roomos.py` / npm scripts above) so features match **`configs/inference.yaml`**.
+
+**Train/serve gate:** The live engine refuses to start if `data/models/latest/` does not match `configs/inference.yaml` (labels, feature modules, burst, columns). See [`../docs/COMPATIBILITY.md`](../docs/COMPATIBILITY.md).
+
+## Manual workflow (CWD = `backend/`)
 
 ### 1. Capture or import videos
 
@@ -83,7 +125,8 @@ segment (see `label_for_burst` in `roomos/dataset/schemas.py`).
 ```powershell
 python scripts/extract_features.py data/raw/session_01.mp4 `
     --labels data/labels/labels.csv `
-    --out data/features/features.parquet
+    --out data/features/features.parquet `
+    -c configs/train_personal.yaml
 ```
 
 Each row is **one burst** (after subsampling to `burst.frame_count` frames).
@@ -92,7 +135,7 @@ Metadata columns: `source`, `start_time`, `end_time`, `num_frames`, `burst_index
 ### 4. Train
 
 ```powershell
-python scripts/train_model.py --config configs/train.yaml
+python scripts/train_model.py --config configs/train_personal.yaml
 ```
 
 Artifacts in `data/models/latest/` unchanged (`model.json`, `label_encoder.json`,
@@ -113,12 +156,13 @@ data/raw_images/away/*.jpg
 Then run:
 
 ```powershell
-python scripts/train_personal_images.py
+npm run train:images
+# or: python scripts/train_personal_images.py -c configs/train_personal.yaml
 ```
 
 The script groups sorted images into 5-frame bursts by default. Each burst is
-one training sample, matching live inference: RoomOS waits for five sampled
-frames, fuses their OpenCLIP / pose / motion / posture features, then predicts.
+one training sample, matching live inference: five sampled frames fused per
+config (`train_personal.yaml` / `inference.yaml`).
 
 ### 5. Evaluate
 
@@ -144,7 +188,10 @@ Prediction log JSONL uses keys `burst_start`, `burst_end`, `burst_index`.
 python run.py
 ```
 
-`ROOMOS_AUTOSTART=1` or `POST /api/live/start`. Next.js: `web/src/hooks/use-live-inference.ts`.
+`ROOMOS_AUTOSTART=1` or `POST /api/live/start`. Next.js polls `GET /api/live/snapshot` and
+WebSocket `/api/live/ws`. The `/live` preview image is `GET /api/live/preview.jpg` — the same
+OpenCV source as burst inference (`configs/default.yaml` → `video.source`), not a separate
+browser webcam.
 
 ## Burst configuration (`configs/default.yaml` → `burst:`)
 

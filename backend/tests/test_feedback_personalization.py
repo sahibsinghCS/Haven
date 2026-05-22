@@ -28,9 +28,13 @@ def test_feedback_correction_biases_similar_future_prediction(tmp_path):
     )
 
     assert info["applied"] is True
+    assert info.get("memory_examples") == 1
+    assert info.get("boosted_label") == "relaxing"
     assert adjusted["relaxing"] > 0.2
     assert adjusted["work"] < 0.8
     assert len(list((tmp_path / "screenshots").glob("*/frame_*.jpg"))) == 5
+    assert (tmp_path / "feedback_examples.json").exists()
+    assert (tmp_path / "feedback_events.jsonl").exists()
 
 
 def test_feedback_ignores_dissimilar_examples(tmp_path):
