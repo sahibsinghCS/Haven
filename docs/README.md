@@ -10,6 +10,9 @@
 | [DEMO-REPLAY.md](DEMO-REPLAY.md) | Deterministic replay when live path is flaky |
 | [TRAINING.md](TRAINING.md) | Train personal model |
 | [DATA-COLLECTION.md](DATA-COLLECTION.md) | Capture stills, audit |
+| [DATASET_ACCESS.md](DATASET_ACCESS.md) | External datasets — manual gates & credentials |
+| [LABEL_MAPPING.md](LABEL_MAPPING.md) | Public labels → RoomOS states |
+| [TRAINING_READINESS.md](TRAINING_READINESS.md) | What you can train on today |
 | [EVALUATION.md](EVALUATION.md) | Metrics for Q&A |
 | [COMPATIBILITY.md](COMPATIBILITY.md) | Train/serve gate |
 | [FEEDBACK.md](FEEDBACK.md) | Teach the room |

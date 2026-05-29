@@ -1,0 +1,48 @@
+# Multi-room still-image training — used by scripts/train_multi_room.py.
+# Feature flags MUST match configs/inference.yaml (CLIP + motion only on Windows
+# DroidCam path) so live serving stays compatible with this bundle.
+extends: train.yaml
+
+features:
+  enabled:
+    clip: true
+    pose: false
+    motion: true
+    posture: false
+
+training:
+  features_path: data/features/multi_room_features.parquet
+  output_dir: data/models/latest
+
+  # by_source keeps every augmentation of one source image on the same side of
+  # the split — scripts/train_multi_room.py sets ``source = label/<stem>`` with
+  # ``_aug*`` suffixes stripped so this works automatically.
+  split:
+    strategy: by_source
+    val_size: 0.15
+    test_size: 0.15
+
+  class_weighting: balanced
+  use_row_weights: true
+
+  # Multi-room CLIP features are noisier than synthetic flat-color stills; in
+  # the first sweep with depth=6 / min_child_weight=2 train hit 96% but test
+  # only 76% — a classic overfit. Shallow trees + larger leaves + stronger
+  # L2 + heavier col subsampling close the gap. Early stopping uses the val
+  # split (which holds out unseen rooms thanks to by_source split).
+  xgboost:
+    objective: multi:softprob
+    eval_metric: mlogloss
+    n_estimators: 800
+    max_depth: 4
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.7
+    colsample_bylevel: 0.85
+    min_child_weight: 6
+    reg_lambda: 4.0
+    reg_alpha: 0.5
+    gamma: 0.2
+    n_jobs: 0
+    tree_method: hist
+    early_stopping_rounds: 50

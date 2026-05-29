@@ -66,6 +66,11 @@ def main(
     sources_config: Path = typer.Option(Path("configs/base_image_sources.yaml"), "--sources-config"),
     target_total: int = typer.Option(50_000, "--target-total"),
     per_class: int = typer.Option(0, "--per-class", help="0 means target_total / number of labels."),
+    labels_only: str = typer.Option(
+        "",
+        "--labels",
+        help="Comma-separated subset to import (e.g. away,work). Default: all labels in config.",
+    ),
     providers: str = typer.Option(DEFAULT_PROVIDERS, "--providers"),
     open_images_split: str = typer.Option("train", "--open-images-split"),
     seed: int = typer.Option(42, "--seed"),
@@ -75,10 +80,19 @@ def main(
     setup_logging(level=log_level)
     random.seed(seed)
     cfg = _load_sources(sources_config)
-    labels = list(cfg.keys())
-    if not labels:
+    all_labels = list(cfg.keys())
+    if not all_labels:
         raise typer.BadParameter(f"No roomos_labels found in {sources_config}")
-    target_per_class = int(per_class or max(1, target_total // len(labels)))
+    if labels_only.strip():
+        wanted = [x.strip() for x in labels_only.split(",") if x.strip()]
+        bad = [x for x in wanted if x not in cfg]
+        if bad:
+            raise typer.BadParameter(f"Unknown --labels: {bad}. Valid: {all_labels}")
+        labels = wanted
+        cfg = {k: cfg[k] for k in labels}
+    else:
+        labels = all_labels
+    target_per_class = int(per_class or max(1, target_total // max(1, len(labels))))
     provider_list = [p.strip() for p in providers.split(",") if p.strip()]
 
     out_dir = ensure_dir(out_dir)
@@ -185,7 +199,7 @@ def _import_wikimedia(
                 break
             for page in _commons_category_files(category, limit=max(50, target_per_class - totals[label])):
                 info = _commons_file_info(page["title"])
-                time.sleep(max(sleep_sec, 0.35))
+                time.sleep(max(sleep_sec, 0.85))
                 url = info.get("url")
                 if not url:
                     continue

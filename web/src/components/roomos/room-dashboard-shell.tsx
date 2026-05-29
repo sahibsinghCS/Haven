@@ -13,6 +13,7 @@ import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 
 const nav = [
   { href: "/live", label: "Live" },
+  { href: "/review", label: "Review" },
   { href: "/preferences", label: "Preferences" },
 ] as const
 
@@ -59,10 +60,10 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
   return (
     <div
       className={cn(
-        "relative flex min-h-full flex-1 flex-col overflow-x-clip",
+        "relative flex flex-1 flex-col overflow-x-clip",
         isLive
-          ? "bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100"
-          : "haven-app text-[color:var(--haven-ink)]",
+          ? "h-svh max-h-svh overflow-hidden bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100"
+          : "min-h-full haven-app text-[color:var(--haven-ink)]",
       )}
       style={
         isLive

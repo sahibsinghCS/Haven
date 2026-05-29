@@ -400,6 +400,18 @@ class AppState:
             model_kind = getattr(self.engine, "model_kind", "unknown")
             pose_enabled = getattr(self.engine, "pose_enabled", None)
 
+        preview_fit = "cover"
+        preview_frame_shape = None
+        capture_size = None
+        if self.live_mode == "live" and self.engine is not None:
+            preview_fit = getattr(self.engine, "_preview_fit", "cover") or "cover"
+            shape = getattr(self.engine, "_preview_frame_shape", None)
+            if shape and len(shape) >= 2:
+                preview_frame_shape = [int(shape[1]), int(shape[0])]
+            cap = getattr(self.engine, "_capture_size", None)
+            if cap and len(cap) == 2:
+                capture_size = [int(cap[0]), int(cap[1])]
+
         preview_mean_luma = self.preview.mean_luma
         # Anything below ~10/255 average brightness is effectively black on
         # consumer screens; expose a normalized flag so the UI doesn't have to
@@ -428,6 +440,9 @@ class AppState:
             "preview_mean_luma": preview_mean_luma,
             "preview_dark": preview_dark,
             "preview_frames_seen": self.preview.frames_seen,
+            "preview_fit": preview_fit,
+            "preview_frame_shape": preview_frame_shape,
+            "capture_size": capture_size,
             "boot_phase": boot_phase,
             "model_kind": model_kind,
             "pose_enabled": pose_enabled,

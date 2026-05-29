@@ -39,6 +39,9 @@ Expected data layout (all under backend/data/, gitignored):
     data/raw_images/away/*.jpg
     ->  npm run train:images
 
+  Path A+ - your room weighted over generic multi-room (recommended for /live):
+    ->  npm run train:my-room
+
   Path B - your room videos (best accuracy):
     data/raw/work/session01.mp4
     data/raw/gaming/...
@@ -81,6 +84,22 @@ def cmd_demo(
     from scripts.bootstrap_demo_model import run_bootstrap_demo
 
     run_bootstrap_demo(images_per_class=images_per_class, log_level=log_level)
+
+
+@app.command("my-room")
+def cmd_my_room(
+    images_dir: Path = typer.Option(Path("data/raw_images"), "--images-dir"),
+    personal_only: bool = typer.Option(False, "--personal-only"),
+    log_level: str = typer.Option("INFO", "--log-level"),
+) -> None:
+    """Train with your room at 12× weight vs subsampled multi-room prior."""
+    from scripts.train_my_room import run_train_my_room
+
+    run_train_my_room(
+        images_dir=images_dir,
+        personal_only=personal_only,
+        log_level=log_level,
+    )
 
 
 @app.command("images")

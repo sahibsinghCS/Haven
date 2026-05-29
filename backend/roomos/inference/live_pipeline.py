@@ -8,7 +8,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Deque, Dict, List, Optional
+from typing import Callable, Deque, Dict, List, Mapping, Optional
 
 import numpy as np
 
@@ -18,11 +18,18 @@ from ..dataset.builder import FeatureExtractionPipeline
 from ..features import BurstAggregator
 from ..model.predict import predict_proba_row
 from ..model.registry import ActivityModel, load_model_bundle
-from ..personalization import FeedbackCorrection, FeedbackReinforcementModel
+from ..personalization import (
+    FeedbackCorrection,
+    FeedbackReinforcementModel,
+    StateTransition,
+    TransitionJournal,
+)
 from ..preferences.document import active_preset_preferences
 from ..utils.io import append_jsonl, read_json
 from ..utils.logging import get_logger
 from ..video import open_video_source
+from .activity_hints import ActivityHintGate, build_activity_hints_from_config
+from .occupancy import OccupancyDecision, OccupancyGate, build_gate_from_config
 from .overlays import draw_overlay
 from .smoothing import PredictionSmoother, SmoothedPrediction, smoothing_confirm_bursts
 
@@ -31,6 +38,7 @@ log = get_logger("roomos.inference.live")
 
 # Frontend taxonomy (must match web/src/types/roomos.ts ROOM_STATE_ORDER).
 _UI_STATE_ORDER: tuple[str, ...] = ("sleep", "gaming", "work", "relaxing", "away")
+_ACTIVITY_LABELS: tuple[str, ...] = ("work", "gaming", "sleep", "relaxing")
 
 
 @dataclass
@@ -75,6 +83,62 @@ class LiveSnapshot:
         }
 
 
+def _live_presence_fixup(
+    probs: Dict[str, float],
+    features: Mapping[str, float],
+) -> Dict[str, float]:
+    """Webcam + desk: demote false Away when motion and an activity class are competitive."""
+    motion = float(features.get("motion_mean_mean", 0.0) or 0.0)
+    if motion < 0.004:
+        return probs
+    activities = {c: float(probs.get(c, 0.0)) for c in _ACTIVITY_LABELS}
+    best = max(activities, key=activities.get)
+    best_p = activities[best]
+    away_p = float(probs.get("away", 0.0))
+    work_p = float(probs.get("work", 0.0))
+
+    if away_p <= best_p:
+        return probs
+
+    # Person at desk: Away barely beats Work — trust motion + work/activity.
+    if best_p >= 0.18 and motion >= 0.005:
+        adjusted = dict(probs)
+        adjusted["away"] = min(away_p, best_p * 0.55)
+        adjusted[best] = max(best_p, away_p * 0.72)
+        return _normalize_ui_distribution(adjusted)
+
+    if work_p >= 0.22 and away_p - work_p < 0.35 and motion >= 0.005:
+        adjusted = dict(probs)
+        adjusted["work"] = max(work_p, away_p * 0.7)
+        adjusted["away"] = min(away_p, work_p * 0.9)
+        return _normalize_ui_distribution(adjusted)
+
+    return probs
+
+
+def _bootstrap_live_fixup(
+    probs: Dict[str, float],
+    features: Mapping[str, float],
+) -> Dict[str, float]:
+    """Extra demotion for synthetic bootstrap weights."""
+    out = _live_presence_fixup(probs, features)
+    if out is not probs:
+        return out
+    motion = float(features.get("motion_mean_mean", 0.0) or 0.0)
+    if motion < 0.005:
+        return probs
+    activities = {c: float(probs.get(c, 0.0)) for c in _ACTIVITY_LABELS}
+    best = max(activities, key=activities.get)
+    best_p = activities[best]
+    away_p = float(probs.get("away", 0.0))
+    if best_p < 0.12 or away_p <= best_p:
+        return probs
+    adjusted = dict(probs)
+    adjusted["away"] = min(away_p, best_p * 0.4)
+    adjusted[best] = max(best_p, away_p * 0.75)
+    return _normalize_ui_distribution(adjusted)
+
+
 def _normalize_ui_distribution(raw: Dict[str, float]) -> Dict[str, float]:
     """Ensure all five UI states exist and probabilities sum to ~1."""
     vals = {k: max(0.0, float(raw.get(k, 0.0))) for k in _UI_STATE_ORDER}
@@ -117,10 +181,30 @@ class LiveInferenceEngine:
         feat_cfg = (config.get("features", {}) or {}).get("enabled", {}) or {}
         self._pose_enabled = bool(feat_cfg.get("pose", True))
 
+        # Cheap occupancy gate — vetoes false-positive activity labels on
+        # empty scenes (couch with no person, etc.). See inference/occupancy.py.
+        unknown_label_for_gate = str(config.labels.get("unknown_class", "unknown"))
+        clip_prompts = (
+            (config.get("features", {}) or {}).get("clip", {}) or {}
+        ).get("prompts") or []
+        self._occupancy_gate: OccupancyGate = build_gate_from_config(
+            occupancy_cfg=infer_cfg.get("occupancy"),
+            away_label="away",
+            unknown_label=unknown_label_for_gate,
+            pose_enabled=self._pose_enabled,
+            clip_prompts=list(clip_prompts) if clip_prompts else None,
+        )
+        self._activity_hints: ActivityHintGate = build_activity_hints_from_config(
+            infer_cfg.get("activity_hints"),
+        )
+
         # Boot phase exposed via state.status_payload so the UI can show
         # specific copy ("Loading models", "Camera up — first burst pending",
         # "Streaming") instead of an indefinite spinner.
         self._boot_phase: str = "starting"  # starting | opening_camera | warming_up | streaming
+        self._preview_fit: str = "cover"
+        self._preview_frame_shape: Optional[tuple[int, ...]] = None
+        self._capture_size: Optional[tuple[int, int]] = None
         self._first_frame_at: Optional[float] = None
         self._first_burst_at: Optional[float] = None
 
@@ -128,6 +212,15 @@ class LiveInferenceEngine:
         # bundle (we tag it in `_source_config` during finalize). UI shows a
         # banner so demos make clear it's a synthetic-stills model.
         self._is_bootstrap_model = _looks_like_bootstrap_bundle(self._model)
+        lf_cfg = dict(infer_cfg.get("live_presence_fixup", {}) or {})
+        self._live_presence_fixup_enabled = bool(lf_cfg.get("enabled", False))
+
+        if self._is_bootstrap_model:
+            self._occupancy_gate.enabled = False
+            log.warning(
+                "Loaded bootstrap demo model — occupancy gate disabled. "
+                "Run `npm run train:multi-room` and restart for real webcam accuracy."
+            )
 
         smooth_cfg = config.smoothing
         unknown_label = str(config.labels.get("unknown_class", "unknown"))
@@ -165,12 +258,16 @@ class LiveInferenceEngine:
         if not feedback_dir.is_absolute():
             feedback_dir = config.resolve_path(feedback_dir)
         self._feedback_enabled = bool(feedback_cfg.get("enabled", True))
+        influence = float(feedback_cfg.get("influence", 0.35))
+        if _is_personal_room_bundle(self._model):
+            boost = float(feedback_cfg.get("personal_room_influence_boost", 1.2))
+            influence = min(1.0, influence * boost)
         self._feedback_model = (
             FeedbackReinforcementModel(
                 root_dir=feedback_dir,
                 classes=list(self._model.classes),
                 feature_columns=list(self._model.feature_columns),
-                influence=float(feedback_cfg.get("influence", 0.35)),
+                influence=influence,
                 similarity_floor=float(feedback_cfg.get("similarity_floor", 0.72)),
                 nearest_k=int(feedback_cfg.get("nearest_k", 8)),
                 max_examples=int(feedback_cfg.get("max_examples", 500)),
@@ -186,6 +283,32 @@ class LiveInferenceEngine:
         self._latest_evidence: Optional[dict] = None
         self._recent_screenshots: Deque[np.ndarray] = deque(maxlen=5)
         self._run_error: Optional[str] = None
+
+        transitions_cfg = dict(infer_cfg.get("transitions", {}) or {})
+        self._transitions_enabled = bool(transitions_cfg.get("enabled", True))
+        transitions_dir = Path(transitions_cfg.get("dir", "data/transitions"))
+        if not transitions_dir.is_absolute():
+            transitions_dir = config.resolve_path(transitions_dir)
+        self._transition_journal: Optional[TransitionJournal] = (
+            TransitionJournal(
+                root_dir=transitions_dir,
+                max_entries=int(transitions_cfg.get("max_entries", 200)),
+            )
+            if self._transitions_enabled
+            else None
+        )
+
+        self._auto_retrainer = None
+        ar_cfg = dict(infer_cfg.get("auto_retrain", {}) or {})
+        if bool(ar_cfg.get("enabled", True)):
+            from ..training.auto_retrain import CorrectionAutoRetrainer
+
+            self._auto_retrainer = CorrectionAutoRetrainer(
+                config,
+                on_complete=lambda _p: self.reload_model_bundle(),
+            )
+            self._auto_retrainer._feature_columns = list(self._model.feature_columns)
+        self._previous_displayed_label: str = unknown_label
 
     def start_background(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -226,7 +349,9 @@ class LiveInferenceEngine:
 
     @property
     def model_kind(self) -> str:
-        return "bootstrap" if self._is_bootstrap_model else "trained"
+        if self._is_bootstrap_model:
+            return "bootstrap"
+        return _trained_model_kind(self._model.train_config or {})
 
     @property
     def pose_enabled(self) -> bool:
@@ -277,6 +402,10 @@ class LiveInferenceEngine:
         capture_width = video_cfg.get("capture_width")
         capture_height = video_cfg.get("capture_height")
         capture_fps = video_cfg.get("capture_fps")
+        frame_preprocess = dict(video_cfg.get("frame_preprocess") or {})
+        self._preview_fit = str(
+            (preview_cfg.get("fit") or video_cfg.get("preview_fit") or "cover")
+        ).strip().lower()
 
         with open_video_source(
             source,
@@ -289,11 +418,16 @@ class LiveInferenceEngine:
             capture_width=int(capture_width) if capture_width else None,
             capture_height=int(capture_height) if capture_height else None,
             capture_fps=float(capture_fps) if capture_fps else None,
+            frame_preprocess=frame_preprocess if frame_preprocess.get("enabled", True) else None,
         ) as fs:
+            self._capture_size = getattr(fs, "_capture_size", None)
             pipe.reset_motion()
             for sf in fs:
                 if self._stop_event.is_set():
                     break
+
+                if fs.last_frame_shape:
+                    self._preview_frame_shape = tuple(fs.last_frame_shape)
 
                 if self._first_frame_at is None:
                     self._first_frame_at = time.monotonic()
@@ -312,10 +446,30 @@ class LiveInferenceEngine:
                         self._recent_screenshots.append(rec.image_bgr)
                 for burst in agg.push(rec):
                     fused = pipe.fusion.fuse(burst)
-                    probs = predict_proba_row(self._model, fused.as_dict())
-                    probs, personalization = self._personalize_probs(fused.as_dict(), probs)
+                    feats = fused.as_dict()
+                    probs = predict_proba_row(self._model, feats)
+                    if self._live_presence_fixup_enabled:
+                        if self._is_bootstrap_model:
+                            probs = _bootstrap_live_fixup(probs, feats)
+                        else:
+                            probs = _live_presence_fixup(probs, feats)
+                    occupancy = self._occupancy_gate.detect(feats)
+                    if occupancy.empty:
+                        probs = self._occupancy_gate.apply(probs, occupancy)
+                    elif occupancy.soft_empty:
+                        probs = self._occupancy_gate.apply(probs, occupancy)
+                    if not occupancy.empty:
+                        probs = self._activity_hints.apply(probs, feats)
+                    probs, personalization = self._personalize_probs(feats, probs)
                     last_pred = self._smoother.update(probs)
-                    self._after_burst(burst, fused, probs, last_pred, personalization)
+                    self._after_burst(
+                        burst,
+                        fused,
+                        probs,
+                        last_pred,
+                        personalization,
+                        occupancy=occupancy,
+                    )
                     pipe.reset_motion()
 
                 if self._overlay and self._on_frame and last_pred is not None:
@@ -337,10 +491,30 @@ class LiveInferenceEngine:
 
             for burst in agg.flush():
                 fused = pipe.fusion.fuse(burst)
-                probs = predict_proba_row(self._model, fused.as_dict())
-                probs, personalization = self._personalize_probs(fused.as_dict(), probs)
+                feats = fused.as_dict()
+                probs = predict_proba_row(self._model, feats)
+                if self._live_presence_fixup_enabled:
+                    if self._is_bootstrap_model:
+                        probs = _bootstrap_live_fixup(probs, feats)
+                    else:
+                        probs = _live_presence_fixup(probs, feats)
+                occupancy = self._occupancy_gate.detect(feats)
+                if occupancy.empty:
+                    probs = self._occupancy_gate.apply(probs, occupancy)
+                elif occupancy.soft_empty:
+                    probs = self._occupancy_gate.apply(probs, occupancy)
+                if not occupancy.empty:
+                    probs = self._activity_hints.apply(probs, feats)
+                probs, personalization = self._personalize_probs(feats, probs)
                 last_pred = self._smoother.update(probs)
-                self._after_burst(burst, fused, probs, last_pred, personalization)
+                self._after_burst(
+                    burst,
+                    fused,
+                    probs,
+                    last_pred,
+                    personalization,
+                    occupancy=occupancy,
+                )
                 pipe.reset_motion()
 
         try:
@@ -356,6 +530,8 @@ class LiveInferenceEngine:
         raw_probs: Dict[str, float],
         pred: SmoothedPrediction,
         personalization: dict,
+        *,
+        occupancy: Optional[OccupancyDecision] = None,
     ) -> None:
         now_iso = datetime.now(timezone.utc).isoformat()
         hist_entry: Dict[str, object] = {"t": now_iso}
@@ -394,7 +570,9 @@ class LiveInferenceEngine:
             primary_confidence=raw_primary_conf,
             distribution=smoothed,
             model_probs=model_only,
-            rationale=self._rationale(fused, pred, raw_probs, personalization),
+            rationale=self._rationale(
+                fused, pred, raw_probs, personalization, occupancy
+            ),
             applied_scene=self._scene_for(pred.label),
             confidence_history=list(self._history),
             personalization=dict(personalization or {}),
@@ -403,6 +581,17 @@ class LiveInferenceEngine:
         )
 
         self._remember_evidence(now_iso, burst, fused, snap, personalization)
+
+        if pred.switched:
+            self._record_state_switch(
+                pred=pred,
+                fused=fused,
+                burst=burst,
+                snap=snap,
+                raw_probs=raw_probs,
+                occupancy=occupancy,
+            )
+        self._previous_displayed_label = pred.label
 
         if self._log_predictions:
             try:
@@ -495,13 +684,22 @@ class LiveInferenceEngine:
             },
         )
         after_probs, after_info = self._feedback_model.adjust_probabilities(features, raw_probs)
-        log.info(
-            "Recorded feedback correction %s: %s -> %s (memory=%d examples)",
-            correction.id,
-            correction.predicted_label,
-            correction.corrected_label,
-            self._feedback_model.count,
-        )
+        if correction.predicted_label == correction.corrected_label:
+            log.info(
+                "Recorded feedback confirmation %s: %s (memory=%d examples)",
+                correction.id,
+                correction.corrected_label,
+                self._feedback_model.count,
+            )
+        else:
+            log.info(
+                "Recorded feedback correction %s: %s -> %s (memory=%d examples)",
+                correction.id,
+                correction.predicted_label,
+                correction.corrected_label,
+                self._feedback_model.count,
+            )
+        self._notify_auto_retrain()
         return {
             "correction": correction,
             "memory_examples": self._feedback_model.count,
@@ -515,17 +713,184 @@ class LiveInferenceEngine:
             "storage": self._feedback_model.status_payload(),
         }
 
+    def reload_model_bundle(self) -> None:
+        """Hot-reload XGBoost after background auto-retrain."""
+        self._model = load_model_bundle(self._model_dir)
+        smooth_cfg = self.config.smoothing
+        unknown_label = str(self.config.labels.get("unknown_class", "unknown"))
+        self._smoother = PredictionSmoother(
+            classes=list(self._model.classes),
+            unknown_label=unknown_label,
+            min_confidence=float(smooth_cfg.min_confidence),
+            ema_alpha=float(smooth_cfg.prob_ema_alpha),
+            confirm_bursts=smoothing_confirm_bursts(smooth_cfg),
+            cooldown_sec=float(smooth_cfg.cooldown_sec),
+        )
+        if self._feedback_model is not None:
+            self._feedback_model.feature_columns = list(self._model.feature_columns)
+        if self._auto_retrainer is not None:
+            self._auto_retrainer._feature_columns = list(self._model.feature_columns)
+        log.info("Reloaded model bundle from %s", self._model_dir)
+
+    def _notify_auto_retrain(self) -> None:
+        if self._auto_retrainer is not None:
+            self._auto_retrainer.notify_correction()
+
+    def auto_retrain_status(self) -> dict:
+        if self._auto_retrainer is None:
+            return {"enabled": False}
+        return self._auto_retrainer.status()
+
     def feedback_status(self) -> dict:
         if self._feedback_model is None:
-            return {
+            payload = {
                 "enabled": False,
                 "memory_examples": 0,
                 "has_evidence": self._latest_evidence is not None,
             }
-        payload = self._feedback_model.status_payload()
-        payload["enabled"] = True
-        payload["has_evidence"] = self._latest_evidence is not None
+        else:
+            payload = self._feedback_model.status_payload()
+            payload["enabled"] = True
+            payload["has_evidence"] = self._latest_evidence is not None
+        if self._transition_journal is not None:
+            payload["transitions"] = self._transition_journal.status_payload()
+        else:
+            payload["transitions"] = {"enabled": False, "total": 0, "pendingReview": 0}
+        payload["autoRetrain"] = self.auto_retrain_status()
         return payload
+
+    def list_transitions(
+        self,
+        *,
+        limit: int = 40,
+        uncorrected_only: bool = False,
+    ) -> List[StateTransition]:
+        if self._transition_journal is None:
+            return []
+        return self._transition_journal.list_transitions(
+            limit=limit,
+            uncorrected_only=uncorrected_only,
+        )
+
+    def transition_screenshot_path(self, transition_id: str, index: int) -> Optional[Path]:
+        if self._transition_journal is None:
+            return None
+        return self._transition_journal.screenshot_path(transition_id, index)
+
+    def record_transition_correction(
+        self,
+        *,
+        transition_id: str,
+        corrected_label: str,
+        notes: str = "",
+    ) -> dict:
+        if self._feedback_model is None:
+            raise RuntimeError("Feedback personalization is disabled.")
+        if self._transition_journal is None:
+            raise RuntimeError("Transition journal is disabled.")
+        rec = self._transition_journal.get_record(transition_id)
+        if not rec:
+            raise ValueError(f"Unknown transition id: {transition_id!r}")
+
+        predicted = str(rec.get("to_label", ""))
+        if corrected_label not in self._model.classes:
+            raise ValueError(f"Unknown corrected label: {corrected_label!r}")
+
+        features = dict(rec.get("features", {}))
+        raw_probs = dict(rec.get("raw_probs", {}))
+        screenshots = self._transition_journal.load_screenshots_bgr(transition_id)
+
+        before_probs, _ = self._feedback_model.adjust_probabilities(features, raw_probs)
+        correction = self._feedback_model.record_correction(
+            predicted_label=predicted,
+            corrected_label=corrected_label,
+            confidence=float(rec.get("confidence", 0.0)),
+            features=features,
+            screenshots_bgr=screenshots,
+            notes=notes,
+            metadata={
+                "transition_id": transition_id,
+                "from_label": rec.get("from_label"),
+                "captured_at": rec.get("captured_at"),
+            },
+        )
+        after_probs, after_info = self._feedback_model.adjust_probabilities(features, raw_probs)
+        self._transition_journal.mark_corrected(
+            transition_id,
+            corrected_label=corrected_label,
+            correction_id=correction.id,
+            notes=notes,
+        )
+        log.info(
+            "Transition %s relabeled: %s -> %s (memory=%d)",
+            transition_id[:8],
+            predicted,
+            corrected_label,
+            self._feedback_model.count,
+        )
+        self._notify_auto_retrain()
+        return {
+            "correction": correction,
+            "transition_id": transition_id,
+            "predicted_label": predicted,
+            "from_label": rec.get("from_label"),
+            "memory_examples": self._feedback_model.count,
+            "probability_preview": {
+                "before": {k: round(float(before_probs.get(k, 0.0)), 4) for k in self._ui_classes},
+                "after": {k: round(float(after_probs.get(k, 0.0)), 4) for k in self._ui_classes},
+                "corrected_label": corrected_label,
+                "applied_after_save": bool(after_info.get("applied")),
+                "nearest_similarity": float(after_info.get("nearest_similarity", 0.0)),
+            },
+            "storage": self._feedback_model.status_payload(),
+        }
+
+    def _record_state_switch(
+        self,
+        *,
+        pred: SmoothedPrediction,
+        fused,
+        burst,
+        snap: LiveSnapshot,
+        raw_probs: Dict[str, float],
+        occupancy: Optional[OccupancyDecision] = None,
+    ) -> None:
+        if self._transition_journal is None:
+            return
+        from_label = self._previous_displayed_label
+        to_label = pred.label
+        if from_label == to_label:
+            return
+
+        screenshots = [
+            f.image_bgr
+            for f in getattr(burst, "frames", [])
+            if getattr(f, "image_bgr", None) is not None
+        ][:5]
+        if len(screenshots) < 1:
+            with self._evidence_lock:
+                screenshots = list(self._recent_screenshots)
+
+        rationale = self._rationale(
+            fused,
+            pred,
+            raw_probs,
+            snap.personalization,
+            occupancy,
+        )
+        try:
+            self._transition_journal.record_switch(
+                from_label=from_label,
+                to_label=to_label,
+                confidence=float(pred.confidence),
+                sequence=int(snap.sequence),
+                features=fused.as_dict(),
+                raw_probs=raw_probs,
+                screenshots_bgr=screenshots,
+                rationale=rationale,
+            )
+        except Exception as e:
+            log.warning("Failed to record state transition: %s", e)
 
     def _rationale(
         self,
@@ -533,6 +898,7 @@ class LiveInferenceEngine:
         pred: SmoothedPrediction,
         raw: Dict[str, float],
         personalization: dict,
+        occupancy: Optional[OccupancyDecision] = None,
     ) -> List[str]:
         bullets: List[str] = []
         row = fused.as_dict()
@@ -546,6 +912,35 @@ class LiveInferenceEngine:
                 bullets.append("No clear person detected across the burst.")
             elif person >= 0.8:
                 bullets.append("Person visible in most burst frames.")
+
+        # Occupancy gate runs even without pose features (CLIP-based fallback),
+        # so add an honest bullet when the gate fires or when CLIP strongly
+        # leans "empty room".
+        if occupancy is not None:
+            if occupancy.empty:
+                if occupancy.reason == "empty_pose":
+                    bullets.append(
+                        "Occupancy gate: no person detected (pose+low motion) — forcing 'away'."
+                    )
+                elif occupancy.reason in ("empty_clip", "empty_scene"):
+                    bullets.append(
+                        "Occupancy gate: no person in scene (empty couch/desk/room > person prompts, "
+                        f"margin={occupancy.empty_score - occupancy.person_score:+.02f}) — not Work/Studying."
+                    )
+                else:
+                    bullets.append("Occupancy gate: empty scene — forcing 'away'.")
+            elif occupancy.soft_empty:
+                bullets.append(
+                    "Weak person signal — capping Work/Relaxing/Sleep; scene looks unoccupied."
+                )
+            elif (
+                not self._pose_enabled
+                and occupancy.empty_score > 0.0
+                and (occupancy.empty_score - occupancy.person_score) >= 0.005
+            ):
+                bullets.append(
+                    "CLIP leans slightly toward 'empty room' but gate threshold not met."
+                )
 
         motion = row.get("motion_mean_mean", 0.0)
         if motion <= 0.005:
@@ -658,6 +1053,45 @@ def build_engine(
         on_snapshot=on_snapshot,
         on_preview_frame=on_preview_frame,
     )
+
+
+def _trained_model_kind(train_config: dict) -> str:
+    """``generic`` = multi-room cold-start; ``personal`` = user's room training."""
+    try:
+        source = str(train_config.get("_source_config", "")).lower()
+        training = train_config.get("training", {}) or {}
+        feats = str(training.get("features_path", "")).lower()
+        if "train_my_room" in source or "my_room" in feats:
+            return "personal"
+        if "train_personal" in source or "personal" in feats:
+            return "personal"
+        if "train_multi_room" in source or "multi_room" in feats:
+            return "generic"
+        if "bootstrap" in source or "bootstrap" in feats:
+            return "bootstrap"
+    except Exception:
+        pass
+    return "trained"
+
+
+def _is_personal_room_bundle(model: ActivityModel) -> bool:
+    """True when the bundle was trained with personal-room row weighting."""
+    try:
+        source = str((model.train_config or {}).get("_source_config", "")).lower()
+        if "train_my_room" in source:
+            return True
+        training = (model.train_config or {}).get("training", {}) or {}
+        if bool(training.get("use_row_weights", False)):
+            feats = str(training.get("features_path", "")).lower()
+            if "my_room" in feats or "personal" in feats:
+                return True
+            if float(training.get("default_row_weight", 1.0)) > 1.0:
+                return True
+            if float(training.get("personal_row_weight", 1.0)) > 1.0:
+                return True
+    except Exception:
+        return False
+    return False
 
 
 def _looks_like_bootstrap_bundle(model: ActivityModel) -> bool:

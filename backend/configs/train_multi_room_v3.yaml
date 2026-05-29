@@ -1,0 +1,19 @@
+# Multi-room v3 — extra work/gaming CLIP prompts (233 features) with v2 XGBoost tuning.
+
+# Retrain from cached features: npm run train:multi-room-v3
+
+extends: train_multi_room_v2.yaml
+
+
+
+training:
+
+  features_path: data/features/multi_room_features_v3.csv
+
+
+
+  # Still-image bursts often show train>>test; log a warning above this gap.
+
+  max_train_test_acc_gap: 0.28
+
+

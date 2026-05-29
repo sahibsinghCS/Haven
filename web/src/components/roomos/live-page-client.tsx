@@ -18,6 +18,11 @@ export function LivePageClient() {
   const engine = useLiveEngineAutostart(true)
   const live = useLiveInference()
 
+  useEffect(() => {
+    document.documentElement.classList.add("live-immersive")
+    return () => document.documentElement.classList.remove("live-immersive")
+  }, [])
+
   const snapshot = live.snapshot
 
   useEffect(() => {
@@ -67,7 +72,7 @@ export function LivePageClient() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <LiveVideoStage
         snapshot={snapshot}
         engineStatus={engine.status}
@@ -77,6 +82,7 @@ export function LivePageClient() {
         demoMode={engine.demoMode}
         previewDark={engine.previewDark}
         previewMeanLuma={engine.previewMeanLuma}
+        previewFit={engine.previewFit}
         modelKind={engine.modelKind}
         onModeChanged={engine.refreshStatus}
       />

@@ -22,10 +22,16 @@ video:
   # capture_height: 720
   # capture_fps: 30
   # Live /live preview (separate from ML — higher FPS/res than sample_fps)
+  # Strip black bars from virtual webcams before preview + ML (DroidCam, OBS, etc.)
+  frame_preprocess:
+    enabled: true
+    strip_letterbox: true
+    # aspect_ratio: "16:9"   # optional center crop to match phone preview
   preview:
     max_fps: 20           # UI preview update rate from camera
-    max_width: 1280       # JPEG long edge before encode
+    max_width: 1920       # JPEG long edge before encode
     jpeg_quality: 88
+    fit: cover            # cover | contain — UI object-fit for /live stage
   # OpenCV capture backend hint. "auto" picks the right native API per OS:
   # Windows -> DirectShow (CAP_DSHOW), macOS -> AVFoundation, Linux -> V4L2.
   # Using the default ("any") on Windows often yields black frames from
@@ -74,6 +80,7 @@ features:
     # Free-form prompts whose cosine similarity with the frame embedding becomes
     # a per-frame feature. Order matters (it defines feature columns).
     prompts:
+      # Activity prompts ("a person ...") — drive the per-class signal.
       - "a person sitting at a desk working on a computer"
       - "a person typing at a laptop"
       - "a person lying in bed sleeping"
@@ -85,9 +92,31 @@ features:
       - "a person reading a book on a couch"
       - "a person eating a meal"
       - "a person exercising or stretching"
+      # Discriminators — work vs gaming vs relaxing (reduce couch/desk confusion)
+      - "a person wearing a headset playing a fast-paced video game at a desk"
+      - "a person studying with notebooks and a laptop at a desk"
+      - "a person lounging on a sofa watching television without a keyboard"
+      - "a person holding a game controller looking at a TV screen"
+      - "a person typing on a keyboard in front of a computer monitor at work"
+      - "a student studying at a desk with laptop and textbooks"
+      - "a person working from home at a desk with dual monitors"
+      - "a person curled up asleep under blankets in bed"
+      # Scene-only prompts — discriminate "no person + couch / desk / bed" so
+      # the model can separate `away` from a sparsely-furnished room and so
+      # the gaming/relaxing confusion has another grounding signal.
       - "an empty room with no people"
       - "a dimly lit bedroom at night"
       - "a bright room during the day"
+      - "an empty bedroom with a made bed"
+      - "an unoccupied office desk with a monitor and keyboard"
+      - "an empty living room couch"
+      # Object-cluster prompts — strong cues for gaming vs work vs relaxing
+      # even when the person is partially visible or facing away.
+      - "a video game console with controllers connected to a television"
+      - "a large gaming monitor displaying a colourful video game"
+      - "an open laptop with a document on a desk"
+      - "a tidy work desk with a monitor and a notebook"
+      - "a cozy sofa with throw pillows and a blanket"
     # Whether to also keep the raw CLIP embedding components.
     # Embeddings are ~512-D; fusion summarizes them into a few scalars per burst.
     keep_embedding: true

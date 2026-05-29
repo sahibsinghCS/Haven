@@ -33,6 +33,7 @@ export function useLiveEngineAutostart(enabled = true) {
   const [previewAvailable, setPreviewAvailable] = useState(false)
   const [previewMeanLuma, setPreviewMeanLuma] = useState<number | null>(null)
   const [previewDark, setPreviewDark] = useState(false)
+  const [previewFit, setPreviewFit] = useState<"cover" | "contain">("cover")
   const [bootPhase, setBootPhase] = useState<BootPhase>("off")
   const [modelKind, setModelKind] = useState<ModelKind>("unknown")
   const [poseEnabled, setPoseEnabled] = useState<boolean | null>(null)
@@ -55,6 +56,7 @@ export function useLiveEngineAutostart(enabled = true) {
         typeof st.preview_mean_luma === "number" ? st.preview_mean_luma : null,
       )
       setPreviewDark(Boolean(st.preview_dark))
+      setPreviewFit(st.preview_fit === "contain" ? "contain" : "cover")
       setBootPhase((st.boot_phase as BootPhase) ?? "off")
       setModelKind((st.model_kind as ModelKind) ?? "unknown")
       setPoseEnabled(
@@ -134,6 +136,7 @@ export function useLiveEngineAutostart(enabled = true) {
     previewAvailable,
     previewMeanLuma,
     previewDark,
+    previewFit,
     bootPhase,
     modelKind,
     poseEnabled,

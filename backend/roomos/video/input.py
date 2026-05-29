@@ -23,6 +23,7 @@ from typing import Callable, Iterator, List, Optional, Tuple, Union
 import numpy as np
 
 from ..utils.logging import get_logger
+from .frame_preprocess import preprocess_frame
 
 log = get_logger("roomos.video")
 
@@ -578,6 +579,8 @@ class FrameSource:
         Called with the camera frame *before* ``resize_width`` downscale.
     capture_width, capture_height, capture_fps : optional
         Passed to the driver on open (webcam indices only).
+    frame_preprocess : dict | None
+        Letterbox strip / aspect crop (see ``frame_preprocess.preprocess_frame``).
     read_timeout_sec : float
         Considered "dead" if no successful frame within this window.
     log_every : int
@@ -597,6 +600,7 @@ class FrameSource:
         capture_width: Optional[int] = None,
         capture_height: Optional[int] = None,
         capture_fps: Optional[float] = None,
+        frame_preprocess: Optional[dict] = None,
     ) -> None:
         self.requested_source = source
         self.coerced_source = _coerce_source(source)
@@ -610,8 +614,11 @@ class FrameSource:
         self.capture_width = capture_width
         self.capture_height = capture_height
         self.capture_fps = capture_fps
+        self.frame_preprocess = dict(frame_preprocess) if frame_preprocess else None
 
         self._cap = None
+        self._capture_size: Optional[tuple[int, int]] = None
+        self._last_frame_shape: Optional[tuple[int, ...]] = None
         self._opened_at = 0.0
         self._next_emit_at = 0.0
         self._next_preview_emit_at = 0.0
@@ -621,6 +628,14 @@ class FrameSource:
         )
         self._frame_index = 0
         self._active_backend: Optional[str] = None
+
+    @property
+    def last_frame_shape(self) -> Optional[tuple[int, ...]]:
+        return self._last_frame_shape
+
+    @property
+    def capture_size(self) -> Optional[tuple[int, int]]:
+        return self._capture_size
 
     # --- context manager -----------------------------------------------
 
@@ -644,6 +659,21 @@ class FrameSource:
         )
         self._cap = cap
         self._active_backend = active
+        try:
+            import cv2
+
+            self._capture_size = (
+                int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0),
+                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0),
+            )
+            log.info(
+                "Capture negotiated: %dx%d (backend=%s)",
+                self._capture_size[0],
+                self._capture_size[1],
+                active,
+            )
+        except Exception:
+            self._capture_size = None
         self._opened_at = time.monotonic()
         self._next_emit_at = 0.0
         self._next_preview_emit_at = 0.0
@@ -690,6 +720,10 @@ class FrameSource:
 
             consecutive_failures = 0
             last_ok = time.monotonic()
+
+            if self.frame_preprocess:
+                frame = preprocess_frame(frame, self.frame_preprocess)
+            self._last_frame_shape = tuple(frame.shape)
 
             if (
                 self.preview_callback is not None
@@ -745,6 +779,7 @@ def open_video_source(
     capture_width: Optional[int] = None,
     capture_height: Optional[int] = None,
     capture_fps: Optional[float] = None,
+    frame_preprocess: Optional[dict] = None,
 ) -> FrameSource:
     """Functional convenience wrapper — does not open the device yet."""
     return FrameSource(
@@ -759,4 +794,5 @@ def open_video_source(
         capture_width=capture_width,
         capture_height=capture_height,
         capture_fps=capture_fps,
+        frame_preprocess=frame_preprocess,
     )

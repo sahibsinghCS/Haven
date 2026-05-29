@@ -153,6 +153,26 @@ If replay works but live doesn’t → camera/model issue, not the UI.
 
 Use documented source string, e.g. `droidcam:auto` or HTTP URL per [`backend/README.md`](backend/README.md). Same `video.source` drives preview and inference.
 
+### Preview looks zoomed out vs DroidCam app
+
+Virtual webcams often ship frames with **black letterbox bars**. Haven strips those automatically (`video.frame_preprocess.strip_letterbox` in `configs/inference.yaml`).
+
+If framing still does not match the phone:
+
+1. **Use the HTTP stream** (matches DroidCam Client preview more closely). Quit DroidCam Client, then in `configs/inference.yaml`:
+
+   ```yaml
+   video:
+     source: "http://192.168.x.x:4747/video"
+     backend: any
+   ```
+
+2. **Optional center crop** — uncomment `aspect_ratio: "16:9"` under `frame_preprocess`.
+
+3. **Show full frame in UI** — set `video.preview.fit: contain` (may show bars on the sides).
+
+4. Restart: Ctrl+C → `npm run dev`.
+
 ---
 
 ## Config mismatch (train / serve)
@@ -309,6 +329,92 @@ Rebuild/restart Next dev server after changing `.env.local`.
 - Run `npm run setup:model` once before judges; model + CLIP cached locally afterward
 - Stay on power adapter
 - Subsequent `npm run demo` starts faster
+
+---
+
+## Empty room shows "Work / Studying" (or another activity)
+
+### Symptoms
+
+- Camera shows **only furniture** (couch, bed, desk) with **no person** in frame
+- `/live` UI still shows a primary state like **Work / Studying** or **Relaxing**
+- This happens on the **bootstrap** model (default after `npm run setup:model`)
+
+### Cause
+
+The legacy **bootstrap** XGBoost is trained on synthetic flat-color stills and never saw clean "empty room" negatives. With `features.enabled.pose: false` (Windows DroidCam default) there is also no native presence signal in the feature vector, so the model latches onto room context (a desk == work, a couch == relaxing).
+
+The repo now ships a **multi-room** model trained on ~1,750 photos from Open Images v7 / Wikimedia covering many real bedrooms, offices, gaming rooms, couches, and empty spaces. That model alone fixes the empty-couch case for most users — `away` test recall is ~0.85. Run it with:
+
+```powershell
+npm run train:multi-room
+```
+
+The occupancy gate below is still useful as a guardrail (especially when CLIP is uncertain), even with the multi-room model in place.
+
+### Fix (already shipped — verify it is enabled)
+
+The live pipeline runs an **occupancy gate** (`backend/roomos/inference/occupancy.py`) that uses existing CLIP + motion features to detect empty scenes and force `away`. It is enabled by default in `backend/configs/inference.yaml`:
+
+```yaml
+inference:
+  occupancy:
+    enabled: true
+    empty_margin: 0.012          # generic "empty room" vs "a person" CLIP margin
+    scene_empty_margin: 0.006    # empty couch / unoccupied desk (easier trigger)
+    motion_max_for_empty: 0.028
+    away_floor_prob: 0.82        # forced 'away' when scene is empty
+    activity_prob_cap: 0.12      # caps Work/Relaxing/Sleep when no person in CLIP
+```
+
+The gate also reads the same CLIP prompts as training (`empty living room couch`, `unoccupied office desk`, etc.), not only the generic empty-room string.
+
+To check it is actually firing on an empty couch:
+
+```powershell
+curl http://127.0.0.1:8000/api/live/status   # confirms engine_running + model_kind
+# point camera at empty room for ~10s, then open /live; rationale should say:
+# "Occupancy gate: no person in scene (empty couch/desk/room > person prompts, margin=+0.04) — not Work/Studying."
+```
+
+### If the gate is too aggressive (flips to `away` when you are present)
+
+Raise the CLIP margin or lower the away floor:
+
+```yaml
+inference:
+  occupancy:
+    empty_margin: 0.025
+    away_floor_prob: 0.65
+```
+
+### If the gate is too lax (still shows `work` on empty couch)
+
+Lower the margin and raise the floor:
+
+```yaml
+inference:
+  occupancy:
+    empty_margin: 0.008
+    scene_empty_margin: 0.004
+    away_floor_prob: 0.88
+    activity_prob_cap: 0.08
+```
+
+You can also temporarily disable the gate with `enabled: false` to confirm it is the cause.
+
+### Long-term fix
+
+Train a personal model with your own empty-room captures:
+
+```powershell
+# capture 6–12 empty stills into backend/data/base_images/away/ then:
+npm run train:images
+npm run train:verify
+npm run demo
+```
+
+Details: [`docs/FEEDBACK.md`](docs/FEEDBACK.md) → "Empty-room / 'no person' gate".
 
 ---
 

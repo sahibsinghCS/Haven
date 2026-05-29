@@ -31,8 +31,8 @@ def save_confusion_matrix(
         plot = np.nan_to_num(plot)
         fmt = ".2f"
     else:
-        plot = cm
-        fmt = "d"
+        plot = np.rint(cm)
+        fmt = ".0f"
 
     fig, ax = plt.subplots(figsize=(1.2 + 0.9 * len(class_names), 1.0 + 0.8 * len(class_names)))
     sns.heatmap(

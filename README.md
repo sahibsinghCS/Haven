@@ -4,7 +4,7 @@
 
 **HAVEN** is a local-first room intelligence demo: your machine watches the room in short **multi-frame bursts**, estimates what you are probably doing (work, gaming, sleep, relaxing, away), maps that to **preference-driven scene targets** (light, fan, temperature), and lets you **correct mistakes** so similar moments improve over time—all without sending video to the cloud.
 
-**Pitch & Devpost copy:** [`HACKATHON-PITCH.md`](HACKATHON-PITCH.md) · **Operator docs:** [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) · [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) · [`docs/`](docs/README.md)
+**Pitch & Devpost copy:** [`HACKATHON-PITCH.md`](HACKATHON-PITCH.md) · **Product goal (cold start vs your room):** [`docs/COLD-START.md`](docs/COLD-START.md) · **Operator docs:** [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) · [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) · [`docs/`](docs/README.md)
 
 ---
 

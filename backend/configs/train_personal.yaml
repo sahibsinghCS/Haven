@@ -11,3 +11,7 @@ features:
 training:
   output_dir: data/models/latest
   features_path: data/features/personal_features.parquet
+
+  # Your room stills count much more than any generic prior when you merge data.
+  use_row_weights: true
+  default_row_weight: 12.0

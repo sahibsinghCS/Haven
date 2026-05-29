@@ -1,0 +1,126 @@
+schema_version: 1
+updated_at: '2026-05-25T04:24:26.518906+00:00'
+roomos_target_labels:
+- work
+- gaming
+- sleep
+- relaxing
+- away
+- uncertain
+- discard
+datasets:
+- id: toyota_smarthome
+  name: Toyota Smarthome
+  source_url: https://project.inria.fr/toyotasmarthome/
+  local_path: data/raw/toyota_smarthome
+  modality:
+  - rgb
+  - depth
+  - skeleton
+  class_count: 31
+  label_status: coarse_and_fine_grained_adl
+  access_status: blocked
+  blocker_reason: Academic license + online request form; work/institution email required.
+  license_notes: Academic research only; see License_v2.pdf on project site.
+- id: indoor_action_dataset
+  name: Indoor Action Dataset
+  source_url: https://github.com/DaniDeniz/IndoorActionDataset
+  local_path: data/raw/indoor_action_dataset
+  modality:
+  - video
+  class_count: 10
+  label_status: per_clip_activity_labels
+  access_status: downloaded
+  blocker_reason: null
+  license_notes: BSD 3-Clause (repo); video zip hosted at UGR public link.
+  download_notes: GitHub repo + UGR public zip
+- id: slp_dataset
+  name: SLP Multimodal In-Bed Pose
+  source_url: https://ostadabbas.sites.northeastern.edu/slp-dataset-for-multimodal-in-bed-pose-estimation-3/
+  local_path: data/raw/slp_dataset
+  modality:
+  - rgb
+  - lwir
+  - depth
+  - pressure
+  class_count: 45
+  label_status: pose_joints_plus_pose_category_supine_left_right
+  access_status: blocked
+  blocker_reason: Password-protected zip; institution email + request form.
+  license_notes: Non-commercial purposes only per site terms.
+- id: slp_code
+  name: SLP Dataset and Code
+  source_url: https://github.com/ostadabbas/SLP-Dataset-and-Code
+  local_path: data/raw/slp_dataset_and_code
+  modality:
+  - code
+  - docs
+  class_count: null
+  label_status: references_slp_dataset_layout
+  access_status: downloaded
+  blocker_reason: null
+  license_notes: Check repository LICENSE; does not include full SLP media without
+    password.
+- id: uci_occupancy_detection
+  name: UCI Occupancy Detection
+  source_url: https://archive.ics.uci.edu/dataset/357/occupancy+detection
+  local_path: data/raw/uci_occupancy_detection
+  modality:
+  - timeseries_sensors
+  class_count: 2
+  label_status: binary_occupancy_0_1
+  access_status: downloaded
+  blocker_reason: null
+  license_notes: CC BY 4.0
+- id: kaggle_posture_keypoints
+  name: Posture Keypoints Detection (Kaggle)
+  source_url: https://www.kaggle.com/datasets/melsmm/posture-keypoints-detection
+  local_path: data/raw/kaggle_posture_keypoints
+  modality:
+  - image
+  - keypoints
+  class_count: null
+  label_status: posture_keypoint_annotations
+  access_status: downloaded
+  blocker_reason: Kaggle API credentials missing (~/.kaggle/kaggle.json).
+  license_notes: Subject to Kaggle dataset license on competition page.
+  download_notes: Downloaded via KAGGLE_API_TOKEN
+- id: mpii_human_pose_hf
+  name: MPII Human Pose (Hugging Face / Voxel51)
+  source_url: https://huggingface.co/datasets/Voxel51/MPII_Human_Pose_Dataset
+  local_path: data/raw/mpii_human_pose_hf
+  modality:
+  - image
+  - keypoints
+  - activity_tag
+  class_count: 410
+  label_status: activity_and_category_names_per_image
+  access_status: blocked
+  blocker_reason: HF download not run yet; large snapshot (~12GB). Set HF_TOKEN and
+    re-run download script.
+  license_notes: BSD-2-Clause annotations; commercial use of images disallowed per
+    dataset card.
+- id: indoor_scene_recognition_hf
+  name: Indoor Scene Recognition (Hugging Face / Voxel51)
+  source_url: https://huggingface.co/datasets/Voxel51/IndoorSceneRecognition
+  local_path: data/raw/indoor_scene_recognition_hf
+  modality:
+  - image
+  class_count: 67
+  label_status: scene_category_per_image
+  access_status: blocked
+  blocker_reason: HF rate limit (429) without token; login at huggingface.co and export
+    HF_TOKEN, then re-run.
+  license_notes: MIT
+- id: casas_hub
+  name: CASAS Smart Home Datasets
+  source_url: https://casas.wsu.edu/datasets/
+  local_path: data/raw/casas
+  modality:
+  - ambient_sensors
+  - some_video_variants
+  class_count: null
+  label_status: varies_by_release
+  access_status: blocked
+  blocker_reason: Per-dataset registration at casas.wsu.edu
+  license_notes: Varies; many academic-use agreements — see each dataset page.

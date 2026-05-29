@@ -219,7 +219,13 @@ export type BootPhase =
   | "warming_up"
   | "streaming"
 
-export type ModelKind = "bootstrap" | "trained" | "replay" | "unknown"
+export type ModelKind =
+  | "bootstrap"
+  | "generic"
+  | "personal"
+  | "trained"
+  | "replay"
+  | "unknown"
 
 export type LiveEngineStatus = {
   engine_running: boolean
@@ -240,6 +246,12 @@ export type LiveEngineStatus = {
   /** True when preview frames are effectively black (typical Windows MSMF symptom). */
   preview_dark?: boolean
   preview_frames_seen?: number
+  /** UI object-fit: cover (fill stage) or contain (full frame, letterboxed). */
+  preview_fit?: "cover" | "contain"
+  /** [width, height] of processed frames sent to preview + ML. */
+  preview_frame_shape?: [number, number] | null
+  /** [width, height] negotiated with the camera driver. */
+  capture_size?: [number, number] | null
   /** Coarse engine boot phase for boot-screen copy. */
   boot_phase?: BootPhase
   /** Source of the loaded model: bootstrap demo vs real training. */
@@ -321,6 +333,7 @@ export type FeedbackResponse = {
   createdAt: string
   predictedLabel: string
   correctedLabel: string
+  confirmed?: boolean
   screenshotCount: number
   influence: number
   memoryExamples: number
@@ -335,6 +348,17 @@ export type FeedbackResponse = {
   }
 }
 
+export type AutoRetrainStatus = {
+  enabled: boolean
+  running?: boolean
+  correctionsSinceLastRun?: number
+  storedCorrections?: number
+  minCorrections?: number
+  minIntervalSec?: number
+  lastRunAt?: number | null
+  lastResult?: Record<string, unknown> | null
+}
+
 export type FeedbackStatus = {
   enabled: boolean
   memoryExamples: number
@@ -342,6 +366,7 @@ export type FeedbackStatus = {
   similarityFloor?: number
   influence?: number
   storageDir?: string
+  autoRetrain?: AutoRetrainStatus
   lastCorrection?: {
     id?: string
     at?: string
@@ -354,6 +379,33 @@ export async function fetchFeedbackStatus(signal?: AbortSignal): Promise<Feedbac
   const res = await fetch(`${API_BASE}/api/live/feedback/status`, { signal, cache: "no-store" })
   if (!res.ok) throw new Error(`feedback status failed: ${res.status}`)
   const raw = (await res.json()) as Record<string, unknown>
+  const arRaw = raw.autoRetrain ?? raw.auto_retrain
+  let autoRetrain: AutoRetrainStatus | undefined
+  if (arRaw && typeof arRaw === "object") {
+    const ar = arRaw as Record<string, unknown>
+    autoRetrain = {
+      enabled: Boolean(ar.enabled),
+      running: Boolean(ar.running),
+      correctionsSinceLastRun: Number(
+        ar.correctionsSinceLastRun ?? ar.corrections_since_last_run ?? 0,
+      ),
+      storedCorrections: Number(ar.storedCorrections ?? ar.stored_corrections ?? 0),
+      minCorrections: Number(ar.minCorrections ?? ar.min_corrections ?? 3),
+      minIntervalSec: Number(ar.minIntervalSec ?? ar.min_interval_sec ?? 90),
+      lastRunAt:
+        ar.lastRunAt != null
+          ? Number(ar.lastRunAt)
+          : ar.last_run_at != null
+            ? Number(ar.last_run_at)
+            : null,
+      lastResult:
+        ar.lastResult && typeof ar.lastResult === "object"
+          ? (ar.lastResult as Record<string, unknown>)
+          : ar.last_result && typeof ar.last_result === "object"
+            ? (ar.last_result as Record<string, unknown>)
+            : null,
+    }
+  }
   return {
     enabled: Boolean(raw.enabled),
     memoryExamples: Number(raw.memory_examples ?? raw.examples ?? 0),
@@ -361,10 +413,145 @@ export async function fetchFeedbackStatus(signal?: AbortSignal): Promise<Feedbac
     similarityFloor: Number(raw.similarity_floor ?? 0),
     influence: Number(raw.influence ?? 0),
     storageDir: typeof raw.storage_dir === "string" ? raw.storage_dir : undefined,
+    autoRetrain,
     lastCorrection:
       raw.last_correction && typeof raw.last_correction === "object"
         ? (raw.last_correction as FeedbackStatus["lastCorrection"])
         : null,
+  }
+}
+
+export type StateTransitionItem = {
+  id: string
+  capturedAt: string
+  fromLabel: string
+  toLabel: string
+  confidence: number
+  sequence: number
+  screenshotCount: number
+  correctedLabel?: string | null
+  correctionId?: string | null
+  notes?: string
+  corrected: boolean
+}
+
+export type TransitionsListResponse = {
+  enabled: boolean
+  transitions: StateTransitionItem[]
+  total?: number
+  pendingReview?: number
+  reason?: string
+}
+
+export function transitionFrameUrl(transitionId: string, frameIndex: number): string {
+  return `${API_BASE}/api/live/transitions/${encodeURIComponent(transitionId)}/frames/${frameIndex}.jpg`
+}
+
+export async function fetchTransitions(
+  opts?: { limit?: number; uncorrectedOnly?: boolean },
+  signal?: AbortSignal,
+): Promise<TransitionsListResponse> {
+  const params = new URLSearchParams()
+  if (opts?.limit) params.set("limit", String(opts.limit))
+  if (opts?.uncorrectedOnly) params.set("uncorrected_only", "true")
+  const q = params.toString()
+  const res = await fetch(
+    `${API_BASE}/api/live/transitions${q ? `?${q}` : ""}`,
+    { signal, cache: "no-store" },
+  )
+  if (!res.ok) throw new Error(`transitions fetch failed: ${res.status}`)
+  const raw = (await res.json()) as Record<string, unknown>
+  const items = Array.isArray(raw.transitions) ? raw.transitions : []
+  return {
+    enabled: Boolean(raw.enabled),
+    total: Number(raw.total ?? 0),
+    pendingReview: Number(raw.pendingReview ?? raw.pending_review ?? 0),
+    reason: typeof raw.reason === "string" ? raw.reason : undefined,
+    transitions: items.map((t) => {
+      const row = t as Record<string, unknown>
+      return {
+        id: String(row.id ?? ""),
+        capturedAt: String(row.capturedAt ?? row.captured_at ?? ""),
+        fromLabel: String(row.fromLabel ?? row.from_label ?? ""),
+        toLabel: String(row.toLabel ?? row.to_label ?? ""),
+        confidence: Number(row.confidence ?? 0),
+        sequence: Number(row.sequence ?? 0),
+        screenshotCount: Number(row.screenshotCount ?? row.screenshot_count ?? 0),
+        correctedLabel:
+          row.correctedLabel != null
+            ? String(row.correctedLabel)
+            : row.corrected_label != null
+              ? String(row.corrected_label)
+              : null,
+        correctionId:
+          row.correctionId != null
+            ? String(row.correctionId)
+            : row.correction_id != null
+              ? String(row.correction_id)
+              : null,
+        notes: String(row.notes ?? ""),
+        corrected: Boolean(row.corrected ?? row.corrected_label),
+      }
+    }),
+  }
+}
+
+export async function correctTransition(
+  transitionId: string,
+  input: { correctedLabel: RoomStateId; notes?: string },
+): Promise<FeedbackResponse & { transitionId?: string; fromLabel?: string }> {
+  const res = await fetch(
+    `${API_BASE}/api/live/transitions/${encodeURIComponent(transitionId)}/correct`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        corrected_label: input.correctedLabel,
+        notes: input.notes ?? "",
+      }),
+    },
+  )
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null)
+    const msg =
+      typeof detail?.detail === "string"
+        ? detail.detail
+        : `transition correct failed: ${res.status}`
+    throw new Error(msg)
+  }
+  const raw = (await res.json()) as Record<string, unknown>
+  const previewRaw = raw.probabilityPreview ?? raw.probability_preview
+  const effectsRaw = raw.effects as Record<string, string> | undefined
+  let probabilityPreview: FeedbackResponse["probabilityPreview"]
+  if (previewRaw && typeof previewRaw === "object") {
+    const p = previewRaw as Record<string, unknown>
+    probabilityPreview = {
+      before: normalizeFeedbackProbs(p.before),
+      after: normalizeFeedbackProbs(p.after),
+      corrected_label: String(p.corrected_label ?? p.correctedLabel ?? ""),
+      appliedAfterSave: Boolean(p.appliedAfterSave ?? p.applied_after_save),
+      nearest_similarity: Number(p.nearest_similarity ?? 0),
+    }
+  }
+  return {
+    status: "recorded",
+    id: String(raw.id ?? ""),
+    createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
+    predictedLabel: String(raw.predictedLabel ?? raw.predicted_label ?? ""),
+    correctedLabel: String(raw.correctedLabel ?? raw.corrected_label ?? ""),
+    confirmed: Boolean(raw.confirmed ?? false),
+    screenshotCount: 0,
+    influence: 0,
+    memoryExamples: Number(raw.memoryExamples ?? raw.memory_examples ?? 0),
+    retrainsModel: Boolean(raw.retrainsModel ?? raw.retrains_model),
+    transitionId: String(raw.transitionId ?? raw.transition_id ?? transitionId),
+    fromLabel: String(raw.fromLabel ?? raw.from_label ?? ""),
+    effects: {
+      immediate: String(effectsRaw?.immediate ?? ""),
+      ongoing: String(effectsRaw?.ongoing ?? ""),
+      notIncluded: String(effectsRaw?.notIncluded ?? effectsRaw?.not_included ?? ""),
+    },
+    probabilityPreview,
   }
 }
 
@@ -408,6 +595,7 @@ export async function submitLiveFeedback(input: {
     createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
     predictedLabel: String(raw.predictedLabel ?? raw.predicted_label ?? ""),
     correctedLabel: String(raw.correctedLabel ?? raw.corrected_label ?? ""),
+    confirmed: Boolean(raw.confirmed ?? false),
     screenshotCount: Number(raw.screenshotCount ?? raw.screenshot_count ?? 0),
     influence: Number(raw.influence ?? 0),
     memoryExamples: Number(raw.memoryExamples ?? raw.memory_examples ?? 0),

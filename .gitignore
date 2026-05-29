@@ -24,4 +24,8 @@ Thumbs.db
 .ruff_cache/
 coverage/
 .eslintcache
+# All training captures, models, and external dataset caches (never commit)
 backend/data/
+data/
+.kaggle/
+**/kaggle.json

@@ -1,0 +1,5 @@
+# Optional dependencies for external dataset ingestion (repo root).
+# Install: pip install -r requirements-datasets.txt
+pyyaml>=6.0,<7
+huggingface_hub>=0.26,<1
+datasets>=2.18,<4

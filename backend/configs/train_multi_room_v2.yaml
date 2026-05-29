@@ -1,0 +1,22 @@
+# Stronger multi-room training — more CLIP discriminators + tuned XGBoost for
+# work / gaming / relaxing separation. Requires re-extracting features after
+# prompt changes in default.yaml (run npm run train:multi-room-v2).
+extends: train_multi_room.yaml
+
+training:
+  features_path: data/features/multi_room_features_v2.csv
+
+  class_weighting: balanced
+
+  xgboost:
+    n_estimators: 1000
+    max_depth: 5
+    learning_rate: 0.04
+    subsample: 0.78
+    colsample_bytree: 0.68
+    colsample_bylevel: 0.8
+    min_child_weight: 7
+    reg_lambda: 5.5
+    reg_alpha: 0.8
+    gamma: 0.25
+    early_stopping_rounds: 60

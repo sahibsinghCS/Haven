@@ -62,6 +62,13 @@ backend/data/
 
 All under `data/` is gitignored — copy `data/` between machines if needed.
 
+**Viewing images in Cursor:** the IDE hides gitignored folders by default. Use one of:
+
+- `npm run data:open-images` — opens `backend/data/base_images/` in File Explorer / Finder
+- `npm run data:open-personal` — opens `backend/data/raw_images/`
+- Or paste in Explorer: `backend/data/base_images/work` (full path under your repo)
+- Cursor setting: **Explorer: Exclude Git Ignore** → off, then `backend/data/` appears in the sidebar
+
 ---
 
 ## Sample counts per class
@@ -135,6 +142,70 @@ python scripts/capture_video.py -o data/raw/work/mixed.mp4 -d 300
 python scripts/label_windows.py data/raw/work/mixed.mp4 -o data/labels/mixed.csv
 python scripts/extract_features.py data/raw/work/mixed.mp4 -l data/labels/mixed.csv -c configs/train_personal.yaml
 ```
+
+---
+
+## Person vs away (nobody in the room)
+
+RoomOS learns **person + activity** from labeled photos. **Away** means *no person* — empty couch, empty desk, empty bed, or you fully out of frame. That is different from “relaxing” or “work” with nobody there (a common bug).
+
+Use **two layers**:
+
+| Layer | What it does |
+|-------|----------------|
+| **Training data** | Teaches the classifier that your camera’s empty room looks like `away` |
+| **Live occupancy gate** | At runtime, if CLIP sees no person (empty couch/desk prompts win), forces `away` even when the old model guesses Work |
+
+### More rooms + poses (public pretrain)
+
+Download more stills from the internet into `data/base_images/` (many bedrooms, offices, couches — people in many poses):
+
+```powershell
+# Optional: pull extra empty-room photos only (needs network + fiftyone for Open Images)
+npm run import:base-images -- --per-class 500 --labels away
+
+# Augment + train on ~350+ images per class from many real rooms
+npm run train:expand-augs
+npm run train:multi-room
+```
+
+You already have hundreds of `away` images under `backend/data/base_images/away/` if a prior import ran; re-run `train:multi-room` after any import.
+
+### Your room + your camera (best for /live)
+
+Capture **your** empty room and **you** in each activity (different poses: sitting, lying, side angle, lights on/off):
+
+```powershell
+npm run data:init
+
+# Empty room — critical (60+ shots): leave frame, couch only, desk only, night + day
+npm run data:capture-away
+
+# You in each activity (40–60 each): work at desk, sleep in bed, couch, gaming
+npm run data:capture-stills
+
+npm run data:audit
+npm run train:my-room
+npm run demo
+```
+
+`train:my-room` weights **your** stills 12× higher than generic multi-room photos so the model learns *your* layout and when *you* are actually there.
+
+### What to capture for `away`
+
+- Nobody visible — full frame is furniture/walls only  
+- Same desk/couch/bed that falsely triggered Work or Relaxing when empty  
+- Lights on and lights dim  
+- Door open / door closed if that changes the view  
+
+### What to capture for person classes
+
+- **work** — you at desk, laptop open, several angles  
+- **sleep** — you in bed, low light  
+- **relaxing** — you on couch, no keyboard focus  
+- **gaming** — you + screen/controller  
+
+Do **not** put empty-room photos in `work/` or `relaxing/` folders.
 
 ---
 

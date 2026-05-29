@@ -20,6 +20,10 @@ See **[`DATA-COLLECTION.md`](DATA-COLLECTION.md)** for 2h / 4h / 1-day plans, sa
 
 Quick path: `npm run data:init` → `npm run data:capture-stills` → `npm run data:audit` → `npm run train:images`
 
+**Main product goal:** generic model works in a **brand-new room** (~60%+ on held-out multi-room photos); **your room** is optional self-training — see **[`COLD-START.md`](COLD-START.md)**.
+
+For **person vs away** (empty room must read as Away, not Work): see **[`DATA-COLLECTION.md` — Person vs away](DATA-COLLECTION.md#person-vs-away-nobody-in-the-room)**. Use `npm run train:multi-room` for many rooms/poses, then `npm run train:my-room` for your camera.
+
 ## Choose one path
 
 | Path | When to use | One command |
@@ -27,6 +31,71 @@ Quick path: `npm run data:init` → `npm run data:capture-stills` → `npm run d
 | **C — Demo** | Fresh clone, judges, no camera data | `npm run train:demo` |
 | **A — Images** | You have labeled photos per mood | `npm run train:images` |
 | **B — Videos** | You recorded room clips per mood | `npm run train:videos` |
+| **D — Multi-room** | Want a baseline classifier that has seen many real rooms before personalization | `npm run train:multi-room` |
+| **E — My room (weighted)** | You have stills of *your* layout and want them to dominate generic rooms | `npm run train:my-room` |
+
+### E — Your room weighted over generic data (recommended for `/live`)
+
+After you capture stills with `npm run data:capture-stills`, train with **your**
+photos at **12× row weight** and a **subsampled** multi-room prior at **1×**:
+
+```powershell
+npm run data:capture-stills
+npm run train:my-room
+```
+
+This uses `configs/train_my_room.yaml`. Personal bursts from
+`data/raw_images/<label>/` are tagged `dataset=personal_room`; optional rows from
+`data/features/multi_room_features.parquet` are capped at ~22% of the row *count*
+(but only 1× weight each), so the optimizer still sees generic rooms for
+regularization without washing out your couch angle, lighting, and desk layout.
+
+Flags:
+
+| Flag | Effect |
+|------|--------|
+| `--personal-only` | Skip multi-room parquet entirely |
+| `--personal-weight 16` | Override 12× default |
+| `--multi-weight 1` | Generic prior weight |
+
+`npm run train:images` also applies **12×** weights when `train_personal.yaml`
+has `use_row_weights: true` (personal-only, no generic merge).
+
+### D — Multi-room (recommended baseline)
+
+The bundled bootstrap model is trained on synthetic flat-color stills and does
+not generalize to real camera input. The **multi-room** path uses photos
+already imported into `backend/data/base_images/<label>/` (originally from
+Open Images v7 / Wikimedia / Zenodo via `scripts/import_base_images.py`) and
+trains a model that has seen **many different rooms** per class.
+
+```powershell
+# 1. (Optional) bulk-augment your imported images to ~350/class
+npm run train:expand-augs
+
+# 2. Train. Each image becomes a single-image burst of 5 identical frames so
+#    motion features are exactly zero and CLIP carries all the signal.
+npm run train:multi-room
+```
+
+This is wired to `configs/train_multi_room.yaml` and writes the bundle into
+`backend/data/models/latest`. The script enforces a minimum test accuracy of
+**0.78** (the npm script raises 0.78 to 0.80 inside `train_multi_room.py`
+when invoked directly via `--min-test-accuracy 0.80`).
+
+Expected metrics on the shipped image set (~350 images × 5 classes, ~615
+unique source clusters):
+
+| Split | Accuracy | Macro F1 |
+|-------|---------:|---------:|
+| Train | ~0.97 | ~0.97 |
+| Val | ~0.75 | ~0.77 |
+| Test | **~0.80** | ~0.78 |
+
+Per-class F1 (test split): `away` 0.89, `gaming` 0.89, `sleep` 0.87,
+`work` 0.64, `relaxing` 0.58. The persistent weakness is the
+`work` ↔ `relaxing` confusion (laptop on a couch could be either) —
+fix this by personalizing on `/live` with the "Teach the room" button.
 
 Unified CLI (same actions):
 

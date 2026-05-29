@@ -33,7 +33,12 @@ class TrainResult:
 
 
 def _select_feature_columns(df: pd.DataFrame) -> List[str]:
-    drop = set(FEATURE_META_COLUMNS) | {"label", "notes"}
+    drop = set(FEATURE_META_COLUMNS) | {
+        "label",
+        "notes",
+        "row_weight",
+        "dataset",
+    }
     cols = [c for c in df.columns if c not in drop]
     if not cols:
         raise ValueError("Dataframe has no feature columns after dropping metadata/label.")
@@ -109,6 +114,79 @@ def _compute_sample_weights(y: np.ndarray, mode: str) -> Optional[np.ndarray]:
     return np.array([weights[int(v)] for v in y], dtype=np.float32)
 
 
+def _apply_row_weights(
+    sw: Optional[np.ndarray],
+    train_df: pd.DataFrame,
+    train_cfg: object,
+) -> Optional[np.ndarray]:
+    """Multiply class-balanced weights by per-row ``row_weight`` (personal room vs generic)."""
+    label_mult = _cfg_get(train_cfg, "label_row_weights", None)
+    has_label_mult = isinstance(label_mult, dict) and bool(label_mult)
+    # ``label_row_weights`` is applied in _apply_label_row_weights; do not also bake
+    # the same multipliers into ``row_weight`` or work (etc.) gets squared.
+    if (
+        bool(_cfg_get(train_cfg, "use_row_weights", False))
+        and "row_weight" in train_df.columns
+        and not has_label_mult
+    ):
+        rw = train_df["row_weight"].astype(np.float32).to_numpy()
+        rw = np.clip(rw, 1e-6, None)
+        sw = rw if sw is None else sw * rw
+    return _apply_label_row_weights(sw, train_df, train_cfg)
+
+
+def _apply_label_row_weights(
+    sw: Optional[np.ndarray],
+    train_df: pd.DataFrame,
+    train_cfg: object,
+) -> Optional[np.ndarray]:
+    """Per-label multipliers from config (e.g. moderate ``work`` boost)."""
+    raw = _cfg_get(train_cfg, "label_row_weights", None)
+    if not raw or not isinstance(raw, dict):
+        return sw
+    multipliers = {str(k): float(v) for k, v in raw.items()}
+    if not multipliers:
+        return sw
+    lw = (
+        train_df["label"]
+        .astype(str)
+        .map(lambda lab: multipliers.get(lab, 1.0))
+        .astype(np.float32)
+        .to_numpy()
+    )
+    lw = np.clip(lw, 1e-6, None)
+    if sw is None:
+        return lw
+    return sw * lw
+
+
+def _cfg_get(cfg: object, key: str, default: object) -> object:
+    if cfg is None:
+        return default
+    if hasattr(cfg, "get"):
+        return cfg.get(key, default)
+    raw = getattr(cfg, "raw", None)
+    if isinstance(raw, dict):
+        return raw.get(key, default)
+    return default
+
+
+def _log_row_weight_summary(train_df: pd.DataFrame) -> None:
+    if "row_weight" not in train_df.columns:
+        return
+    if "dataset" in train_df.columns:
+        grp = train_df.groupby("dataset", dropna=False)
+        for name, part in grp:
+            wsum = float(part["row_weight"].sum())
+            log.info("Train rows dataset=%s n=%d weight_sum=%.1f", name, len(part), wsum)
+    else:
+        log.info(
+            "Train row_weight sum=%.1f (mean=%.2f)",
+            float(train_df["row_weight"].sum()),
+            float(train_df["row_weight"].mean()),
+        )
+
+
 # --- main entry ------------------------------------------------------------
 
 
@@ -167,6 +245,8 @@ def train_model(
     log.info(
         "Split sizes — train=%d val=%d test=%d", len(train_df), len(val_df), len(test_df)
     )
+    if "label" in train_df.columns:
+        log.info("Train label counts:\n%s", train_df["label"].value_counts().to_string())
     if len(train_df) == 0:
         raise ValueError("Training split is empty; check your dataset / split sizes.")
 
@@ -178,6 +258,8 @@ def train_model(
     y_test = test_df["_y"].to_numpy(dtype=np.int32) if len(test_df) else None
 
     sw = _compute_sample_weights(y_train, str(train_cfg.get("class_weighting", "balanced")))
+    sw = _apply_row_weights(sw, train_df, train_cfg)
+    _log_row_weight_summary(train_df)
 
     # XGBoost.
     from xgboost import XGBClassifier

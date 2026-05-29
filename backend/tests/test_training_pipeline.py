@@ -73,6 +73,18 @@ def test_training_smoke(tmp_path):
     assert test_or_val["accuracy"] > 0.5
 
 
+def test_apply_row_weights_multiplies_sample_weight():
+    from roomos.model.train import _apply_row_weights, _compute_sample_weights
+
+    y = np.array([0, 0, 1, 1], dtype=np.int32)
+    train_df = pd.DataFrame({"row_weight": [12.0, 12.0, 1.0, 1.0]})
+    sw = _compute_sample_weights(y, "balanced")
+    out = _apply_row_weights(sw, train_df, {"use_row_weights": True})
+    assert out is not None
+    assert out[0] > out[2]
+    assert float(out[:2].sum()) > float(out[2:].sum())
+
+
 def test_bundle_roundtrip(tmp_path):
     df = _fake_dataset()
     cfg = _train_config(tmp_path)

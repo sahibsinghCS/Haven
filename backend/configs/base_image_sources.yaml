@@ -14,6 +14,12 @@ roomos_labels:
       - People at desks
       - People reading
       - People writing
+      - Students studying
+      - Home offices
+      - Telecommuting
+      - People studying in libraries
+      - Office workers
+      - Remote workers
     zenodo_activity_terms:
       - reading
       - sitting
@@ -31,6 +37,9 @@ roomos_labels:
       - People playing video games
       - Video game players
       - Esports players
+      - Video gaming
+      - Let's Players
+      - Gaming computers
 
   sleep:
     description: People sleeping or lying in bed.
@@ -57,10 +66,9 @@ roomos_labels:
     wikimedia_categories:
       - People resting
       - People watching television
-      - People reading
-      - People sitting
-      - People in bed
-      - People lying on beds
+      - People reading on sofas
+      - People on couches
+      - Living rooms with people
       - People using mobile phones in bed
     zenodo_activity_terms:
       - sitting
@@ -80,3 +88,8 @@ roomos_labels:
       - Bedrooms
       - Offices
       - Living rooms
+      - Unoccupied desks
+      - Empty beds
+      - Empty sofas
+      - Interior design of bedrooms
+      - Home offices

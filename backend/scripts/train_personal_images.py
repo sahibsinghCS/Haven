@@ -80,6 +80,11 @@ def main(
             images = images_by_class.get(label, [])
             for burst_index, group in enumerate(_groups(images, n_frames, stride)):
                 row = _extract_image_burst(pipe, group, label, burst_index)
+                train_cfg = cfg.training
+                if bool(train_cfg.get("use_row_weights", False)):
+                    row["row_weight"] = float(train_cfg.get("default_row_weight", 12.0))
+                    row["dataset"] = "personal_room"
+                    row["source"] = f"myroom/{label}/burst_{burst_index:05d}"
                 rows.append(row)
 
     if not rows:

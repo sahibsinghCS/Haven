@@ -1,0 +1,32 @@
+# Train on YOUR room (data/raw_images) with optional generic multi-room prior.
+# Personal bursts are weighted much higher so the model follows your layout,
+# couch angle, and lighting — not random Open Images rooms.
+extends: train_personal.yaml
+
+training:
+  features_path: data/features/my_room_features.parquet
+  output_dir: data/models/latest
+
+  use_row_weights: true
+  personal_row_weight: 12.0
+  multi_room_row_weight: 1.0
+
+  # Subsample generic multi-room rows so they regularize but do not drown your room.
+  multi_room_features_path: data/features/multi_room_features.parquet
+  multi_room_max_fraction: 0.22
+
+  # Set true to train only on data/raw_images (no generic rooms).
+  personal_only: false
+
+  split:
+    strategy: by_source
+    val_size: 0.15
+    test_size: 0.15
+
+  xgboost:
+    n_estimators: 500
+    max_depth: 5
+    learning_rate: 0.06
+    min_child_weight: 4
+    reg_lambda: 3.0
+    early_stopping_rounds: 40

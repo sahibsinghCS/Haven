@@ -1,34 +1,18 @@
 extends: default.yaml
 
-# DroidCam — pick ONE (start DroidCam Client on PC *before* npm run demo):
-#
-# A) Virtual webcam (recommended while Client shows live video):
-#    npm run probe:cameras  — use the bright row (often index 1 + msmf on Windows)
+# DroidCam — virtual webcam while Client shows live video:
 video:
   source: 1
   backend: msmf
-  # ML stays light; preview can be sharper (see default.yaml preview.*)
-  capture_width: 1280
-  capture_height: 720
-  capture_fps: 30
+  frame_preprocess:
+    enabled: true
+    strip_letterbox: true
   preview:
     max_fps: 24
-    max_width: 1280
-    jpeg_quality: 90
-#
-# B) HTTP stream — only when DroidCam Client is fully quit (File → Exit).
-#    Browser must show video at the URL, not "Busy".
-# video:
-#   source: "http://192.168.1.18:4747/video"
-#   backend: any
-#
-# C) USB on same PC:
-# video:
-#   source: "http://127.0.0.1:4747/video"
-#   backend: any
+    max_width: 1920
+    jpeg_quality: 92
+    fit: cover
 
-# Match bootstrap training (data/models/latest): CLIP + motion only until
-# MediaPipe classic pose API is restored or migrated to mediapipe.tasks.
 features:
   enabled:
     clip: true
@@ -37,27 +21,58 @@ features:
     posture: false
 
 smoothing:
-  min_confidence: 0.38
-  prob_ema_alpha: 0.58
-  confirm_bursts: 1
-  cooldown_sec: 2.0
+  min_confidence: 0.40
+  prob_ema_alpha: 0.52
+  confirm_bursts: 2
+  cooldown_sec: 3.0
 
 inference:
   model_dir: data/models/latest
-  overlay: true              # draw labels onto frames
-  show_window: false         # set true for a local cv2.imshow window
-  publish_to_api: true       # push snapshots into the FastAPI broadcaster
-  snapshot_history: 60       # rolling confidence history length sent to UI
+  overlay: true
+  show_window: false
+  publish_to_api: true
+  snapshot_history: 60
   log_predictions: true
   predictions_log: data/logs/predictions.jsonl
   preferences_path: data/preferences.json
+
+  # Off by default — was flipping Away→Work before you even tapped "wrong".
+  live_presence_fixup:
+    enabled: false
+
+  activity_hints:
+    enabled: true
+    nudge_strength: 0.14
+    min_margin: 0.02
+
+  occupancy:
+    enabled: false
+
+  transitions:
+    enabled: true
+    dir: data/transitions
+    max_entries: 200
+
+  auto_retrain:
+    enabled: true
+    min_corrections: 5
+    min_interval_sec: 45
+    correction_row_weight: 3.0
+    confirmation_row_weight: 1.0
+    max_correction_rows: 60
+    max_correction_weight_fraction: 0.10
+    base_row_weight: 1.0
+    base_features_path: data/features/multi_room_features.csv
+    train_config: configs/train_multi_room.yaml
+    min_test_accuracy: 0.0
+
   feedback:
     enabled: true
     dir: data/feedback
-    # Strong personalization: corrections should visibly steer similar bursts.
-    influence: 0.85            # per-match reward scale (0–1)
-    similarity_floor: 0.42     # lower = apply more stored corrections (demo-visible)
-    nearest_k: 20
-    max_examples: 1500
-    penalty_factor: 0.72       # how hard to pull down the previously wrong label
-    personalization_blend: 0.88  # mix weight toward correction-adjusted probs (vs base XGBoost)
+    influence: 0.38
+    similarity_floor: 0.76
+    nearest_k: 5
+    max_examples: 400
+    penalty_factor: 0.45
+    personalization_blend: 0.45
+    personal_room_influence_boost: 1.1

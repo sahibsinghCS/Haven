@@ -1,0 +1,126 @@
+# Machine-readable source-label → RoomOS label mapping.
+# See docs/LABEL_MAPPING.md for rationale.
+schema_version: 1
+target_labels:
+  primary:
+    - work
+    - gaming
+    - sleep
+    - relaxing
+    - away
+  meta:
+    - uncertain
+    - discard
+
+datasets:
+  indoor_action_dataset:
+    rules:
+      - match: watching tv
+        target: relaxing
+        confidence: high
+      - match: eating
+        target: relaxing
+        confidence: medium
+        notes: Could be work if desk dining; default relaxing.
+      - match: sitting down
+        target: uncertain
+        confidence: low
+        notes: Transition pose, not steady state.
+      - match: standing up
+        target: uncertain
+        confidence: low
+      - match: walking
+        target: uncertain
+        confidence: low
+      - match: cleaning
+        target: work
+        confidence: medium
+      - match: no-action
+        target: away
+        confidence: high
+      - match: no_action
+        target: away
+        confidence: high
+      - match: lying on the floor
+        target: sleep
+        confidence: medium
+        notes: May be fall event; review for safety vs sleep.
+      - match: falling down
+        target: discard
+        confidence: high
+        notes: Out of RoomOS taxonomy (safety event).
+      - match: blowing nose or sneezing
+        target: discard
+        confidence: high
+
+  uci_occupancy_detection:
+    rules:
+      - match: "0"
+        target: away
+        confidence: high
+      - match: "1"
+        target: uncertain
+        confidence: low
+        notes: Occupied but activity unknown; not equivalent to work/gaming/sleep.
+
+  mpii_human_pose_hf:
+    default: uncertain
+    keyword_rules:
+      - patterns: ["computer", "laptop", "office", "studying", "reading document", "writing"]
+        target: work
+        confidence: medium
+      - patterns: ["sleep", "nap", "lying", "bed"]
+        target: sleep
+        confidence: medium
+      - patterns: ["tv", "television", "sofa", "couch", "resting"]
+        target: relaxing
+        confidence: medium
+      - patterns: ["game", "gaming", "video game", "console"]
+        target: gaming
+        confidence: high
+    discard_patterns: ["sports", "outdoor", "stadium", "ski", "surf"]
+
+  indoor_scene_recognition_hf:
+    default: uncertain
+    keyword_rules:
+      - patterns: ["bedroom"]
+        target: uncertain
+        confidence: low
+        notes: Scene only; person may be sleep, relaxing, or away.
+      - patterns: ["office", "computerroom", "library"]
+        target: work
+        confidence: low
+      - patterns: ["gameroom"]
+        target: gaming
+        confidence: medium
+      - patterns: ["livingroom", "tvroom", "den"]
+        target: relaxing
+        confidence: low
+      - patterns: ["corridor", "staircase", "garage", "closet", "storage"]
+        target: away
+        confidence: medium
+        notes: Often empty or transit; weak proxy for away.
+
+  toyota_smarthome:
+    default: uncertain
+    notes: Fine-grained ADL labels (31+) require manual mapping table after download; many map to work or relaxing, few to gaming.
+
+  slp_dataset:
+    rules:
+      - match: supine
+        target: sleep
+        confidence: high
+      - match: left_side
+        target: sleep
+        confidence: high
+      - match: right_side
+        target: sleep
+        confidence: high
+
+  kaggle_posture_keypoints:
+    default: uncertain
+    notes: Posture classes are body pose, not room activity; map only after inspecting label schema.
+
+  casas_hub:
+    default: uncertain
+    notes: Sensor events (motion, door) support away vs occupied weakly; not activity classification.
