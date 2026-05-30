@@ -1,19 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
-import { LIVE_PREVIEW_URL } from "@/lib/roomos/api-client"
+import { livePreviewMjpegUrl } from "@/lib/roomos/api-client"
 
 export type InferencePreviewStatus = "idle" | "waiting" | "live" | "error"
 
 /**
- * Polls the backend inference camera preview (same OpenCV source as ML bursts).
+ * Displays the backend inference camera via MJPEG (same OpenCV feed as ML).
  * Not the browser getUserMedia path.
  */
-export function useInferenceCameraPreview(enabled: boolean, pollKey?: number) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null)
+export function useInferenceCameraPreview(enabled: boolean) {
   const [status, setStatus] = useState<InferencePreviewStatus>("idle")
   const [message, setMessage] = useState<string | null>(null)
+
+  const streamSrc = enabled ? livePreviewMjpegUrl() : null
 
   useEffect(() => {
     if (!enabled) {
@@ -21,50 +22,24 @@ export function useInferenceCameraPreview(enabled: boolean, pollKey?: number) {
       setMessage(null)
       return
     }
+    setStatus("waiting")
+    setMessage("Connecting to inference camera…")
+    const t = window.setTimeout(() => {
+      setStatus((s) => (s === "waiting" ? "live" : s))
+      setMessage(null)
+    }, 1200)
+    return () => window.clearTimeout(t)
+  }, [enabled, streamSrc])
 
-    let cancelled = false
-    let currentUrl: string | null = null
+  const onStreamLoad = useCallback(() => {
+    setStatus("live")
+    setMessage(null)
+  }, [])
 
-    const poll = async () => {
-      try {
-        const res = await fetch(`${LIVE_PREVIEW_URL}?t=${Date.now()}`, {
-          cache: "no-store",
-        })
-        if (cancelled) return
-        if (res.status === 503) {
-          setStatus("waiting")
-          setMessage("Waiting for the inference camera to produce a frame…")
-          return
-        }
-        if (!res.ok) {
-          setStatus("error")
-          setMessage(`Preview unavailable (${res.status})`)
-          return
-        }
-        const blob = await res.blob()
-        if (cancelled) return
-        const next = URL.createObjectURL(blob)
-        if (currentUrl) URL.revokeObjectURL(currentUrl)
-        currentUrl = next
-        setObjectUrl(next)
-        setStatus("live")
-        setMessage(null)
-      } catch (err) {
-        if (cancelled) return
-        setStatus("error")
-        setMessage(err instanceof Error ? err.message : "Could not load inference preview")
-      }
-    }
+  const onStreamError = useCallback(() => {
+    setStatus("error")
+    setMessage("Camera preview unavailable — restart the RoomOS API (npm run dev)")
+  }, [])
 
-    void poll()
-    const timer = setInterval(poll, 80)
-
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-      if (currentUrl) URL.revokeObjectURL(currentUrl)
-    }
-  }, [enabled, pollKey])
-
-  return { objectUrl, status, message }
+  return { streamSrc, status, message, onStreamLoad, onStreamError }
 }

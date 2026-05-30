@@ -135,8 +135,8 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
           )}
         >
           <Link
-            href="/live"
-            aria-label="Haven"
+            href="/"
+            aria-label="Haven home"
             className={cn(
               "group inline-flex min-w-0 items-center gap-2.5 rounded-xl py-1 pl-1 pr-2",
               "transition-[background-color] duration-200 ease-out",

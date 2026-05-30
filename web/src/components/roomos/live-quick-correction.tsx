@@ -27,6 +27,9 @@ type PendingConfirm = {
   mode: "confirm" | "correct"
 }
 
+/** Memory/retrain badge — no need to hammer the API on every snapshot tick. */
+const FEEDBACK_STATUS_POLL_MS = 10_000
+
 /**
  * Right / wrong feedback — each tap trains room memory and counts toward auto-retrain.
  */
@@ -65,9 +68,17 @@ export function LiveQuickCorrection({
 
   useEffect(() => {
     void refreshStatus()
-    const id = window.setInterval(() => void refreshStatus(), 800)
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return
+      void refreshStatus()
+    }, FEEDBACK_STATUS_POLL_MS)
     return () => window.clearInterval(id)
-  }, [refreshStatus, lastResult?.memoryExamples, snapshot.sequence])
+  }, [refreshStatus])
+
+  useEffect(() => {
+    if (lastResult == null) return
+    void refreshStatus()
+  }, [lastResult, refreshStatus])
 
   async function submit(label: RoomStateId, mode: "confirm" | "correct") {
     if (disabled || pending) return
@@ -171,16 +182,9 @@ export function LiveQuickCorrection({
           </Link>{" "}
           (burst history).
         </p>
-      ) : (
-        <p className="mt-1 text-[11px] text-zinc-400">
-          Snapshot on tap ·{" "}
-          <Link href="/review" className="text-teal-300 hover:underline">
-            past = bursts
-          </Link>
-        </p>
-      )}
+      ) : null}
 
-      {frameCount > 0 ? (
+      {!compact && frameCount > 0 ? (
         <div className="mt-2.5">
           <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
             Live video frame (saved on tap)
@@ -188,7 +192,7 @@ export function LiveQuickCorrection({
           <FeedbackEvidenceStrip
             frameCount={1}
             cacheKey={evidenceCacheKey}
-            frameClassName={compact ? "h-16 w-28" : "h-24 w-40"}
+            frameClassName="h-24 w-40"
           />
         </div>
       ) : null}

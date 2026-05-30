@@ -225,6 +225,15 @@ def _apply_capture_format(
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
     if fps and fps > 0:
         cap.set(cv2.CAP_PROP_FPS, float(fps))
+    if width and height:
+        try:
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        except Exception:
+            pass
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
 
 
 def _open_capture(
@@ -720,6 +729,11 @@ class FrameSource:
 
             consecutive_failures = 0
             last_ok = time.monotonic()
+
+            # NOTE: We intentionally do NOT drain extra buffered frames here.
+            # Reading one frame per iteration lets the loop run at the source
+            # frame rate (e.g. 50 FPS), so the preview can emit at the full
+            # preview_fps. Latency is kept low via CAP_PROP_BUFFERSIZE=1 on open.
 
             if self.frame_preprocess:
                 frame = preprocess_frame(frame, self.frame_preprocess)

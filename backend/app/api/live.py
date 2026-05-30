@@ -8,8 +8,8 @@ from typing import Any
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from roomos.utils.logging import get_logger
@@ -71,6 +71,10 @@ def set_live_mode(req: LiveModeRequest) -> dict[str, Any]:
     return state.set_live_mode(req.mode)
 
 
+_MJPEG_BOUNDARY = "roomosframe"
+_MJPEG_FPS = 30.0
+
+
 @router.get("/preview.jpg")
 def preview_frame() -> Response:
     """Latest preview JPEG (live OpenCV feed or demo replay frame)."""
@@ -88,6 +92,37 @@ def preview_frame() -> Response:
         content=data,
         media_type="image/jpeg",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
+@router.get("/preview.mjpeg")
+async def preview_mjpeg(request: Request) -> StreamingResponse:
+    """Multipart MJPEG of the latest inference camera frame (~30 FPS)."""
+    interval = 1.0 / _MJPEG_FPS
+
+    async def generate():
+        while True:
+            if await request.is_disconnected():
+                break
+            jpeg = state.preview.latest_jpeg()
+            if jpeg:
+                header = (
+                    f"--{_MJPEG_BOUNDARY}\r\n"
+                    f"Content-Type: image/jpeg\r\n"
+                    f"Content-Length: {len(jpeg)}\r\n\r\n"
+                ).encode("latin-1")
+                yield header + jpeg + b"\r\n"
+            await asyncio.sleep(interval)
+
+    return StreamingResponse(
+        generate(),
+        media_type=f"multipart/x-mixed-replace; boundary={_MJPEG_BOUNDARY}",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

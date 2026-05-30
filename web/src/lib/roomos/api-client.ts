@@ -354,6 +354,22 @@ export type LiveEngineStatus = {
 
 export const LIVE_PREVIEW_URL = `${API_BASE}/api/live/preview.jpg`
 
+/** Same-origin in the browser (Next rewrite) to avoid CORS / connection quirks. */
+export function livePreviewUrl(): string {
+  if (typeof window !== "undefined") {
+    return "/api/live/preview.jpg"
+  }
+  return LIVE_PREVIEW_URL
+}
+
+/** MJPEG stream — one connection, ~30 FPS; much smoother than polling JPEG blobs. */
+export function livePreviewMjpegUrl(): string {
+  if (typeof window !== "undefined") {
+    return "/api/live/preview.mjpeg"
+  }
+  return `${API_BASE}/api/live/preview.mjpeg`
+}
+
 export async function fetchEngineStatus(signal?: AbortSignal): Promise<LiveEngineStatus> {
   const res = await fetch(`${API_BASE}/api/live/status`, { signal, cache: "no-store" })
   if (!res.ok) throw new Error(`status ${res.status}`)

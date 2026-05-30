@@ -182,13 +182,13 @@ class AppState:
             return
         frame = image_bgr
         h, w = frame.shape[:2]
-        max_w = max(320, int(max_width))
-        if w > max_w:
+        max_w = int(max_width)
+        if max_w > 0 and w > max_w:
             scale = max_w / float(w)
             frame = cv2.resize(
                 frame,
                 (max_w, max(1, int(round(h * scale)))),
-                interpolation=cv2.INTER_LINEAR,
+                interpolation=cv2.INTER_AREA,
             )
         try:
             mean_luma = float(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).mean())

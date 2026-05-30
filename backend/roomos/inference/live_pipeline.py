@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 from collections import deque
@@ -427,76 +428,17 @@ class LiveInferenceEngine:
         ) as fs:
             self._capture_size = getattr(fs, "_capture_size", None)
             pipe.reset_motion()
-            for sf in fs:
-                if self._stop_event.is_set():
-                    break
 
-                if fs.last_frame_shape:
-                    self._preview_frame_shape = tuple(fs.last_frame_shape)
+            # Decouple heavy ML (per-frame CLIP + burst XGBoost) from the camera
+            # read/preview loop. If inference ran inline, every burst would pause
+            # cap.read() and starve the preview stream (stutters to ~15 FPS). A
+            # bounded queue + worker thread keeps the capture loop tight so the
+            # MJPEG preview stays at the full preview_fps.
+            frame_q: "queue.Queue" = queue.Queue(maxsize=2)
+            stop_sentinel = object()
+            ml_state = {"last_pred": last_pred}
 
-                if self._first_frame_at is None:
-                    self._first_frame_at = time.monotonic()
-                    if self._boot_phase in ("starting", "opening_camera"):
-                        self._boot_phase = "warming_up"
-
-                rec = pipe.frame_to_record(
-                    image_bgr=sf.image,
-                    frame_index=sf.index,
-                    timestamp=sf.timestamp,
-                    source=sid,
-                )
-                if self._feedback_model is not None:
-                    rec.image_bgr = _feedback_screenshot(sf.image)
-                    with self._evidence_lock:
-                        self._recent_screenshots.append(rec.image_bgr)
-                with self._frame_lock:
-                    self._latest_live_frame_bgr = _feedback_screenshot(sf.image)
-                for burst in agg.push(rec):
-                    fused = pipe.fusion.fuse(burst)
-                    feats = fused.as_dict()
-                    probs = predict_proba_row(self._model, feats)
-                    if self._live_presence_fixup_enabled:
-                        if self._is_bootstrap_model:
-                            probs = _bootstrap_live_fixup(probs, feats)
-                        else:
-                            probs = _live_presence_fixup(probs, feats)
-                    occupancy = self._occupancy_gate.detect(feats)
-                    if occupancy.empty:
-                        probs = self._occupancy_gate.apply(probs, occupancy)
-                    elif occupancy.soft_empty:
-                        probs = self._occupancy_gate.apply(probs, occupancy)
-                    if not occupancy.empty:
-                        probs = self._activity_hints.apply(probs, feats)
-                    probs, personalization = self._personalize_probs(feats, probs)
-                    last_pred = self._smoother.update(probs)
-                    self._after_burst(
-                        burst,
-                        fused,
-                        probs,
-                        last_pred,
-                        personalization,
-                        occupancy=occupancy,
-                    )
-                    pipe.reset_motion()
-
-                if self._overlay and self._on_frame and last_pred is not None:
-                    self._on_frame(sf.image, last_pred)
-
-                if self._show_window and last_pred is not None:
-                    import cv2
-
-                    annotated = draw_overlay(
-                        sf.image,
-                        label=last_pred.label,
-                        confidence=last_pred.confidence,
-                        probs=last_pred.smoothed_probs,
-                        status=f"burst src={source} thr={self._smoother.min_confidence:.2f}",
-                    )
-                    cv2.imshow("roomos live", annotated)
-                    if (cv2.waitKey(1) & 0xFF) == ord("q"):
-                        self._stop_event.set()
-
-            for burst in agg.flush():
+            def _process_burst(burst) -> None:
                 fused = pipe.fusion.fuse(burst)
                 feats = fused.as_dict()
                 probs = predict_proba_row(self._model, feats)
@@ -513,16 +455,115 @@ class LiveInferenceEngine:
                 if not occupancy.empty:
                     probs = self._activity_hints.apply(probs, feats)
                 probs, personalization = self._personalize_probs(feats, probs)
-                last_pred = self._smoother.update(probs)
+                pred = self._smoother.update(probs)
+                ml_state["last_pred"] = pred
                 self._after_burst(
                     burst,
                     fused,
                     probs,
-                    last_pred,
+                    pred,
                     personalization,
                     occupancy=occupancy,
                 )
                 pipe.reset_motion()
+
+            def _ml_worker() -> None:
+                while True:
+                    try:
+                        item = frame_q.get(timeout=0.5)
+                    except queue.Empty:
+                        if self._stop_event.is_set():
+                            break
+                        continue
+                    if item is stop_sentinel:
+                        break
+                    sf = item
+                    try:
+                        rec = pipe.frame_to_record(
+                            image_bgr=sf.image,
+                            frame_index=sf.index,
+                            timestamp=sf.timestamp,
+                            source=sid,
+                        )
+                        if self._feedback_model is not None:
+                            rec.image_bgr = _feedback_screenshot(sf.image)
+                            with self._evidence_lock:
+                                self._recent_screenshots.append(rec.image_bgr)
+                        with self._frame_lock:
+                            self._latest_live_frame_bgr = _feedback_screenshot(sf.image)
+                        for burst in agg.push(rec):
+                            _process_burst(burst)
+
+                        last_pred = ml_state["last_pred"]
+                        if self._overlay and self._on_frame and last_pred is not None:
+                            self._on_frame(sf.image, last_pred)
+                        if self._show_window and last_pred is not None:
+                            import cv2
+
+                            annotated = draw_overlay(
+                                sf.image,
+                                label=last_pred.label,
+                                confidence=last_pred.confidence,
+                                probs=last_pred.smoothed_probs,
+                                status=f"burst src={source} thr={self._smoother.min_confidence:.2f}",
+                            )
+                            cv2.imshow("roomos live", annotated)
+                            if (cv2.waitKey(1) & 0xFF) == ord("q"):
+                                self._stop_event.set()
+                    except Exception as e:
+                        log.exception("ML worker frame failed: %s", e)
+
+                try:
+                    for burst in agg.flush():
+                        _process_burst(burst)
+                except Exception as e:
+                    log.exception("ML worker flush failed: %s", e)
+
+            worker = threading.Thread(
+                target=_ml_worker, name="roomos-ml", daemon=True
+            )
+            worker.start()
+
+            try:
+                for sf in fs:
+                    if self._stop_event.is_set():
+                        break
+
+                    if fs.last_frame_shape:
+                        self._preview_frame_shape = tuple(fs.last_frame_shape)
+
+                    if self._first_frame_at is None:
+                        self._first_frame_at = time.monotonic()
+                        if self._boot_phase in ("starting", "opening_camera"):
+                            self._boot_phase = "warming_up"
+
+                    # Hand the sampled frame to the ML worker without ever
+                    # blocking the capture loop. If the worker is busy, drop the
+                    # oldest queued frame so we always process the freshest one.
+                    try:
+                        frame_q.put_nowait(sf)
+                    except queue.Full:
+                        try:
+                            frame_q.get_nowait()
+                        except queue.Empty:
+                            pass
+                        try:
+                            frame_q.put_nowait(sf)
+                        except queue.Full:
+                            pass
+            finally:
+                try:
+                    frame_q.put_nowait(stop_sentinel)
+                except queue.Full:
+                    try:
+                        frame_q.get_nowait()
+                    except queue.Empty:
+                        pass
+                    try:
+                        frame_q.put_nowait(stop_sentinel)
+                    except queue.Full:
+                        pass
+                worker.join(timeout=10.0)
 
         try:
             pipe.close()

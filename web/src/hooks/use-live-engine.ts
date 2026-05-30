@@ -14,7 +14,8 @@ import {
 
 export type LiveEngineHookStatus = "idle" | "starting" | "running" | "error"
 
-const STATUS_POLL_MS = 2000
+const STATUS_POLL_BOOT_MS = 2000
+const STATUS_POLL_STREAMING_MS = 8000
 
 /**
  * Ensures the FastAPI live inference engine is running so snapshots and
@@ -34,6 +35,10 @@ export function useLiveEngineAutostart(enabled = true) {
   const [previewMeanLuma, setPreviewMeanLuma] = useState<number | null>(null)
   const [previewDark, setPreviewDark] = useState(false)
   const [previewFit, setPreviewFit] = useState<"cover" | "contain">("cover")
+  const [previewFrameShape, setPreviewFrameShape] = useState<[number, number] | null>(
+    null,
+  )
+  const [captureSize, setCaptureSize] = useState<[number, number] | null>(null)
   const [bootPhase, setBootPhase] = useState<BootPhase>("off")
   const [modelKind, setModelKind] = useState<ModelKind>("unknown")
   const [poseEnabled, setPoseEnabled] = useState<boolean | null>(null)
@@ -57,6 +62,12 @@ export function useLiveEngineAutostart(enabled = true) {
       )
       setPreviewDark(Boolean(st.preview_dark))
       setPreviewFit(st.preview_fit === "contain" ? "contain" : "cover")
+      const shape = st.preview_frame_shape
+      setPreviewFrameShape(
+        Array.isArray(shape) && shape.length === 2 ? [shape[0], shape[1]] : null,
+      )
+      const cap = st.capture_size
+      setCaptureSize(Array.isArray(cap) && cap.length === 2 ? [cap[0], cap[1]] : null)
       setBootPhase((st.boot_phase as BootPhase) ?? "off")
       setModelKind((st.model_kind as ModelKind) ?? "unknown")
       setPoseEnabled(
@@ -107,7 +118,10 @@ export function useLiveEngineAutostart(enabled = true) {
             const next = await fetchEngineStatus()
             if (cancelled) return
             applyStatus(next)
-            if (!next.engine_running) {
+            if (next.engine_running) {
+              setStatus("running")
+              setMessage(null)
+            } else {
               setStatus("error")
               setMessage(next.engine_error ?? "Engine stopped")
             }
@@ -137,6 +151,8 @@ export function useLiveEngineAutostart(enabled = true) {
     previewMeanLuma,
     previewDark,
     previewFit,
+    previewFrameShape,
+    captureSize,
     bootPhase,
     modelKind,
     poseEnabled,

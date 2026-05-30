@@ -10,7 +10,7 @@ from roomos.preferences.document import PreferenceValidationError, resolve_activ
 from roomos.preferences.store import read_preferences_document, save_preferences_document
 from roomos.utils.logging import get_logger
 
-from .api.preferences import _DEFAULT_DOC, _store_path
+from .preferences_store import DEFAULT_PREFERENCES_DOC, preferences_store_path
 from .core.preferences_events import PreferencesEvent
 from .core.state import state
 
@@ -18,18 +18,18 @@ log = get_logger("roomos.preferences.service")
 
 
 def load_preferences() -> dict[str, Any]:
-    path = _store_path()
+    path = preferences_store_path()
     if not path.exists():
-        return dict(_DEFAULT_DOC)
+        return dict(DEFAULT_PREFERENCES_DOC)
     try:
         return read_preferences_document(path)
     except Exception as e:
         log.warning("Preferences read failed (%s); using defaults.", e)
-        return dict(_DEFAULT_DOC)
+        return dict(DEFAULT_PREFERENCES_DOC)
 
 
 def save_preferences(doc: dict[str, Any]) -> dict[str, Any]:
-    return save_preferences_document(_store_path(), doc)
+    return save_preferences_document(preferences_store_path(), doc)
 
 
 def apply_and_save_preferences(
