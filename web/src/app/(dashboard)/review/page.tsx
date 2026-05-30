@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function ReviewPage() {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-zinc-800/80 bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 pb-8 text-zinc-100 shadow-inner">
+    <div className="min-h-0 flex-1 overflow-y-auto">
       <TransitionReviewPanel />
     </div>
   )

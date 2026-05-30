@@ -13,7 +13,7 @@ import {
   transitionFrameUrl,
   type StateTransitionItem,
 } from "@/lib/roomos/api-client"
-import { ROOM_STATE_ACCENT, ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
 import { ROOM_STATE_ORDER, type RoomStateId } from "@/types/roomos"
 
 function displayLabel(label: string): string {
@@ -27,6 +27,12 @@ function displayLabel(label: string): string {
 function isUiState(label: string): label is RoomStateId {
   return (ROOM_STATE_ORDER as readonly string[]).includes(label)
 }
+
+const cardShell =
+  "rounded-[1.35rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_96%,transparent)] shadow-[var(--haven-shadow-card)] ring-1 ring-[color:var(--haven-edge-light)]"
+
+const panelMuted = "text-[color:var(--haven-muted)]"
+const panelInk = "text-[color:var(--haven-ink)]"
 
 /**
  * Review past label switches: before → after with burst frames and right/wrong on the prediction.
@@ -103,11 +109,9 @@ export function TransitionReviewPanel({
 
   if (!enabled) {
     return (
-      <div className={cn(roomosUi.liveOverlayGlassTranslucent, "p-4 text-sm text-zinc-400")}>
-        <p className="font-medium text-zinc-200">Switch history unavailable</p>
-        <p className="mt-1 text-[12px] text-zinc-500">
-          {reason ?? "Start live camera mode to log transitions."}
-        </p>
+      <div className={cn(roomosUi.prefsCallout, "p-4 text-sm", panelMuted)}>
+        <p className={cn("font-medium", panelInk)}>Switch history unavailable</p>
+        <p className="mt-1 text-[12px]">{reason ?? "Start live camera mode to log transitions."}</p>
       </div>
     )
   }
@@ -118,28 +122,34 @@ export function TransitionReviewPanel({
         <div>
           <h2
             className={cn(
-              "font-semibold text-zinc-100",
-              compact ? "text-[0.68rem] uppercase tracking-[0.18em] text-zinc-400" : "text-xl",
+              "font-semibold",
+              panelInk,
+              compact ? "text-[0.68rem] uppercase tracking-[0.18em] text-[color:var(--haven-faint)]" : "haven-display text-2xl tracking-tight",
             )}
           >
             {compact ? "Recent switches" : "Review past switches"}
           </h2>
-          <p className="mt-1 text-[12px] leading-relaxed text-zinc-400">
+          <p className={cn("mt-1 text-[13px] leading-relaxed", panelMuted)}>
             Each row is one state change: what was on screen before, what it switched to, and the
-            burst frames from that moment. Mark the <strong className="text-zinc-200">right</strong>{" "}
+            burst frames from that moment. Mark the <strong className={panelInk}>right</strong>{" "}
             prediction correct or pick what it should have been.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {pending > 0 ? (
-            <span className="rounded-full border border-amber-400/30 bg-amber-950/40 px-2.5 py-0.5 text-[11px] font-medium text-amber-100">
+            <span className="rounded-full border border-[color:var(--haven-line-strong)] bg-[color:var(--haven-accent-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-[color:var(--haven-accent)]">
               {pending} to review
             </span>
           ) : null}
           {compact && pending > 0 ? (
             <Link
               href="/review"
-              className="rounded-lg border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-zinc-100 hover:bg-white/15"
+              className={cn(
+                roomosUi.focusRingLight,
+                "rounded-lg border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_92%,transparent)] px-2.5 py-1 text-[11px] font-semibold",
+                panelInk,
+                "hover:bg-[color-mix(in_oklab,#fffefb_100%,transparent)]",
+              )}
             >
               Review all
             </Link>
@@ -147,7 +157,12 @@ export function TransitionReviewPanel({
           <button
             type="button"
             onClick={() => void refresh()}
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10"
+            className={cn(
+              roomosUi.focusRingLight,
+              "inline-flex size-8 items-center justify-center rounded-lg border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_92%,transparent)]",
+              panelMuted,
+              "hover:text-[color:var(--haven-ink)]",
+            )}
             aria-label="Refresh switch list"
           >
             <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
@@ -156,13 +171,19 @@ export function TransitionReviewPanel({
       </header>
 
       {loading && items.length === 0 ? (
-        <p className="flex items-center gap-2 text-sm text-zinc-500">
+        <p className={cn("flex items-center gap-2 text-sm", panelMuted)}>
           <Loader2 className="size-4 animate-spin" /> Loading switches…
         </p>
       ) : items.length === 0 ? (
-        <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-center text-sm text-zinc-400">
-          No switches logged yet. Stay on <strong className="text-zinc-200">Live camera</strong>{" "}
-          until the primary state changes (e.g. relaxing → sleep).
+        <p
+          className={cn(
+            cardShell,
+            "px-4 py-6 text-center text-sm",
+            panelMuted,
+          )}
+        >
+          No switches logged yet. Stay on <strong className={panelInk}>Live camera</strong> until the
+          primary state changes (e.g. relaxing → sleep).
         </p>
       ) : (
         <ul className={cn("space-y-4", compact && "space-y-3")}>
@@ -198,47 +219,41 @@ function TransitionCard({
   const confidencePct = Math.round(t.confidence * 100)
 
   return (
-    <li className="overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/60 backdrop-blur-md">
-      <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-2.5">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+    <li className={cn(cardShell, "overflow-hidden")}>
+      <div className="flex items-center justify-between border-b border-[color:var(--haven-line)] px-4 py-2.5">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--haven-faint)]">
           State switch
         </span>
-        <time className="font-mono text-[10px] text-zinc-500">{formatTime(t.capturedAt)}</time>
+        <time className="font-mono text-[10px] text-[color:var(--haven-faint)]">
+          {formatTime(t.capturedAt)}
+        </time>
       </div>
 
-      {/* Before → After */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2 border-b border-white/[0.06] p-3 sm:gap-3 sm:p-4">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2 border-b border-[color:var(--haven-line)] p-3 sm:gap-3 sm:p-4">
         <StateColumn
-          role="before"
           label={fromUi ? ROOM_STATE_LABEL[fromUi] : displayLabel(t.fromLabel)}
-          stateId={fromUi}
           caption="Before"
           subcaption="What was on screen"
           muted
         />
         <div className="flex flex-col items-center justify-center px-0.5 sm:px-1">
-          <ArrowRight
-            className="size-6 text-teal-400/90 sm:size-7"
-            aria-hidden
-          />
-          <span className="mt-1 text-[9px] font-medium uppercase tracking-wider text-zinc-600">
+          <ArrowRight className={cn("size-6 sm:size-7", "text-[color:var(--haven-accent)]")} aria-hidden />
+          <span className="mt-1 text-[9px] font-medium uppercase tracking-wider text-[color:var(--haven-faint)]">
             switched
           </span>
         </div>
         <StateColumn
-          role="prediction"
           label={predicted ? ROOM_STATE_LABEL[predicted] : displayLabel(t.toLabel)}
-          stateId={predicted}
           caption="Switched to"
           subcaption={`Prediction · ${confidencePct}%`}
           emphasis
         />
       </div>
 
-      <div className="border-b border-white/[0.06] px-3 py-2 sm:px-4">
-        <p className="text-[10px] text-zinc-500">
+      <div className="border-b border-[color:var(--haven-line)] px-3 py-2 sm:px-4">
+        <p className={cn("text-[10px]", panelMuted)}>
           Burst frames when it switched to{" "}
-          <span className="font-medium text-zinc-300">
+          <span className={cn("font-medium", panelInk)}>
             {predicted ? ROOM_STATE_LABEL[predicted] : displayLabel(t.toLabel)}
           </span>
         </p>
@@ -250,7 +265,7 @@ function TransitionCard({
               src={transitionFrameUrl(t.id, idx)}
               alt={`Frame ${idx} at switch to ${displayLabel(t.toLabel)}`}
               className={cn(
-                "shrink-0 rounded-lg border border-white/10 object-cover",
+                "shrink-0 rounded-lg border border-[color:var(--haven-line-strong)] bg-[color:var(--haven-canvas-mist)] object-cover",
                 compact ? "h-16 w-[5.5rem]" : "h-20 w-28 sm:h-24 sm:w-32",
               )}
               loading="lazy"
@@ -262,9 +277,9 @@ function TransitionCard({
       <div className="px-4 py-3">
         {predicted ? (
           <>
-            <p className="text-[11px] text-zinc-400">
+            <p className={cn("text-[12px]", panelMuted)}>
               Was switching to{" "}
-              <span className="font-semibold text-zinc-100">{ROOM_STATE_LABEL[predicted]}</span>{" "}
+              <span className={cn("font-semibold", panelInk)}>{ROOM_STATE_LABEL[predicted]}</span>{" "}
               correct?
             </p>
             <button
@@ -272,8 +287,10 @@ function TransitionCard({
               disabled={busy}
               onClick={() => onRelabel(predicted)}
               className={cn(
-                "mt-2 flex w-full min-h-10 items-center justify-center gap-2 rounded-xl border border-emerald-400/30",
-                "bg-emerald-950/40 px-3 py-2 text-[12px] font-semibold text-emerald-50 hover:bg-emerald-950/55",
+                roomosUi.focusRingLight,
+                "mt-2 flex w-full min-h-10 items-center justify-center gap-2 rounded-xl border border-[color:var(--haven-line-strong)]",
+                "bg-[color:var(--haven-accent-soft)] px-3 py-2 text-[12px] font-semibold text-[color:var(--haven-accent)]",
+                "hover:border-[color:var(--haven-accent)]/40",
                 busy && "opacity-60",
               )}
             >
@@ -284,41 +301,33 @@ function TransitionCard({
               )}
               Yes — {ROOM_STATE_LABEL[predicted]}
             </button>
-            <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-500">
+            <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--haven-faint)]">
               No — it should have switched to
             </p>
-            <div
-              className="mt-2 flex flex-wrap gap-2"
-              role="group"
-              aria-label="Correct switch target"
-            >
-              {ROOM_STATE_ORDER.filter((s) => s !== predicted).map((state) => {
-                const accent = ROOM_STATE_ACCENT[state]
-                return (
-                  <button
-                    key={state}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onRelabel(state)}
-                    className={cn(
-                      "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5",
-                      "text-[12px] font-semibold text-zinc-100 hover:bg-white/12",
-                      busy && "opacity-60",
-                    )}
-                  >
-                    {busy ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <span className={cn("size-2 rounded-full", accent.bar)} />
-                    )}
-                    {ROOM_STATE_LABEL[state]}
-                  </button>
-                )
-              })}
+            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Correct switch target">
+              {ROOM_STATE_ORDER.filter((s) => s !== predicted).map((state) => (
+                <button
+                  key={state}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onRelabel(state)}
+                  className={cn(
+                    roomosUi.focusRingLight,
+                    "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[color:var(--haven-line-strong)]",
+                    "bg-[color-mix(in_oklab,#fffefb_92%,transparent)] px-3 py-1.5 text-[12px] font-semibold",
+                    panelInk,
+                    "hover:border-[color:var(--haven-accent)]/35 hover:bg-[color:var(--haven-accent-soft)]",
+                    busy && "opacity-60",
+                  )}
+                >
+                  {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                  {ROOM_STATE_LABEL[state]}
+                </button>
+              ))}
             </div>
           </>
         ) : (
-          <p className="text-[12px] text-zinc-400">
+          <p className={cn("text-[12px]", panelMuted)}>
             Unknown prediction label — pick the activity that matches the frames above.
           </p>
         )}
@@ -328,50 +337,41 @@ function TransitionCard({
 }
 
 function StateColumn({
-  role,
   label,
-  stateId,
   caption,
   subcaption,
   emphasis,
   muted,
 }: {
-  role: "before" | "prediction"
   label: string
-  stateId: RoomStateId | null
   caption: string
   subcaption: string
   emphasis?: boolean
   muted?: boolean
 }) {
-  const accent = stateId ? ROOM_STATE_ACCENT[stateId] : null
   return (
     <div
       className={cn(
         "flex min-h-[5.5rem] flex-col rounded-xl border px-3 py-2.5 sm:min-h-[6rem] sm:px-4 sm:py-3",
         emphasis
-          ? "border-teal-400/25 bg-teal-950/35"
-          : "border-white/[0.08] bg-white/[0.04]",
+          ? "border-[color:var(--haven-accent)]/35 bg-[color:var(--haven-accent-soft)]"
+          : "border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_88%,transparent)]",
       )}
       aria-label={`${caption}: ${label}`}
-      data-role={role}
     >
-      <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+      <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--haven-faint)]">
         {caption}
       </span>
       <div className="mt-1.5 flex flex-1 flex-col justify-center gap-1">
         <span
           className={cn(
-            "inline-flex items-center gap-2 text-[14px] font-semibold leading-tight sm:text-[15px]",
-            emphasis ? "text-teal-50" : muted ? "text-zinc-300" : "text-zinc-100",
+            "text-[14px] font-semibold leading-tight sm:text-[15px]",
+            emphasis ? "text-[color:var(--haven-accent)]" : muted ? "text-[color:var(--haven-muted)]" : panelInk,
           )}
         >
-          {accent ? (
-            <span className={cn("size-2.5 shrink-0 rounded-full", accent.bar)} aria-hidden />
-          ) : null}
           {label}
         </span>
-        <span className="text-[10px] text-zinc-500">{subcaption}</span>
+        <span className="text-[10px] text-[color:var(--haven-faint)]">{subcaption}</span>
       </div>
     </div>
   )

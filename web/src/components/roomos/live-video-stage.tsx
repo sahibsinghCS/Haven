@@ -4,7 +4,6 @@ import Link from "next/link"
 import { useState } from "react"
 import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react"
 
-import { LiveDemoStatusBar } from "@/components/roomos/live-demo-status-bar"
 import { PreferencesTelegramBanner } from "@/components/roomos/preferences-telegram-banner"
 import { TelegramCorrectionBanner } from "@/components/roomos/telegram-correction-banner"
 import { LiveModeControl } from "@/components/roomos/live-mode-control"
@@ -13,7 +12,6 @@ import { PrimaryStateOverlay } from "@/components/roomos/primary-state-overlay"
 import { SecondaryStateConfidence } from "@/components/roomos/secondary-state-confidence"
 import { useInferenceCameraPreview } from "@/hooks/use-inference-camera-preview"
 import type { LiveEngineHookStatus } from "@/hooks/use-live-engine"
-import type { LiveInferenceStatus } from "@/hooks/use-live-inference"
 import type { LiveMode, ModelKind } from "@/lib/roomos/api-client"
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
@@ -27,8 +25,6 @@ import type { LiveInferenceSnapshot } from "@/types/roomos"
 export function LiveVideoStage({
   snapshot,
   engineStatus = "running",
-  inferenceSource = null,
-  connectionStatus = "live",
   liveMode = "live",
   demoMode = false,
   previewDark = false,
@@ -43,8 +39,6 @@ export function LiveVideoStage({
 }: {
   snapshot: LiveInferenceSnapshot
   engineStatus?: LiveEngineHookStatus
-  inferenceSource?: string | null
-  connectionStatus?: LiveInferenceStatus
   liveMode?: LiveMode
   demoMode?: boolean
   previewDark?: boolean
@@ -135,23 +129,17 @@ export function LiveVideoStage({
         </div>
       ) : null}
 
-      {/* Top status — slim */}
-      <div className="pointer-events-auto absolute inset-x-0 top-0 z-20 p-2 sm:p-3">
-        <div className="flex items-start justify-between gap-2">
-          <LiveDemoStatusBar
-            engineStatus={engineStatus}
-            inferenceSource={inferenceSource}
-            connectionStatus={connectionStatus}
-            snapshot={snapshot}
-            previewStatus={preview.status}
-            liveMode={liveMode}
-            demoMode={demoMode}
-          />
-          {onModeChanged ? (
-            <LiveModeControl liveMode={liveMode} onModeChanged={onModeChanged} />
-          ) : null}
+      {isReplay ? (
+        <p className="pointer-events-none absolute inset-x-0 top-2 z-20 text-center text-[12px] font-medium text-amber-200/95">
+          Demo replay — not live camera
+        </p>
+      ) : null}
+
+      {onModeChanged ? (
+        <div className="pointer-events-auto absolute right-2 top-2 z-20 sm:right-3 sm:top-3">
+          <LiveModeControl liveMode={liveMode} onModeChanged={onModeChanged} />
         </div>
-      </div>
+      ) : null}
 
       {/* Bottom dock — only this scrolls if needed */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[min(48vh,420px)] flex-col justify-end">

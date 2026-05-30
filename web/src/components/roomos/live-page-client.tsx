@@ -76,8 +76,6 @@ export function LivePageClient() {
       <LiveVideoStage
         snapshot={snapshot}
         engineStatus={engine.status}
-        inferenceSource={engine.inferenceSource}
-        connectionStatus={live.status}
         liveMode={engine.liveMode}
         demoMode={engine.demoMode}
         previewDark={engine.previewDark}
