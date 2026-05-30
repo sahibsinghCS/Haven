@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 # Must match web/src/types/roomos.ts ROOM_STATE_ORDER
 _UI_STATE_ORDER = ("sleep", "gaming", "work", "relaxing", "away")
+ROOM_STATE_ORDER: tuple[str, ...] = _UI_STATE_ORDER
 
 
 class PreferenceValidationError(ValueError):

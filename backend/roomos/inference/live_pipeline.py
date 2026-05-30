@@ -15,7 +15,7 @@ import numpy as np
 from ..actions.engine import ActionEngine
 from ..config import Config, load_actions_config
 from ..dataset.builder import FeatureExtractionPipeline
-from ..features import BurstAggregator
+from ..features import BurstAggregator, FrameBurst
 from ..model.predict import predict_proba_row
 from ..model.registry import ActivityModel, load_model_bundle
 from ..personalization import (
@@ -282,6 +282,11 @@ class LiveInferenceEngine:
         self._evidence_lock = threading.RLock()
         self._latest_evidence: Optional[dict] = None
         self._recent_screenshots: Deque[np.ndarray] = deque(maxlen=5)
+        self._frame_lock = threading.RLock()
+        self._latest_live_frame_bgr: Optional[np.ndarray] = None
+        self._latest_snapshot: Optional[LiveSnapshot] = None
+        self._pipe_lock = threading.RLock()
+        self._feedback_pipe: Optional[FeatureExtractionPipeline] = None
         self._run_error: Optional[str] = None
 
         transitions_cfg = dict(infer_cfg.get("transitions", {}) or {})
@@ -444,6 +449,8 @@ class LiveInferenceEngine:
                     rec.image_bgr = _feedback_screenshot(sf.image)
                     with self._evidence_lock:
                         self._recent_screenshots.append(rec.image_bgr)
+                with self._frame_lock:
+                    self._latest_live_frame_bgr = _feedback_screenshot(sf.image)
                 for burst in agg.push(rec):
                     fused = pipe.fusion.fuse(burst)
                     feats = fused.as_dict()
@@ -580,6 +587,9 @@ class LiveInferenceEngine:
             automation_mode=automation_mode,
         )
 
+        with self._evidence_lock:
+            self._latest_snapshot = snap
+
         self._remember_evidence(now_iso, burst, fused, snap, personalization)
 
         if pred.switched:
@@ -656,32 +666,133 @@ class LiveInferenceEngine:
                 "personalization": dict(personalization or {}),
             }
 
-    def record_feedback(self, *, corrected_label: str, notes: str = "") -> dict:
+    def evidence_payload(self) -> dict:
+        """Metadata for the live snapshot that /live feedback would persist."""
+        with self._frame_lock:
+            has_frame = self._latest_live_frame_bgr is not None
+        if not has_frame:
+            return {"available": False, "captureMode": "snapshot"}
+        snap = None
+        with self._evidence_lock:
+            snap = self._latest_snapshot
+        primary = ""
+        confidence = 0.0
+        if isinstance(snap, LiveSnapshot):
+            primary = str(snap.primary_state)
+            confidence = float(snap.primary_confidence)
+        return {
+            "available": True,
+            "captureMode": "snapshot",
+            "capturedAt": snap.captured_at if isinstance(snap, LiveSnapshot) else None,
+            "primaryState": primary,
+            "confidence": confidence,
+            "frameCount": 1,
+        }
+
+    def evidence_frame_jpeg(self, frame_index: int) -> Optional[bytes]:
+        """1-based JPEG for the live preview frame used by /live feedback."""
+        if frame_index != 1:
+            return None
+        with self._frame_lock:
+            frame = None if self._latest_live_frame_bgr is None else self._latest_live_frame_bgr.copy()
+        if frame is None:
+            return None
+        try:
+            import cv2
+
+            ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+            if not ok:
+                return None
+            return buf.tobytes()
+        except Exception as e:
+            log.debug("Failed to encode live snapshot frame: %s", e)
+            return None
+
+    def feedback_correction_jpeg(self, correction_id: str) -> Optional[bytes]:
+        """JPEG from a saved feedback correction folder."""
+        if self._feedback_model is None:
+            return None
+        cid = str(correction_id or "").strip()
+        if not cid or "/" in cid or "\\" in cid or ".." in cid:
+            return None
+        event_dir = self._feedback_model.screenshot_dir / cid
+        if not event_dir.is_dir():
+            return None
+        for name in ("frame_01.jpg", "frame_02.jpg"):
+            path = event_dir / name
+            if path.is_file():
+                try:
+                    return path.read_bytes()
+                except OSError as e:
+                    log.debug("Could not read %s: %s", path, e)
+        return None
+
+    def _features_from_snapshot_frame(
+        self, image_bgr: np.ndarray
+    ) -> tuple[dict[str, float], list[np.ndarray]]:
+        """Extract one fused feature row + evidence image from the current video frame."""
+        shot = _feedback_screenshot(image_bgr)
+        with self._pipe_lock:
+            if self._feedback_pipe is None:
+                self._feedback_pipe = FeatureExtractionPipeline(self.config)
+                self._feedback_pipe.load()
+            self._feedback_pipe.reset_motion()
+            ts = time.time()
+            rec = self._feedback_pipe.frame_to_record(
+                image_bgr=image_bgr.copy(),
+                frame_index=0,
+                timestamp=ts,
+                source="live_snapshot",
+            )
+            burst = FrameBurst(
+                start_time=ts,
+                end_time=ts,
+                source="live_snapshot",
+                frames=[rec],
+                burst_index=0,
+            )
+            fused = self._feedback_pipe.fusion.fuse(burst)
+        return fused.as_dict(), [shot]
+
+    def record_feedback(
+        self,
+        *,
+        corrected_label: str,
+        notes: str = "",
+        metadata: Optional[Mapping[str, object]] = None,
+    ) -> dict:
         if self._feedback_model is None:
             raise RuntimeError("Feedback personalization is disabled.")
+
+        with self._frame_lock:
+            frame = None if self._latest_live_frame_bgr is None else self._latest_live_frame_bgr.copy()
+        if frame is None:
+            raise RuntimeError("No camera frame available yet — wait for the live preview.")
+
         with self._evidence_lock:
-            evidence = dict(self._latest_evidence or {})
-        if not evidence:
-            raise RuntimeError("No live inference evidence is available yet.")
-        snap = evidence.get("snapshot")
+            snap = self._latest_snapshot
         if not isinstance(snap, LiveSnapshot):
-            raise RuntimeError("Latest inference evidence is incomplete.")
-        features = dict(evidence.get("features", {}))
+            raise RuntimeError("No live snapshot available yet.")
+
+        features, screenshots = self._features_from_snapshot_frame(frame)
         raw_probs = dict(snap.model_probs) if snap.model_probs else dict(snap.distribution)
 
         before_probs, before_info = self._feedback_model.adjust_probabilities(features, raw_probs)
+        meta: Dict[str, object] = {
+            "capture_mode": "snapshot",
+            "captured_at": snap.captured_at,
+            "personalization": dict(snap.personalization or {}),
+        }
+        if metadata:
+            meta.update(dict(metadata))
         correction = self._feedback_model.record_correction(
             predicted_label=snap.primary_state,
             corrected_label=corrected_label,
             confidence=snap.primary_confidence,
             features=features,
-            screenshots_bgr=evidence.get("screenshots", []),
+            screenshots_bgr=screenshots,
             notes=notes,
-            metadata={
-                "captured_at": evidence.get("captured_at"),
-                "burst": evidence.get("metadata", {}),
-                "personalization": evidence.get("personalization", {}),
-            },
+            metadata=meta,
         )
         after_probs, after_info = self._feedback_model.adjust_probabilities(features, raw_probs)
         if correction.predicted_label == correction.corrected_label:
@@ -699,10 +810,12 @@ class LiveInferenceEngine:
                 correction.corrected_label,
                 self._feedback_model.count,
             )
-        self._notify_auto_retrain()
+        self._notify_live_snapshot_retrain()
         return {
             "correction": correction,
             "memory_examples": self._feedback_model.count,
+            "capture_mode": "snapshot",
+            "screenshot_count": len(screenshots),
             "probability_preview": {
                 "before": {k: round(float(before_probs.get(k, 0.0)), 4) for k in self._ui_classes},
                 "after": {k: round(float(after_probs.get(k, 0.0)), 4) for k in self._ui_classes},
@@ -736,6 +849,10 @@ class LiveInferenceEngine:
         if self._auto_retrainer is not None:
             self._auto_retrainer.notify_correction()
 
+    def _notify_live_snapshot_retrain(self) -> None:
+        if self._auto_retrainer is not None:
+            self._auto_retrainer.notify_live_snapshot()
+
     def auto_retrain_status(self) -> dict:
         if self._auto_retrainer is None:
             return {"enabled": False}
@@ -752,6 +869,7 @@ class LiveInferenceEngine:
             payload = self._feedback_model.status_payload()
             payload["enabled"] = True
             payload["has_evidence"] = self._latest_evidence is not None
+        payload["evidence"] = self.evidence_payload()
         if self._transition_journal is not None:
             payload["transitions"] = self._transition_journal.status_payload()
         else:

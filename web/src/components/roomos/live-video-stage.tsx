@@ -5,6 +5,8 @@ import { useState } from "react"
 import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react"
 
 import { LiveDemoStatusBar } from "@/components/roomos/live-demo-status-bar"
+import { PreferencesTelegramBanner } from "@/components/roomos/preferences-telegram-banner"
+import { TelegramCorrectionBanner } from "@/components/roomos/telegram-correction-banner"
 import { LiveModeControl } from "@/components/roomos/live-mode-control"
 import { LiveQuickCorrection } from "@/components/roomos/live-quick-correction"
 import { PrimaryStateOverlay } from "@/components/roomos/primary-state-overlay"
@@ -15,6 +17,8 @@ import type { LiveInferenceStatus } from "@/hooks/use-live-inference"
 import type { LiveMode, ModelKind } from "@/lib/roomos/api-client"
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
+import type { LiveFeedbackEvent } from "@/types/feedback-event"
+import type { LivePreferencesEvent } from "@/types/preferences-event"
 import type { LiveInferenceSnapshot } from "@/types/roomos"
 
 /**
@@ -32,6 +36,10 @@ export function LiveVideoStage({
   previewFit = "cover",
   modelKind = "unknown",
   onModeChanged,
+  feedbackEvent = null,
+  onDismissFeedbackEvent,
+  preferencesEvent = null,
+  onDismissPreferencesEvent,
 }: {
   snapshot: LiveInferenceSnapshot
   engineStatus?: LiveEngineHookStatus
@@ -44,6 +52,10 @@ export function LiveVideoStage({
   previewFit?: "cover" | "contain"
   modelKind?: ModelKind
   onModeChanged?: () => void
+  feedbackEvent?: LiveFeedbackEvent | null
+  onDismissFeedbackEvent?: () => void
+  preferencesEvent?: LivePreferencesEvent | null
+  onDismissPreferencesEvent?: () => void
 }) {
   const [dockOpen, setDockOpen] = useState(true)
   const isReplay = demoMode || liveMode === "replay" || snapshot.dataSource === "demo-replay"
@@ -96,6 +108,17 @@ export function LiveVideoStage({
             ? "Connecting to inference camera…"
             : preview.message}
         </p>
+      ) : null}
+
+      {feedbackEvent && onDismissFeedbackEvent ? (
+        <TelegramCorrectionBanner event={feedbackEvent} onDismiss={onDismissFeedbackEvent} />
+      ) : null}
+
+      {preferencesEvent && onDismissPreferencesEvent ? (
+        <PreferencesTelegramBanner
+          event={preferencesEvent}
+          onDismiss={onDismissPreferencesEvent}
+        />
       ) : null}
 
       {(showBootstrapBanner || showDarkWarning) && !isReplay ? (

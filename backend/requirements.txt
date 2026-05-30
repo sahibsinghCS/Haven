@@ -6,6 +6,8 @@ websockets>=14,<16
 pydantic-settings>=2.7,<3
 httpx>=0.28,<1
 python-dotenv>=1.0,<2
+openai>=1.40,<2
+python-telegram-bot>=21,<22
 
 # --- CLI / config -----------------------------------------------------------
 typer>=0.12,<1

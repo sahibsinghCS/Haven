@@ -6,6 +6,7 @@ just for HTTP serving knobs and the path to the YAML to load at startup.
 
 from __future__ import annotations
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,6 +36,24 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://localhost:5173",
     ]
+
+    # Telegram + OpenAI (see docs/TELEGRAM.md)
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_allowed_chat_ids: str = ""
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+
+    @field_validator("telegram_enabled", mode="before")
+    @classmethod
+    def _coerce_telegram_enabled(cls, value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return False
 
 
 settings = Settings()

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
@@ -20,6 +20,7 @@ import {
   preferenceMatrixSchema,
   type PreferenceMatrixFormValues,
 } from "@/lib/roomos/preferences-schema"
+import { usePreferencesWsRefresh } from "@/hooks/use-preferences-ws-refresh"
 import { loadRoomOsPreferences } from "@/lib/roomos/preferences-persistence"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
@@ -84,6 +85,12 @@ export function PreferencesPageClient() {
   useEffect(() => {
     if (docQuery.data) hydrate(docQuery.data.doc)
   }, [docQuery.data, hydrate])
+
+  const refetchFromTelegram = useCallback(() => {
+    void docQuery.refetch()
+  }, [docQuery])
+
+  usePreferencesWsRefresh(refetchFromTelegram, docQuery.data?.apiOnline !== false)
 
   const activePreset = useMemo(() => {
     if (!presets || !activePresetId) return null

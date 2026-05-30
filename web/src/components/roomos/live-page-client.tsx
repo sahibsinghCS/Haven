@@ -85,6 +85,10 @@ export function LivePageClient() {
         previewFit={engine.previewFit}
         modelKind={engine.modelKind}
         onModeChanged={engine.refreshStatus}
+        feedbackEvent={live.lastFeedbackEvent}
+        onDismissFeedbackEvent={live.dismissFeedbackEvent}
+        preferencesEvent={live.lastPreferencesEvent}
+        onDismissPreferencesEvent={live.dismissPreferencesEvent}
       />
     </div>
   )

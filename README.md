@@ -45,14 +45,7 @@
 ```bash
 git clone <repo-url> && cd RoomOS
 npm install && npm install --prefix web
-
-cd backend
-python -m venv .venv
-# Windows:  .venv\Scripts\activate
-# macOS/Linux:  source .venv/bin/activate
-pip install -r requirements.txt
-cd ..
-
+npm run setup:venv     # Python 3.11 venv + pip (use this on Windows — not bare python -m venv)
 npm run setup:model    # synthetic demo model; downloads OpenCLIP once
 npm run train:verify   # optional but recommended
 ```

@@ -23,6 +23,8 @@ from roomos.model.registry import MODEL_ARTIFACT_FILES
 from roomos.utils.logging import get_logger
 
 from .config import settings
+from .feedback_events import FeedbackEventHub
+from .preferences_events import PreferencesEventHub
 
 log = get_logger("roomos.app.state")
 
@@ -157,6 +159,8 @@ class AppState:
         self.engine_compat_report: Optional[dict] = None
         self.inference_source: Optional[str] = None
         self.hub: SnapshotHub = SnapshotHub()
+        self.feedback_hub: FeedbackEventHub = FeedbackEventHub()
+        self.preferences_hub: PreferencesEventHub = PreferencesEventHub()
         self.preview: PreviewHub = PreviewHub()
 
     @property

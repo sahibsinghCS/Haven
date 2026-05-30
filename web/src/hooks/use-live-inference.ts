@@ -1,14 +1,17 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
   API_BASE,
   WS_SNAPSHOT_URL,
   fetchLiveSnapshot,
   normalizeSnapshot,
+  parseLiveWsMessage,
 } from "@/lib/roomos/api-client"
 import { createRoomSocket } from "@/lib/realtime"
+import type { LiveFeedbackEvent } from "@/types/feedback-event"
+import type { LivePreferencesEvent } from "@/types/preferences-event"
 import type { LiveInferenceSnapshot } from "@/types/roomos"
 
 export type LiveInferenceStatus =
@@ -22,6 +25,12 @@ export interface UseLiveInferenceResult {
   status: LiveInferenceStatus
   /** Latest error message, if any. */
   message: string | null
+  /** Fires when Telegram or web saves a correction (WebSocket push). */
+  lastFeedbackEvent: LiveFeedbackEvent | null
+  dismissFeedbackEvent: () => void
+  /** Fires when Telegram updates preferences (WebSocket push). */
+  lastPreferencesEvent: LivePreferencesEvent | null
+  dismissPreferencesEvent: () => void
 }
 
 const POLL_MS = 2000
@@ -56,7 +65,19 @@ export function useLiveInference(): UseLiveInferenceResult {
   const [snapshot, setSnapshot] = useState<LiveInferenceSnapshot | null>(null)
   const [status, setStatus] = useState<LiveInferenceStatus>("connecting")
   const [message, setMessage] = useState<string | null>(null)
+  const [lastFeedbackEvent, setLastFeedbackEvent] = useState<LiveFeedbackEvent | null>(null)
+  const [lastPreferencesEvent, setLastPreferencesEvent] = useState<LivePreferencesEvent | null>(null)
   const lastSeqRef = useRef<number>(0)
+  const lastFeedbackIdRef = useRef<string>("")
+  const lastPreferencesAtRef = useRef<string>("")
+
+  const dismissFeedbackEvent = useCallback(() => {
+    setLastFeedbackEvent(null)
+  }, [])
+
+  const dismissPreferencesEvent = useCallback(() => {
+    setLastPreferencesEvent(null)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -82,12 +103,32 @@ export function useLiveInference(): UseLiveInferenceResult {
       }
     }
 
+    const onWsPayload = (raw: unknown) => {
+      const parsed = parseLiveWsMessage(raw)
+      if (!parsed) return
+      if (parsed.kind === "snapshot") {
+        onSnap(parsed.snapshot)
+        return
+      }
+      if (parsed.kind === "feedback") {
+        if (parsed.event.correctionId === lastFeedbackIdRef.current) return
+        lastFeedbackIdRef.current = parsed.event.correctionId
+        setLastFeedbackEvent(parsed.event)
+        return
+      }
+      if (parsed.kind === "preferences") {
+        if (parsed.event.updatedAt === lastPreferencesAtRef.current) return
+        lastPreferencesAtRef.current = parsed.event.updatedAt
+        setLastPreferencesEvent(parsed.event)
+      }
+    }
+
     const socket = createRoomSocket(WS_SNAPSHOT_URL, {
       onOpen: () => {
         if (cancelled) return
         setMessage(null)
       },
-      onMessage: (data) => onSnap(data),
+      onMessage: (data) => onWsPayload(data),
       onError: () => {
         if (cancelled) return
         setStatus((s) => (s === "live" ? s : "error"))
@@ -137,5 +178,13 @@ export function useLiveInference(): UseLiveInferenceResult {
     }
   }, [])
 
-  return { snapshot, status, message }
+  return {
+    snapshot,
+    status,
+    message,
+    lastFeedbackEvent,
+    dismissFeedbackEvent,
+    lastPreferencesEvent,
+    dismissPreferencesEvent,
+  }
 }

@@ -129,7 +129,9 @@ def load_transition_correction_rows(
         log.warning("Could not read %s: %s", index_path, e)
         return []
 
-    entries = data.get("entries", []) if isinstance(data, dict) else []
+    entries = data.get("transitions") or data.get("entries") or []
+    if not isinstance(entries, list):
+        entries = []
     rows: List[dict[str, Any]] = []
     for i, rec in enumerate(entries):
         if not isinstance(rec, dict):
@@ -197,26 +199,43 @@ def build_correction_dataframe(
     feedback_dir: Path,
     transitions_dir: Path,
     feature_columns: Sequence[str],
-    correction_row_weight: float = 3.0,
+    correction_row_weight: float = 1.0,
     confirmation_row_weight: Optional[float] = None,
     max_correction_rows: int = 80,
 ) -> pd.DataFrame:
     """All user-confirmed labels as feature rows (no duplicate merge)."""
     rows: List[dict[str, Any]] = []
-    rows.extend(
-        load_feedback_correction_rows(
-            feedback_dir,
-            feature_columns=feature_columns,
-            row_weight=correction_row_weight,
-            confirmation_row_weight=confirmation_row_weight,
-        )
+    feedback_rows = load_feedback_correction_rows(
+        feedback_dir,
+        feature_columns=feature_columns,
+        row_weight=correction_row_weight,
+        confirmation_row_weight=confirmation_row_weight,
     )
-    rows.extend(
-        load_transition_correction_rows(
-            transitions_dir,
-            row_weight=correction_row_weight,
-        )
-    )
+    rows.extend(feedback_rows)
+    # Transition API also writes to feedback_examples; skip duplicates by correction_id.
+    feedback_ids = {
+        str(r.get("source", "")).split("/", 1)[-1]
+        for r in feedback_rows
+        if str(r.get("source", "")).startswith("feedback/")
+    }
+    for tr in load_transition_correction_rows(
+        transitions_dir,
+        row_weight=correction_row_weight,
+    ):
+        tid = str(tr.get("source", "")).split("/", 1)[-1]
+        rec_path = transitions_dir / "transitions_index.json"
+        skip = False
+        if rec_path.is_file():
+            try:
+                idx = read_json(rec_path)
+                for rec in idx.get("transitions") or idx.get("entries") or []:
+                    if str(rec.get("id")) == tid and str(rec.get("correction_id", "")) in feedback_ids:
+                        skip = True
+                        break
+            except Exception:
+                pass
+        if not skip:
+            rows.append(tr)
     if not rows:
         return pd.DataFrame()
     df = cap_correction_dataframe(pd.DataFrame(rows), max_rows=max_correction_rows)

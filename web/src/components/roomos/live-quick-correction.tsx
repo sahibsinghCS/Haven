@@ -1,11 +1,13 @@
 "use client"
 
+import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
-import { Brain, CheckCircle2, Loader2, ThumbsDown, ThumbsUp } from "lucide-react"
+import { AlertTriangle, Brain, CheckCircle2, Loader2, ThumbsDown, ThumbsUp } from "lucide-react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
+import { FeedbackEvidenceStrip } from "@/components/roomos/feedback-evidence-strip"
 import {
   fetchFeedbackStatus,
   submitLiveFeedback,
@@ -20,6 +22,11 @@ import {
   type RoomStateId,
 } from "@/types/roomos"
 
+type PendingConfirm = {
+  label: RoomStateId
+  mode: "confirm" | "correct"
+}
+
 /**
  * Right / wrong feedback — each tap trains room memory and counts toward auto-retrain.
  */
@@ -32,10 +39,10 @@ export function LiveQuickCorrection({
   snapshot: LiveInferenceSnapshot
   disabled?: boolean
   disabledReason?: string
-  /** Tighter layout for single-viewport /live (no scroll). */
   compact?: boolean
 }) {
   const [pending, setPending] = useState<RoomStateId | "confirm" | null>(null)
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
   const [lastSaved, setLastSaved] = useState<RoomStateId | "confirm" | null>(null)
   const [lastResult, setLastResult] = useState<FeedbackResponse | null>(null)
   const [memoryStatus, setMemoryStatus] = useState<FeedbackStatus | null>(null)
@@ -43,6 +50,9 @@ export function LiveQuickCorrection({
   const primary = snapshot.primaryState
   const alternatives = ROOM_STATE_ORDER.filter((s) => s !== primary)
   const primaryAccent = ROOM_STATE_ACCENT[primary]
+  const evidence = memoryStatus?.evidence
+  const frameCount = evidence?.available ? (evidence.frameCount ?? 0) : 0
+  const evidenceCacheKey = `${snapshot.sequence}-${evidence?.capturedAt ?? ""}`
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -55,7 +65,9 @@ export function LiveQuickCorrection({
 
   useEffect(() => {
     void refreshStatus()
-  }, [refreshStatus, lastResult?.memoryExamples])
+    const id = window.setInterval(() => void refreshStatus(), 800)
+    return () => window.clearInterval(id)
+  }, [refreshStatus, lastResult?.memoryExamples, snapshot.sequence])
 
   async function submit(label: RoomStateId, mode: "confirm" | "correct") {
     if (disabled || pending) return
@@ -68,13 +80,14 @@ export function LiveQuickCorrection({
       })
       setLastSaved(mode === "confirm" ? "confirm" : label)
       setLastResult(result)
+      setPendingConfirm(null)
       void refreshStatus()
 
       const minN = memoryStatus?.autoRetrain?.minCorrections ?? 3
       const progress = memoryStatus?.autoRetrain?.correctionsSinceLastRun
       toast.success(mode === "confirm" ? "Marked as right" : "Marked as wrong", {
         description: result.retrainsModel
-          ? `Saved for auto-retrain (${progress ?? "?"}/${minN} since last run).`
+          ? "Saved snapshot — model retraining in background."
           : `Saved locally — ${result.memoryExamples} examples in memory.`,
         duration: 5000,
       })
@@ -85,6 +98,19 @@ export function LiveQuickCorrection({
     } finally {
       setPending(null)
     }
+  }
+
+  function requestSubmit(label: RoomStateId, mode: "confirm" | "correct") {
+    if (disabled || pending) return
+    const mismatch =
+      mode === "correct" &&
+      label !== primary &&
+      (evidence?.primaryState == null || evidence.primaryState === primary)
+    if (mismatch) {
+      setPendingConfirm({ label, mode })
+      return
+    }
+    void submit(label, mode)
   }
 
   const memoryCount = memoryStatus?.memoryExamples ?? lastResult?.memoryExamples ?? 0
@@ -115,7 +141,7 @@ export function LiveQuickCorrection({
           id="roomos-quick-correct"
           className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-zinc-400"
         >
-          Right or wrong?
+          Right or wrong? (now)
         </h3>
         <span
           className="inline-flex items-center gap-1 rounded-full border border-violet-400/25 bg-violet-950/40 px-2 py-0.5 text-[10px] font-semibold text-violet-100"
@@ -125,6 +151,7 @@ export function LiveQuickCorrection({
           {retrainProgress ?? `${memoryCount} saved`}
         </span>
       </div>
+
       {autoRt?.enabled && lastRetrain && lastRetrain.ok === false ? (
         <p className="mt-1 text-[10px] text-amber-300/90">
           Retrain pending — run{" "}
@@ -137,15 +164,44 @@ export function LiveQuickCorrection({
 
       {!compact ? (
         <p className="mt-1.5 text-[12px] leading-relaxed text-zinc-300">
-          It thinks you&apos;re in{" "}
-          <span className="font-semibold text-zinc-100">{ROOM_STATE_LABEL[primary]}</span>. Confirm
-          or pick what you&apos;re actually doing — the model retrains itself from your taps.
+          Each tap <strong className="text-zinc-100">screenshots your video now</strong> and trains
+          from that frame. For past switches use{" "}
+          <Link href="/review" className="font-semibold text-teal-300 underline-offset-2 hover:underline">
+            Review
+          </Link>{" "}
+          (burst history).
         </p>
       ) : (
         <p className="mt-1 text-[11px] text-zinc-400">
-          Says <span className="font-semibold text-zinc-200">{ROOM_STATE_LABEL[primary]}</span>
+          Snapshot on tap ·{" "}
+          <Link href="/review" className="text-teal-300 hover:underline">
+            past = bursts
+          </Link>
         </p>
       )}
+
+      {frameCount > 0 ? (
+        <div className="mt-2.5">
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+            Live video frame (saved on tap)
+          </p>
+          <FeedbackEvidenceStrip
+            frameCount={1}
+            cacheKey={evidenceCacheKey}
+            frameClassName={compact ? "h-16 w-28" : "h-24 w-40"}
+          />
+        </div>
+      ) : null}
+
+      {pendingConfirm ? (
+        <MismatchConfirm
+          primary={primary}
+          target={pendingConfirm.label}
+          busy={pending !== null}
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => void submit(pendingConfirm.label, pendingConfirm.mode)}
+        />
+      ) : null}
 
       {!compact && autoRt?.enabled ? (
         <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
@@ -168,8 +224,8 @@ export function LiveQuickCorrection({
 
       <button
         type="button"
-        disabled={disabled || (pending !== null && !confirmBusy)}
-        onClick={() => void submit(primary, "confirm")}
+        disabled={disabled || (pending !== null && !confirmBusy) || Boolean(pendingConfirm)}
+        onClick={() => requestSubmit(primary, "confirm")}
         className={cn(
           "mt-3 flex w-full min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition",
           "focus:outline-none focus:ring-2 focus:ring-emerald-400/40",
@@ -204,8 +260,8 @@ export function LiveQuickCorrection({
             <button
               key={state}
               type="button"
-              disabled={disabled || (pending !== null && !isPending)}
-              onClick={() => void submit(state, "correct")}
+              disabled={disabled || (pending !== null && !isPending) || Boolean(pendingConfirm)}
+              onClick={() => requestSubmit(state, "correct")}
               className={cn(
                 "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-3.5 py-2 text-[12px] font-semibold transition",
                 "focus:outline-none focus:ring-2 focus:ring-teal-400/40",
@@ -233,6 +289,59 @@ export function LiveQuickCorrection({
   )
 }
 
+function MismatchConfirm({
+  primary,
+  target,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  primary: RoomStateId
+  target: RoomStateId
+  busy: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div
+      className="mt-3 space-y-2 rounded-xl border border-amber-400/35 bg-amber-950/45 p-3"
+      role="alertdialog"
+      aria-labelledby="mismatch-title"
+    >
+      <p id="mismatch-title" className="flex items-start gap-2 text-[12px] font-semibold text-amber-50">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+        These frames look like {ROOM_STATE_LABEL[primary]} now
+      </p>
+      <p className="text-[11px] leading-relaxed text-amber-100/90">
+        Saving as <strong>{ROOM_STATE_LABEL[target]}</strong> teaches the model that this
+        video frame means {ROOM_STATE_LABEL[target]}. For an earlier moment, use{" "}
+        <Link href="/review" className="font-semibold text-amber-50 underline">
+          Review past switches
+        </Link>{" "}
+        so the saved burst matches that moment.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onCancel}
+          className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-zinc-100 hover:bg-white/15"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onConfirm}
+          className="rounded-lg border border-amber-400/40 bg-amber-500/25 px-3 py-1.5 text-[12px] font-semibold text-amber-50 hover:bg-amber-500/35"
+        >
+          {busy ? "Saving…" : `Save as ${ROOM_STATE_LABEL[target]} anyway`}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function LearningSummary({ result }: { result: FeedbackResponse }) {
   const preview = result.probabilityPreview
   const corrected = result.correctedLabel as RoomStateId
@@ -249,7 +358,7 @@ function LearningSummary({ result }: { result: FeedbackResponse }) {
       </p>
       <ul className="space-y-1.5 text-[11px] leading-relaxed text-zinc-300">
         <li>
-          <span className="text-zinc-500">Saved:</span> {result.screenshotCount} frames → trains
+          <span className="text-zinc-500">Saved:</span> {result.screenshotCount} snapshot → trains
           the model
         </li>
         <li>

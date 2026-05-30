@@ -5,6 +5,8 @@ import type {
   RoomStateDistribution,
   RoomStateId,
 } from "@/types/roomos"
+import type { LiveFeedbackEvent } from "@/types/feedback-event"
+import type { LivePreferencesEvent } from "@/types/preferences-event"
 import { ROOM_STATE_ORDER } from "@/types/roomos"
 
 /**
@@ -21,6 +23,94 @@ function wsBase(): string {
 }
 
 export const WS_SNAPSHOT_URL = `${wsBase()}/api/live/ws`
+
+export function feedbackCorrectionScreenshotUrl(
+  correctionId: string,
+  cacheBust?: string,
+): string {
+  const base = `${API_BASE}/api/live/feedback/screenshots/${encodeURIComponent(correctionId)}/frame.jpg`
+  return cacheBust ? `${base}?t=${encodeURIComponent(cacheBust)}` : base
+}
+
+export function normalizeFeedbackEvent(raw: unknown): LiveFeedbackEvent {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Feedback event payload is not an object")
+  }
+  const e = raw as Record<string, unknown>
+  const source = String(e.source ?? "web")
+  if (source !== "telegram" && source !== "web") {
+    throw new Error(`Unknown feedback source: ${source}`)
+  }
+  const correctionId = String(e.correctionId ?? e.correction_id ?? "")
+  if (!correctionId) throw new Error("Feedback event missing correctionId")
+  const screenshotUrl =
+    typeof e.screenshotUrl === "string"
+      ? e.screenshotUrl.startsWith("http")
+        ? e.screenshotUrl
+        : `${API_BASE}${e.screenshotUrl}`
+      : feedbackCorrectionScreenshotUrl(correctionId)
+  return {
+    source,
+    correctionId,
+    createdAt: String(e.createdAt ?? e.created_at ?? ""),
+    predictedLabel: String(e.predictedLabel ?? e.predicted_label ?? ""),
+    correctedLabel: String(e.correctedLabel ?? e.corrected_label ?? ""),
+    confirmed: Boolean(e.confirmed),
+    notes: String(e.notes ?? ""),
+    screenshotCount: Number(e.screenshotCount ?? e.screenshot_count ?? 0),
+    memoryExamples: Number(e.memoryExamples ?? e.memory_examples ?? 0),
+    autoRetrainEnabled: Boolean(e.autoRetrainEnabled ?? e.auto_retrain_enabled),
+    screenshotUrl,
+  }
+}
+
+export function normalizePreferencesEvent(raw: unknown): LivePreferencesEvent {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Preferences event payload is not an object")
+  }
+  const e = raw as Record<string, unknown>
+  const source = String(e.source ?? "web")
+  if (source !== "telegram" && source !== "web") {
+    throw new Error(`Unknown preferences source: ${source}`)
+  }
+  return {
+    source,
+    updatedAt: String(e.updatedAt ?? e.updated_at ?? ""),
+    activePresetId: String(e.activePresetId ?? e.active_preset_id ?? ""),
+    presetName: String(e.presetName ?? e.preset_name ?? ""),
+    targetStates: Array.isArray(e.targetStates)
+      ? e.targetStates.map(String)
+      : Array.isArray(e.target_states)
+        ? e.target_states.map(String)
+        : [],
+    changes: Array.isArray(e.changes) ? e.changes.map(String) : [],
+    notes: String(e.notes ?? ""),
+  }
+}
+
+export type LiveWsMessage =
+  | { kind: "snapshot"; snapshot: LiveInferenceSnapshot }
+  | { kind: "feedback"; event: LiveFeedbackEvent }
+  | { kind: "preferences"; event: LivePreferencesEvent }
+
+/** Parse multiplexed WebSocket payloads (or legacy bare snapshots). */
+export function parseLiveWsMessage(raw: unknown): LiveWsMessage | null {
+  if (!raw || typeof raw !== "object") return null
+  const o = raw as Record<string, unknown>
+  if (o.type === "feedback" && o.payload) {
+    return { kind: "feedback", event: normalizeFeedbackEvent(o.payload) }
+  }
+  if (o.type === "preferences" && o.payload) {
+    return { kind: "preferences", event: normalizePreferencesEvent(o.payload) }
+  }
+  if (o.type === "snapshot" && o.payload) {
+    return { kind: "snapshot", snapshot: normalizeSnapshot(o.payload) }
+  }
+  if (o.schemaVersion != null) {
+    return { kind: "snapshot", snapshot: normalizeSnapshot(o) }
+  }
+  return null
+}
 
 /**
  * The backend may produce a primary state of "unknown" (low-confidence
@@ -359,10 +449,19 @@ export type AutoRetrainStatus = {
   lastResult?: Record<string, unknown> | null
 }
 
+export type FeedbackEvidenceStatus = {
+  available: boolean
+  capturedAt?: string
+  primaryState?: string
+  confidence?: number
+  frameCount?: number
+}
+
 export type FeedbackStatus = {
   enabled: boolean
   memoryExamples: number
   hasEvidence?: boolean
+  evidence?: FeedbackEvidenceStatus
   similarityFloor?: number
   influence?: number
   storageDir?: string
@@ -373,6 +472,11 @@ export type FeedbackStatus = {
     predicted_label?: string
     corrected_label?: string
   } | null
+}
+
+export function feedbackEvidenceFrameUrl(frameIndex: number, cacheBust?: string): string {
+  const base = `${API_BASE}/api/live/feedback/evidence/frames/${frameIndex}.jpg`
+  return cacheBust ? `${base}?t=${encodeURIComponent(cacheBust)}` : base
 }
 
 export async function fetchFeedbackStatus(signal?: AbortSignal): Promise<FeedbackStatus> {
@@ -410,6 +514,7 @@ export async function fetchFeedbackStatus(signal?: AbortSignal): Promise<Feedbac
     enabled: Boolean(raw.enabled),
     memoryExamples: Number(raw.memory_examples ?? raw.examples ?? 0),
     hasEvidence: Boolean(raw.has_evidence),
+    evidence: parseFeedbackEvidence(raw.evidence),
     similarityFloor: Number(raw.similarity_floor ?? 0),
     influence: Number(raw.influence ?? 0),
     storageDir: typeof raw.storage_dir === "string" ? raw.storage_dir : undefined,
@@ -418,6 +523,28 @@ export async function fetchFeedbackStatus(signal?: AbortSignal): Promise<Feedbac
       raw.last_correction && typeof raw.last_correction === "object"
         ? (raw.last_correction as FeedbackStatus["lastCorrection"])
         : null,
+  }
+}
+
+function parseFeedbackEvidence(raw: unknown): FeedbackEvidenceStatus | undefined {
+  if (!raw || typeof raw !== "object") return undefined
+  const e = raw as Record<string, unknown>
+  return {
+    available: Boolean(e.available),
+    capturedAt:
+      typeof e.capturedAt === "string"
+        ? e.capturedAt
+        : typeof e.captured_at === "string"
+          ? e.captured_at
+          : undefined,
+    primaryState:
+      typeof e.primaryState === "string"
+        ? e.primaryState
+        : typeof e.primary_state === "string"
+          ? e.primary_state
+          : undefined,
+    confidence: Number(e.confidence ?? 0),
+    frameCount: Number(e.frameCount ?? e.frame_count ?? 0),
   }
 }
 

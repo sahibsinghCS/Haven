@@ -28,6 +28,7 @@ from roomos.demo.readiness import bundle_readiness, resolve_bundle_dir
 
 from .core.config import settings
 from .core.state import state
+from .telegram_bot import start_telegram_bot, stop_telegram_bot
 
 
 def _demo_readiness_payload() -> dict:
@@ -46,7 +47,10 @@ def _demo_readiness_payload() -> dict:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     setup_logging(level=settings.roomos_log_level)
-    state.hub.bind_loop(asyncio.get_running_loop())
+    loop = asyncio.get_running_loop()
+    state.hub.bind_loop(loop)
+    state.feedback_hub.bind_loop(loop)
+    state.preferences_hub.bind_loop(loop)
     readiness = _demo_readiness_payload()
     if not readiness.get("model_ready"):
         import sys
@@ -65,8 +69,12 @@ async def _lifespan(app: FastAPI):
             import sys
 
             print(result.get("error", "Engine failed to start."), file=sys.stderr)
-    yield
-    state.stop_engine()
+    await start_telegram_bot()
+    try:
+        yield
+    finally:
+        await stop_telegram_bot()
+        state.stop_engine()
 
 
 app = FastAPI(title="RoomOS API", version="0.1.0", lifespan=_lifespan)

@@ -14,10 +14,30 @@ from pydantic import BaseModel, Field
 
 from roomos.utils.logging import get_logger
 
+from ..core.feedback_events import FeedbackEvent
+from ..core.preferences_events import PreferencesEvent
 from ..core.state import state
+from ..feedback_broadcast import publish_feedback_result
+from roomos.inference.live_pipeline import LiveSnapshot
 
 log = get_logger("roomos.api.live")
 router = APIRouter(prefix="/api/live", tags=["live"])
+
+
+def _ws_envelope(msg_type: str, payload: dict[str, Any]) -> str:
+    return json.dumps({"type": msg_type, "payload": payload})
+
+
+def _snapshot_ws_message(snap) -> str:
+    return _ws_envelope("snapshot", _snapshot_payload(snap))
+
+
+def _feedback_ws_message(event) -> str:
+    return _ws_envelope("feedback", event.to_frontend_dict())
+
+
+def _preferences_ws_message(event) -> str:
+    return _ws_envelope("preferences", event.to_frontend_dict())
 
 
 class FeedbackRequest(BaseModel):
@@ -121,6 +141,36 @@ def feedback_status() -> dict[str, Any]:
     return state.engine.feedback_status()
 
 
+@router.get("/feedback/screenshots/{correction_id}/frame.jpg")
+def feedback_correction_frame(correction_id: str) -> Response:
+    """JPEG saved when a correction (web or Telegram) was recorded."""
+    if state.engine is None:
+        raise HTTPException(status_code=409, detail="Live inference engine is not running.")
+    data = state.engine.feedback_correction_jpeg(correction_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Correction screenshot not found.")
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
+@router.get("/feedback/evidence/frames/{frame_index}.jpg")
+def feedback_evidence_frame(frame_index: int) -> Response:
+    """JPEG from the burst that the next live feedback tap would store."""
+    if state.engine is None:
+        raise HTTPException(status_code=409, detail="Live inference engine is not running.")
+    data = state.engine.evidence_frame_jpeg(frame_index)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Evidence frame not available yet.")
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
 @router.post("/feedback")
 def report_feedback(req: FeedbackRequest) -> dict[str, Any]:
     if state.live_mode == "replay":
@@ -142,6 +192,7 @@ def report_feedback(req: FeedbackRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    publish_feedback_result(result, source="web", notes=req.notes)
     correction = result["correction"]
     preview = result.get("probability_preview") or {}
     storage = result.get("storage") or {}
@@ -163,10 +214,10 @@ def report_feedback(req: FeedbackRequest) -> dict[str, Any]:
         "autoRetrain": auto,
         "effects": {
             "immediate": (
-                "Saved this scene as a positive example — similar moments should stay "
+                "Saved this video frame as a positive example — similar moments should stay "
                 f"on '{correction.corrected_label}'."
                 if confirmed
-                else "Saved to room memory; similar bursts get probability nudges right away."
+                else "Saved this video frame to room memory; similar scenes update right away."
             ),
             "ongoing": (
                 f"Future similar scenes reinforce '{correction.corrected_label}'."
@@ -174,7 +225,7 @@ def report_feedback(req: FeedbackRequest) -> dict[str, Any]:
                 else f"Future similar scenes bias toward '{correction.corrected_label}'."
             ),
             "notIncluded": (
-                f"After {min_n} right/wrong taps, XGBoost auto-retrains and reloads live."
+                "XGBoost retrains in the background from this snapshot (debounced ~10s between runs)."
                 if auto_on
                 else "Enable inference.auto_retrain in configs/inference.yaml for automatic model updates."
             ),
@@ -293,22 +344,48 @@ def correct_transition(transition_id: str, req: TransitionCorrectRequest) -> dic
 
 @router.websocket("/ws")
 async def ws_snapshots(ws: WebSocket) -> None:
-    """Stream snapshots as they're produced. Sends the latest immediately."""
+    """Stream snapshots + feedback events. Sends latest snapshot immediately."""
     await ws.accept()
-    state.hub.bind_loop(asyncio.get_running_loop())
-    q = await state.hub.subscribe()
+    loop = asyncio.get_running_loop()
+    state.hub.bind_loop(loop)
+    state.feedback_hub.bind_loop(loop)
+    state.preferences_hub.bind_loop(loop)
+    snap_q = await state.hub.subscribe()
+    fb_q = await state.feedback_hub.subscribe()
+    pref_q = await state.preferences_hub.subscribe()
     try:
         if state.hub.latest is not None:
-            await ws.send_text(json.dumps(_snapshot_payload(state.hub.latest)))
+            await ws.send_text(_snapshot_ws_message(state.hub.latest))
+        if state.feedback_hub.latest is not None:
+            await ws.send_text(_feedback_ws_message(state.feedback_hub.latest))
+        if state.preferences_hub.latest is not None:
+            await ws.send_text(_preferences_ws_message(state.preferences_hub.latest))
         while True:
-            snap = await q.get()
-            await ws.send_text(json.dumps(_snapshot_payload(snap)))
+            snap_task = asyncio.create_task(snap_q.get())
+            fb_task = asyncio.create_task(fb_q.get())
+            pref_task = asyncio.create_task(pref_q.get())
+            done, pending = await asyncio.wait(
+                {snap_task, fb_task, pref_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            for task in done:
+                item = task.result()
+                if isinstance(item, FeedbackEvent):
+                    await ws.send_text(_feedback_ws_message(item))
+                elif isinstance(item, PreferencesEvent):
+                    await ws.send_text(_preferences_ws_message(item))
+                elif isinstance(item, LiveSnapshot):
+                    await ws.send_text(_snapshot_ws_message(item))
     except WebSocketDisconnect:
         pass
     except Exception as e:
         log.warning("WebSocket loop ended: %s", e)
     finally:
-        await state.hub.unsubscribe(q)
+        await state.hub.unsubscribe(snap_q)
+        await state.feedback_hub.unsubscribe(fb_q)
+        await state.preferences_hub.unsubscribe(pref_q)
         try:
             await ws.close()
         except Exception:

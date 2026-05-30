@@ -27,7 +27,8 @@ Two layers apply:
 | `enabled` | `true` | Background retrain after corrections |
 | `min_corrections` | `3` | Right/wrong taps before a retrain starts |
 | `min_interval_sec` | `60` | Cooldown between retrains |
-| `correction_row_weight` | `3` | How hard each correction row pulls XGBoost |
+| `correction_row_weight` | `1` | Same pull as base rows (1×) |
+| `confirmation_row_weight` | `1` | Confirmed taps also 1× |
 
 Manual retrain anytime:
 

@@ -57,7 +57,9 @@ inference:
     enabled: true
     min_corrections: 5
     min_interval_sec: 45
-    correction_row_weight: 3.0
+    live_snapshot_instant: true
+    live_snapshot_min_interval_sec: 10
+    correction_row_weight: 1.0
     confirmation_row_weight: 1.0
     max_correction_rows: 60
     max_correction_weight_fraction: 0.10

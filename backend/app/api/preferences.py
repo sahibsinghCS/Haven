@@ -8,10 +8,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from roomos.preferences.document import PreferenceValidationError, normalize_preference_document
-from roomos.utils.io import read_json, write_json
 from roomos.utils.logging import get_logger
 
-from ..core.state import state  # noqa: F401  (kept for symmetry / future use)
+from ..preferences_service import load_preferences, save_preferences
 
 log = get_logger("roomos.api.preferences")
 router = APIRouter(prefix="/api/preferences", tags=["preferences"])
@@ -61,24 +60,9 @@ _DEFAULT_DOC = {
 }
 
 
-def _read_document() -> dict[str, Any]:
-    p = _store_path()
-    if not p.exists():
-        return dict(_DEFAULT_DOC)
-    try:
-        raw = read_json(p)
-        return normalize_preference_document(raw)
-    except PreferenceValidationError as e:
-        log.warning("Preferences invalid (%s); returning defaults.", e)
-        return dict(_DEFAULT_DOC)
-    except Exception as e:
-        log.warning("Preferences read failed (%s); returning defaults.", e)
-        return dict(_DEFAULT_DOC)
-
-
 @router.get("")
 def get_preferences() -> dict[str, Any]:
-    return _read_document()
+    return load_preferences()
 
 
 @router.put("")
@@ -86,9 +70,7 @@ def put_preferences(doc: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(doc, dict) or "presets" not in doc:
         raise HTTPException(status_code=400, detail="Body must be a PreferenceDocument with 'presets'.")
     try:
-        normalized = normalize_preference_document(doc)
+        normalize_preference_document(doc)
     except PreferenceValidationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
-    normalized["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    write_json(_store_path(), normalized)
-    return normalized
+    return save_preferences(doc)

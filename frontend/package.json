@@ -4,10 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node scripts/archived-guard.mjs",
+    "dev:archive": "vite",
+    "build": "node scripts/archived-guard.mjs",
+    "build:archive": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "node scripts/archived-guard.mjs",
+    "preview:archive": "vite preview"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",

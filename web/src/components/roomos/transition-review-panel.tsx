@@ -29,7 +29,7 @@ function isUiState(label: string): label is RoomStateId {
 }
 
 /**
- * Review past label switches: shows burst frames and one-tap relabel into room memory.
+ * Review past label switches: before → after with burst frames and right/wrong on the prediction.
  */
 export function TransitionReviewPanel({
   pollMs = 4000,
@@ -78,8 +78,9 @@ export function TransitionReviewPanel({
         correctedLabel: to,
         notes: `review: ${transition.toLabel} -> ${to}`,
       })
-      const confirmed = result.confirmed ?? to === transition.toLabel
-      toast.success(confirmed ? "Marked switch as right" : "Marked switch as wrong", {
+      const predicted = isUiState(transition.toLabel) ? transition.toLabel : null
+      const confirmed = result.confirmed ?? (predicted != null && to === predicted)
+      toast.success(confirmed ? "Switch marked right" : "Switch marked wrong", {
         description: result.retrainsModel
           ? "Counts toward automatic model retrain."
           : `Similar scenes will bias toward ${ROOM_STATE_LABEL[to]}.`,
@@ -121,11 +122,12 @@ export function TransitionReviewPanel({
               compact ? "text-[0.68rem] uppercase tracking-[0.18em] text-zinc-400" : "text-xl",
             )}
           >
-            {compact ? "Recent switches" : "Review switches"}
+            {compact ? "Recent switches" : "Review past switches"}
           </h2>
           <p className="mt-1 text-[12px] leading-relaxed text-zinc-400">
-            Each time Haven switches your room state, the burst frames and model guess are saved
-            here automatically. Tap one of the five labels — the entry disappears once you pick.
+            Each row is one state change: what was on screen before, what it switched to, and the
+            burst frames from that moment. Mark the <strong className="text-zinc-200">right</strong>{" "}
+            prediction correct or pick what it should have been.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -169,6 +171,7 @@ export function TransitionReviewPanel({
               key={t.id}
               transition={t}
               busy={correctingId === t.id}
+              compact={compact}
               onRelabel={(to) => void relabel(t, to)}
             />
           ))}
@@ -181,118 +184,196 @@ export function TransitionReviewPanel({
 function TransitionCard({
   transition: t,
   busy,
+  compact,
   onRelabel,
 }: {
   transition: StateTransitionItem
   busy: boolean
+  compact?: boolean
   onRelabel: (to: RoomStateId) => void
 }) {
   const predicted = isUiState(t.toLabel) ? t.toLabel : null
+  const fromUi = isUiState(t.fromLabel) ? t.fromLabel : null
   const frameCount = Math.max(1, Math.min(5, t.screenshotCount))
+  const confidencePct = Math.round(t.confidence * 100)
 
   return (
     <li className="overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/60 backdrop-blur-md">
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] px-4 py-3">
-        <StatePill label={t.fromLabel} />
-        <ArrowRight className="size-4 text-zinc-500" aria-hidden />
-        <StatePill label={t.toLabel} emphasis />
-        <time className="ml-auto font-mono text-[10px] text-zinc-500">
-          {formatTime(t.capturedAt)}
-        </time>
+      <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-2.5">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+          State switch
+        </span>
+        <time className="font-mono text-[10px] text-zinc-500">{formatTime(t.capturedAt)}</time>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto p-3">
-        {Array.from({ length: frameCount }, (_, i) => i + 1).map((idx) => (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={idx}
-            src={transitionFrameUrl(t.id, idx)}
-            alt={`Frame ${idx} when state became ${displayLabel(t.toLabel)}`}
-            className="h-20 w-28 shrink-0 rounded-lg border border-white/10 object-cover sm:h-24 sm:w-32"
-            loading="lazy"
+      {/* Before → After */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2 border-b border-white/[0.06] p-3 sm:gap-3 sm:p-4">
+        <StateColumn
+          role="before"
+          label={fromUi ? ROOM_STATE_LABEL[fromUi] : displayLabel(t.fromLabel)}
+          stateId={fromUi}
+          caption="Before"
+          subcaption="What was on screen"
+          muted
+        />
+        <div className="flex flex-col items-center justify-center px-0.5 sm:px-1">
+          <ArrowRight
+            className="size-6 text-teal-400/90 sm:size-7"
+            aria-hidden
           />
-        ))}
+          <span className="mt-1 text-[9px] font-medium uppercase tracking-wider text-zinc-600">
+            switched
+          </span>
+        </div>
+        <StateColumn
+          role="prediction"
+          label={predicted ? ROOM_STATE_LABEL[predicted] : displayLabel(t.toLabel)}
+          stateId={predicted}
+          caption="Switched to"
+          subcaption={`Prediction · ${confidencePct}%`}
+          emphasis
+        />
       </div>
 
-      <div className="border-t border-white/[0.06] px-4 py-3">
-        <p className="text-[11px] text-zinc-400">
-          It switched to{" "}
-          <span className="font-semibold text-zinc-200">
-            {displayLabel(predicted ?? t.toLabel)}
+      <div className="border-b border-white/[0.06] px-3 py-2 sm:px-4">
+        <p className="text-[10px] text-zinc-500">
+          Burst frames when it switched to{" "}
+          <span className="font-medium text-zinc-300">
+            {predicted ? ROOM_STATE_LABEL[predicted] : displayLabel(t.toLabel)}
           </span>
-          . Was that right?
         </p>
-        {predicted ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onRelabel(predicted)}
-            className={cn(
-              "mt-2 flex w-full min-h-10 items-center justify-center gap-2 rounded-xl border border-emerald-400/30",
-              "bg-emerald-950/40 px-3 py-2 text-[12px] font-semibold text-emerald-50 hover:bg-emerald-950/55",
-              busy && "opacity-60",
-            )}
-          >
-            {busy ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <ThumbsUp className="size-3.5" aria-hidden />
-            )}
-            Yes — {ROOM_STATE_LABEL[predicted]}
-          </button>
-        ) : null}
-        <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-500">
-          No, actually
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Wrong activity for this switch">
-          {ROOM_STATE_ORDER.filter((s) => s !== predicted).map((state) => {
-            const accent = ROOM_STATE_ACCENT[state]
-            return (
-              <button
-                key={state}
-                type="button"
-                disabled={busy}
-                onClick={() => onRelabel(state)}
-                className={cn(
-                  "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5",
-                  "text-[12px] font-semibold text-zinc-100 hover:bg-white/12",
-                  busy && "opacity-60",
-                )}
-              >
-                {busy ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <span className={cn("size-2 rounded-full", accent.bar)} />
-                )}
-                {ROOM_STATE_LABEL[state]}
-              </button>
-            )
-          })}
+        <div className="mt-2 flex gap-1.5 overflow-x-auto">
+          {Array.from({ length: frameCount }, (_, i) => i + 1).map((idx) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={idx}
+              src={transitionFrameUrl(t.id, idx)}
+              alt={`Frame ${idx} at switch to ${displayLabel(t.toLabel)}`}
+              className={cn(
+                "shrink-0 rounded-lg border border-white/10 object-cover",
+                compact ? "h-16 w-[5.5rem]" : "h-20 w-28 sm:h-24 sm:w-32",
+              )}
+              loading="lazy"
+            />
+          ))}
         </div>
+      </div>
+
+      <div className="px-4 py-3">
+        {predicted ? (
+          <>
+            <p className="text-[11px] text-zinc-400">
+              Was switching to{" "}
+              <span className="font-semibold text-zinc-100">{ROOM_STATE_LABEL[predicted]}</span>{" "}
+              correct?
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onRelabel(predicted)}
+              className={cn(
+                "mt-2 flex w-full min-h-10 items-center justify-center gap-2 rounded-xl border border-emerald-400/30",
+                "bg-emerald-950/40 px-3 py-2 text-[12px] font-semibold text-emerald-50 hover:bg-emerald-950/55",
+                busy && "opacity-60",
+              )}
+            >
+              {busy ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <ThumbsUp className="size-3.5" aria-hidden />
+              )}
+              Yes — {ROOM_STATE_LABEL[predicted]}
+            </button>
+            <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-500">
+              No — it should have switched to
+            </p>
+            <div
+              className="mt-2 flex flex-wrap gap-2"
+              role="group"
+              aria-label="Correct switch target"
+            >
+              {ROOM_STATE_ORDER.filter((s) => s !== predicted).map((state) => {
+                const accent = ROOM_STATE_ACCENT[state]
+                return (
+                  <button
+                    key={state}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onRelabel(state)}
+                    className={cn(
+                      "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5",
+                      "text-[12px] font-semibold text-zinc-100 hover:bg-white/12",
+                      busy && "opacity-60",
+                    )}
+                  >
+                    {busy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <span className={cn("size-2 rounded-full", accent.bar)} />
+                    )}
+                    {ROOM_STATE_LABEL[state]}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <p className="text-[12px] text-zinc-400">
+            Unknown prediction label — pick the activity that matches the frames above.
+          </p>
+        )}
       </div>
     </li>
   )
 }
 
-function StatePill({
+function StateColumn({
+  role,
   label,
+  stateId,
+  caption,
+  subcaption,
   emphasis,
+  muted,
 }: {
+  role: "before" | "prediction"
   label: string
+  stateId: RoomStateId | null
+  caption: string
+  subcaption: string
   emphasis?: boolean
+  muted?: boolean
 }) {
-  const ui = isUiState(label) ? label : null
-  const accent = ui ? ROOM_STATE_ACCENT[ui] : null
+  const accent = stateId ? ROOM_STATE_ACCENT[stateId] : null
   return (
-    <span
+    <div
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[12px] font-semibold",
-        emphasis ? "bg-white/10 text-zinc-50" : "bg-white/5 text-zinc-300",
+        "flex min-h-[5.5rem] flex-col rounded-xl border px-3 py-2.5 sm:min-h-[6rem] sm:px-4 sm:py-3",
+        emphasis
+          ? "border-teal-400/25 bg-teal-950/35"
+          : "border-white/[0.08] bg-white/[0.04]",
       )}
+      aria-label={`${caption}: ${label}`}
+      data-role={role}
     >
-      {accent ? <span className={cn("size-2 rounded-full", accent.bar)} /> : null}
-      {displayLabel(label)}
-    </span>
+      <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+        {caption}
+      </span>
+      <div className="mt-1.5 flex flex-1 flex-col justify-center gap-1">
+        <span
+          className={cn(
+            "inline-flex items-center gap-2 text-[14px] font-semibold leading-tight sm:text-[15px]",
+            emphasis ? "text-teal-50" : muted ? "text-zinc-300" : "text-zinc-100",
+          )}
+        >
+          {accent ? (
+            <span className={cn("size-2.5 shrink-0 rounded-full", accent.bar)} aria-hidden />
+          ) : null}
+          {label}
+        </span>
+        <span className="text-[10px] text-zinc-500">{subcaption}</span>
+      </div>
+    </div>
   )
 }
 
