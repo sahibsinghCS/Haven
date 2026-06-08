@@ -46,9 +46,19 @@ class FeedbackRequest(BaseModel):
 
 
 class LiveModeRequest(BaseModel):
-    """``live`` = OpenCV camera + model; ``replay`` = fixture sequence; ``off`` = stop."""
+    """``live`` = OpenCV camera + model; ``off`` = stop."""
 
     mode: str = Field(..., min_length=2)
+
+
+class SetCameraRequest(BaseModel):
+    """Webcam index (int) or special source string (e.g. droidcam:auto)."""
+
+    source: int | str
+    backend: str | None = Field(
+        default=None,
+        description="OpenCV backend hint: auto, dshow, msmf, …",
+    )
 
 
 class TransitionCorrectRequest(BaseModel):
@@ -67,8 +77,20 @@ def status() -> dict[str, Any]:
 
 @router.post("/mode")
 def set_live_mode(req: LiveModeRequest) -> dict[str, Any]:
-    """Switch live camera inference vs deterministic demo replay."""
+    """Start or stop live camera inference."""
     return state.set_live_mode(req.mode)
+
+
+@router.get("/cameras")
+def list_cameras(max_index: int = 4) -> dict[str, Any]:
+    """Probe local webcams (may take a few seconds on Windows)."""
+    return state.list_cameras(max_index=max(0, min(8, max_index)))
+
+
+@router.post("/camera")
+def set_camera(req: SetCameraRequest) -> dict[str, Any]:
+    """Select webcam and restart live inference if it is already running."""
+    return state.set_video_source(req.source, backend=req.backend)
 
 
 _MJPEG_BOUNDARY = "roomosframe"
@@ -77,7 +99,7 @@ _MJPEG_FPS = 30.0
 
 @router.get("/preview.jpg")
 def preview_frame() -> Response:
-    """Latest preview JPEG (live OpenCV feed or demo replay frame)."""
+    """Latest preview JPEG from the live OpenCV feed."""
     data = state.preview.latest_jpeg()
     if data is None:
         raise HTTPException(
@@ -136,11 +158,6 @@ def start_live_engine() -> dict[str, Any]:
     return state.start_engine(mode="live")
 
 
-@router.post("/start/replay")
-def start_replay_engine() -> dict[str, Any]:
-    return state.start_engine(mode="replay")
-
-
 @router.post("/stop")
 def stop_engine() -> dict[str, Any]:
     return state.stop_engine()
@@ -164,13 +181,6 @@ def latest_snapshot() -> dict[str, Any]:
 
 @router.get("/feedback/status")
 def feedback_status() -> dict[str, Any]:
-    if state.live_mode == "replay":
-        return {
-            "enabled": False,
-            "examples": 0,
-            "has_evidence": False,
-            "reason": "demo_replay_active",
-        }
     if state.engine is None:
         return {"enabled": False, "examples": 0, "has_evidence": False}
     return state.engine.feedback_status()
@@ -208,14 +218,6 @@ def feedback_evidence_frame(frame_index: int) -> Response:
 
 @router.post("/feedback")
 def report_feedback(req: FeedbackRequest) -> dict[str, Any]:
-    if state.live_mode == "replay":
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Demo replay is active — corrections are disabled. "
-                "Switch to live mode: POST /api/live/mode {\"mode\":\"live\"}."
-            ),
-        )
     if state.engine is None:
         raise HTTPException(status_code=409, detail="Live inference engine is not running.")
     try:
@@ -281,12 +283,6 @@ def list_transitions(
     uncorrected_only: bool = False,
 ) -> dict[str, Any]:
     """Recent label switches with frame evidence for the Review UI."""
-    if state.live_mode == "replay":
-        return {
-            "enabled": False,
-            "transitions": [],
-            "reason": "demo_replay_active",
-        }
     if state.engine is None:
         return {"enabled": False, "transitions": [], "reason": "engine_off"}
     journal = getattr(state.engine, "_transition_journal", None)
@@ -320,11 +316,6 @@ def transition_frame(transition_id: str, frame_index: int) -> Response:
 @router.post("/transitions/{transition_id}/correct")
 def correct_transition(transition_id: str, req: TransitionCorrectRequest) -> dict[str, Any]:
     """Relabel a past switch — saves to room memory and improves similar bursts."""
-    if state.live_mode == "replay":
-        raise HTTPException(
-            status_code=409,
-            detail="Demo replay is active — switch to live mode to review transitions.",
-        )
     if state.engine is None:
         raise HTTPException(status_code=409, detail="Live inference engine is not running.")
     try:

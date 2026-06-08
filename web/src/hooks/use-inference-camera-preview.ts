@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 
 import { livePreviewMjpegUrl } from "@/lib/roomos/api-client"
+import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 
 export type InferencePreviewStatus = "idle" | "waiting" | "live" | "error"
 
@@ -13,8 +14,11 @@ export type InferencePreviewStatus = "idle" | "waiting" | "live" | "error"
 export function useInferenceCameraPreview(enabled: boolean) {
   const [status, setStatus] = useState<InferencePreviewStatus>("idle")
   const [message, setMessage] = useState<string | null>(null)
+  const cameraRefreshNonce = useRoomOsAmbientStore((s) => s.cameraRefreshNonce)
 
-  const streamSrc = enabled ? livePreviewMjpegUrl() : null
+  const streamSrc = enabled
+    ? `${livePreviewMjpegUrl()}?v=${cameraRefreshNonce}`
+    : null
 
   useEffect(() => {
     if (!enabled) {

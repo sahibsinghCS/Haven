@@ -5,13 +5,12 @@ import { ChevronDown, ChevronUp } from "lucide-react"
 
 import { PreferencesTelegramBanner } from "@/components/roomos/preferences-telegram-banner"
 import { TelegramCorrectionBanner } from "@/components/roomos/telegram-correction-banner"
-import { LiveModeControl } from "@/components/roomos/live-mode-control"
 import { LiveQuickCorrection } from "@/components/roomos/live-quick-correction"
 import { PrimaryStateOverlay } from "@/components/roomos/primary-state-overlay"
 import { SecondaryStateConfidence } from "@/components/roomos/secondary-state-confidence"
 import { useInferenceCameraPreview } from "@/hooks/use-inference-camera-preview"
 import type { LiveEngineHookStatus } from "@/hooks/use-live-engine"
-import type { LiveMode, ModelKind } from "@/lib/roomos/api-client"
+import type { ModelKind } from "@/lib/roomos/api-client"
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import type { LiveFeedbackEvent } from "@/types/feedback-event"
@@ -24,13 +23,9 @@ import type { LiveInferenceSnapshot } from "@/types/roomos"
 export function LiveVideoStage({
   snapshot,
   engineStatus = "running",
-  liveMode = "live",
-  demoMode = false,
   previewDark = false,
-  previewMeanLuma = null,
   previewFit = "contain",
   modelKind = "unknown",
-  onModeChanged,
   feedbackEvent = null,
   onDismissFeedbackEvent,
   preferencesEvent = null,
@@ -38,32 +33,25 @@ export function LiveVideoStage({
 }: {
   snapshot: LiveInferenceSnapshot
   engineStatus?: LiveEngineHookStatus
-  liveMode?: LiveMode
-  demoMode?: boolean
   previewDark?: boolean
   previewMeanLuma?: number | null
   previewFit?: "cover" | "contain"
   modelKind?: ModelKind
-  onModeChanged?: () => void
   feedbackEvent?: LiveFeedbackEvent | null
   onDismissFeedbackEvent?: () => void
   preferencesEvent?: LivePreferencesEvent | null
   onDismissPreferencesEvent?: () => void
 }) {
-  /** false = Right now + room scene only; true = teach panel + all states */
   const [controlsOpen, setControlsOpen] = useState(false)
-  const isReplay = demoMode || liveMode === "replay" || snapshot.dataSource === "demo-replay"
   const primaryState = snapshot.primaryState
   const liveDistribution = snapshot.modelDistribution ?? snapshot.distribution
   const liveConfidence =
     liveDistribution[primaryState] ?? snapshot.primaryConfidence
-  const previewEnabled =
-    !isReplay &&
-    (engineStatus === "running" || liveMode === "live" || snapshot.dataSource === "roomos-ml")
+  const previewEnabled = engineStatus === "running" || snapshot.dataSource === "roomos-ml"
   const preview = useInferenceCameraPreview(previewEnabled)
   const feedLive = preview.status === "live"
-  const showBootstrapBanner = !isReplay && modelKind === "bootstrap"
-  const showDarkWarning = !isReplay && previewDark && feedLive
+  const showBootstrapBanner = modelKind === "bootstrap"
+  const showDarkWarning = previewDark && feedLive
   const useCover = previewFit === "cover"
 
   return (
@@ -124,7 +112,7 @@ export function LiveVideoStage({
         />
       ) : null}
 
-      {(showBootstrapBanner || showDarkWarning) && !isReplay ? (
+      {showBootstrapBanner || showDarkWarning ? (
         <div className="pointer-events-auto absolute inset-x-2 top-2 z-20 sm:inset-x-4">
           {showBootstrapBanner ? (
             <p className="rounded-lg border border-amber-400/50 bg-amber-950/95 px-3 py-2 text-center text-[11px] text-amber-50">
@@ -132,25 +120,12 @@ export function LiveVideoStage({
             </p>
           ) : (
             <p className="rounded-lg border border-rose-400/40 bg-rose-950/95 px-3 py-2 text-center text-[11px] text-rose-50">
-              Camera is dark — close other apps using the webcam
+              Camera is dark — close other apps using the webcam or pick another device above
             </p>
           )}
         </div>
       ) : null}
 
-      {isReplay ? (
-        <p className="pointer-events-none absolute inset-x-0 top-2 z-20 text-center text-[12px] font-medium text-amber-200/95">
-          Demo replay — not live camera
-        </p>
-      ) : null}
-
-      {onModeChanged ? (
-        <div className="pointer-events-auto absolute right-2 top-2 z-20 sm:right-3 sm:top-3">
-          <LiveModeControl liveMode={liveMode} onModeChanged={onModeChanged} />
-        </div>
-      ) : null}
-
-      {/* Bottom: always Right now; expanded controls replace it on demand */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[min(58vh,520px)] flex-col justify-end">
         <button
           type="button"
@@ -171,12 +146,7 @@ export function LiveVideoStage({
         {controlsOpen ? (
           <div className="pointer-events-auto overflow-y-auto overscroll-contain border-t border-white/10 bg-zinc-950/75 p-2 backdrop-blur-xl sm:p-3">
             <div className="flex min-w-0 flex-col gap-2">
-              <LiveQuickCorrection
-                snapshot={snapshot}
-                compact
-                disabled={isReplay}
-                disabledReason="Switch to Live camera to teach the room."
-              />
+              <LiveQuickCorrection snapshot={snapshot} compact />
               <SecondaryStateConfidence
                 variant="overlay"
                 distribution={liveDistribution}

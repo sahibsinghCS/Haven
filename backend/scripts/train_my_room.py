@@ -30,7 +30,7 @@ import typer
 from roomos.config import load_config
 from roomos.dataset.builder import load_features
 from roomos.model.train import train_model
-from roomos.scripts.train_personal_images import (
+from train_personal_images import (
     IMAGE_EXTENSIONS,
     _discover_images,
     _extract_image_burst,

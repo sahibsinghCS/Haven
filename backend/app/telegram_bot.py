@@ -83,11 +83,6 @@ async def _apply_label(
     reply: AwaitableReply,
     reply_message: Any = None,
 ) -> None:
-    if state.live_mode == "replay":
-        await reply(
-            "Demo replay is on — open Haven at /live with a live camera, not demo replay."
-        )
-        return
     if state.engine is None:
         await reply("Haven is not running. On your PC: `npm run demo`, then wait for the camera.")
         return

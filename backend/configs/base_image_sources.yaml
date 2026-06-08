@@ -42,17 +42,26 @@ roomos_labels:
       - Gaming computers
 
   sleep:
-    description: People sleeping or lying in bed.
+    description: Adults asleep in a bedroom bed (not floor/couch/baby).
     open_images_classes:
       - Person
       - Bed
       - Bedroom
+      - Mattress
     wikimedia_categories:
-      - People sleeping
-      - Sleeping people
-      - People in beds
+      - People sleeping in beds
+      - Adults sleeping
+      - Bedrooms with sleeping people
+      - Double beds
+      - Sleeping in bedrooms
+      - People asleep in bed
+      - Men sleeping
+      - Women sleeping
+      - Couples in bed
+      - Hotel rooms
     zenodo_activity_terms:
       - sleeping
+      - lie_down
 
   relaxing:
     description: People resting, watching TV, casually reading, lounging on couch/bed (awake).

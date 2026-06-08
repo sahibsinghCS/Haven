@@ -1,7 +1,9 @@
 extends: default.yaml
 
-# Room automation — safe defaults: dry_run=true, HA integration disabled.
-# See docs/AUTOMATION.md for Home Assistant webhook demo steps.
+# Room automation — safe defaults: dry_run=true (simulated).
+# Live device control: set dry_run: false OR use configs/actions.live-devices.yaml
+# When dry_run is false, changing room state applies Preferences to Settings devices
+# (smart plug fan, thermostat temperature, Tuya lights).
 
 actions:
   dry_run: true
@@ -18,6 +20,27 @@ actions:
       timeout_sec: 8.0
       token: ""
       token_env: "HOME_ASSISTANT_TOKEN"
+
+    # Direct Kasa plug (HS103, EP25, …) — legacy; prefer smart_plug from Settings UI
+    kasa:
+      enabled: false
+      host: ""
+      host_env: "KASA_PLUG_HOST"
+      username: ""
+      password: ""
+      username_env: "KASA_USERNAME"
+      password_env: "KASA_PASSWORD"
+      timeout_sec: 10.0
+
+    # Filled from Settings → integrations.json when devices are configured
+    smart_plug:
+      enabled: false
+      brand: "tplink_kasa"
+      host: ""
+
+    thermostat:
+      enabled: false
+      brand: "none"
 
   rules:
     # --- Always-on: visible log lines (no external calls) -----------------
@@ -80,6 +103,52 @@ actions:
         mode: webhook
         webhook_id: roomos_sleep
       cooldown_sec: 300
+
+    # --- Direct Kasa plug (opt-in; set ROOMOS_ACTIONS_CONFIG=configs/actions.kasa.yaml) ---
+    - name: sleep_fan_kasa
+      enabled: false
+      when:
+        activity: sleep
+        min_confidence: 0.6
+        sustain_windows: 1
+      action:
+        type: kasa
+        state: on
+      cooldown_sec: 120
+
+    - name: work_fan_off_kasa
+      enabled: false
+      when:
+        activity: work
+        min_confidence: 0.6
+        sustain_windows: 1
+      action:
+        type: kasa
+        state: off
+      cooldown_sec: 180
+
+    # --- Settings UI smart plug (Kasa, Tuya, Shelly, Meross, Wemo) -----
+    - name: sleep_fan_plug
+      enabled: false
+      when:
+        activity: sleep
+        min_confidence: 0.6
+        sustain_windows: 1
+      action:
+        type: smart_plug
+        state: on
+      cooldown_sec: 120
+
+    - name: work_fan_plug_off
+      enabled: false
+      when:
+        activity: work
+        min_confidence: 0.6
+        sustain_windows: 1
+      action:
+        type: smart_plug
+        state: off
+      cooldown_sec: 180
 
     # --- Local demo without HA (see scripts/demo_action_receiver.py) -----
     - name: local_webhook_demo

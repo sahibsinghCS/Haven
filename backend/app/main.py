@@ -1,34 +1,49 @@
-"""RoomOS API entry point.
-
-Thin transport wrapper around the ``roomos`` package. Exposes:
-
-* ``GET  /api/health``                    — liveness
-* ``GET  /api/live/status``               — engine status
-* ``POST /api/live/start``                — start the inference engine
-* ``POST /api/live/stop``                 — stop the inference engine
-* ``GET  /api/live/snapshot``             — latest LiveInferenceSnapshot
-* ``WS   /api/live/ws``                   — stream snapshots as they arrive
-* ``GET  /api/preferences``               — PreferenceDocument
-* ``PUT  /api/preferences``               — update PreferenceDocument
-"""
+"""RoomOS API entry point."""
 
 from __future__ import annotations
+
+import os
+
+# Quiet OpenCV WARN lines when probing non-existent webcam indices on Windows.
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from roomos.utils.logging import setup_logging
 
+from .api import auth as auth_api
+from .api import integrations as integrations_api
 from .api import live as live_api
 from .api import preferences as preferences_api
+from .api import settings as settings_api
+from .auth_service import auth_configured, verify_access_token
+from .room_context import clear_user, is_authenticated, normalize_room_id, set_room_id, set_user
+from .supabase_store import supabase_configured
 from roomos.demo.readiness import bundle_readiness, resolve_bundle_dir
 
 from .core.config import settings
 from .core.state import state
 from .telegram_bot import start_telegram_bot, stop_telegram_bot
+
+_AUTH_OPTIONAL_PREFIXES = (
+    "/api/health",
+    "/api/auth/",
+    "/api/live/",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+)
+
+_AUTH_REQUIRED_PREFIXES = (
+    "/api/preferences",
+    "/api/integrations",
+    "/api/settings/",
+)
 
 
 def _demo_readiness_payload() -> dict:
@@ -44,9 +59,18 @@ def _demo_readiness_payload() -> dict:
     }
 
 
+def _path_requires_auth(path: str) -> bool:
+    return any(path.startswith(p) for p in _AUTH_REQUIRED_PREFIXES)
+
+
+def _path_auth_optional(path: str) -> bool:
+    return any(path.startswith(p) for p in _AUTH_OPTIONAL_PREFIXES)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     setup_logging(level=settings.roomos_log_level)
+    set_room_id(settings.haven_room_id_default)
     loop = asyncio.get_running_loop()
     state.hub.bind_loop(loop)
     state.feedback_hub.bind_loop(loop)
@@ -60,11 +84,7 @@ async def _lifespan(app: FastAPI):
         msg = format_missing_model_help(bundle_dir=readiness.get("bundle_dir", "data/models/latest"))
         print(msg, file=sys.stderr)
     elif settings.roomos_autostart:
-        default_mode = None
-        dm = (settings.roomos_demo_mode or "off").strip().lower()
-        if dm in ("replay", "demo", "demo-replay"):
-            default_mode = "replay"
-        result = state.start_engine(mode=default_mode)
+        result = state.start_engine(mode="live")
         if result.get("status") == "error":
             import sys
 
@@ -79,6 +99,55 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(title="RoomOS API", version="0.1.0", lifespan=_lifespan)
 
+
+class HavenAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        from fastapi.responses import JSONResponse
+
+        path = request.url.path
+        clear_user()
+
+        auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            user = verify_access_token(token)
+            if user and user.get("id"):
+                set_user(str(user["id"]), str(user.get("email") or "") or None)
+                set_room_id(f"user-{str(user['id'])[:8]}")
+
+        def _apply_room_header() -> JSONResponse | None:
+            header = request.headers.get("x-haven-room-id") or request.headers.get("X-Haven-Room-Id")
+            try:
+                set_room_id(normalize_room_id(header or settings.haven_room_id_default))
+            except ValueError:
+                return JSONResponse(status_code=400, content={"detail": "Invalid X-Haven-Room-Id."})
+            return None
+
+        if not _path_requires_auth(path) or _path_auth_optional(path):
+            if not is_authenticated():
+                err = _apply_room_header()
+                if err is not None:
+                    return err
+            return await call_next(request)
+
+        if is_authenticated():
+            return await call_next(request)
+
+        if auth_configured() and settings.haven_require_auth:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": "Sign in required. Log in on the web app to save preferences and devices."
+                },
+            )
+
+        err = _apply_room_header()
+        if err is not None:
+            return err
+        return await call_next(request)
+
+
+app.add_middleware(HavenAuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allow_origins,
@@ -97,11 +166,18 @@ def health() -> dict:
     if state.engine_error:
         payload["engine_error"] = state.engine_error
     payload["live_mode"] = state.live_mode
-    payload["demo_mode"] = state.live_mode == "replay"
+    payload["cloud"] = {
+        "supabase": supabase_configured(),
+        "auth": auth_configured(),
+        "storage": "supabase+local" if supabase_configured() else "local",
+    }
     if state.engine_compat_report is not None:
         payload["compat_ok"] = state.engine_compat_report.get("ok")
     return payload
 
 
 app.include_router(live_api.router)
+app.include_router(auth_api.router)
 app.include_router(preferences_api.router)
+app.include_router(integrations_api.router)
+app.include_router(settings_api.router)

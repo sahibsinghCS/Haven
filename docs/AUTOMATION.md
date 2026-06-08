@@ -11,7 +11,46 @@ RoomOS can trigger **real** automations when inferred state is stable. Defaults 
 
 Generic `webhook` rules only check `dry_run`.
 
+For **direct Kasa plugs** (HS103, EP25, KP125M, …), both `dry_run: false` and `integrations.kasa.enabled: true` are required.
+
 ## Integration paths
+
+### 0. Direct Kasa plug (no Home Assistant)
+
+Control a TP-Link Kasa smart plug from RoomOS over your LAN (`python-kasa`). Good for **HS103** and similar Wi‑Fi plugs.
+
+1. Set up the plug in the **Kasa Smart** app (2.4 GHz Wi‑Fi).
+2. Find the plug IP (router device list) or scan:
+
+   ```bash
+   npm run kasa:probe
+   ```
+
+3. In `backend/.env`:
+
+   ```env
+   ROOMOS_ACTIONS_CONFIG=configs/actions.kasa.yaml
+   KASA_PLUG_HOST=192.168.1.50
+   ```
+
+   Newer firmware may need TP-Link cloud login:
+
+   ```env
+   KASA_USERNAME=you@example.com
+   KASA_PASSWORD=your_password
+   ```
+
+4. In `backend/configs/actions.yaml`, set `enabled: true` on `sleep_fan_kasa` and `work_fan_off_kasa`.
+5. `pip install python-kasa` (or re-run `npm run setup:venv`), then `npm run demo`.
+
+Test manually:
+
+```bash
+npm run kasa:on
+npm run kasa:off
+```
+
+Rules use `action.type: kasa` with `state: on` or `off` when activity is sleep / work.
 
 ### 1. Home Assistant webhook (recommended)
 

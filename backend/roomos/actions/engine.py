@@ -24,6 +24,12 @@ def _automation_summary(record: Dict[str, Any]) -> Dict[str, Any]:
     summary = result.get("message") or result.get("error") or result.get("target") or result.get("url")
     if not summary and record.get("action_type") == "home_assistant":
         summary = result.get("mode", "home_assistant")
+    if not summary and record.get("action_type") == "kasa":
+        summary = f"kasa {result.get('state', '?')} @ {result.get('host', '?')}"
+    if not summary and record.get("action_type") == "smart_plug":
+        summary = f"plug {result.get('state', '?')} ({result.get('brand', '?')})"
+    if not summary and record.get("action_type") == "thermostat":
+        summary = f"thermostat heat={result.get('heat_setpoint_f')} cool={result.get('cool_setpoint_f')}"
     if skipped and record.get("dry_run"):
         summary = f"Dry-run: would run {record.get('action_type')} ({record.get('rule')})"
     elif skipped:
@@ -106,7 +112,9 @@ class ActionEngine:
     @classmethod
     def from_config(cls, cfg: Config) -> "ActionEngine":
         ac = cfg.actions
-        integrations = dict(ac.get("integrations", {}) or {})
+        from ..integrations.device_bridge import merge_runtime_integrations
+
+        integrations = merge_runtime_integrations(dict(ac.get("integrations", {}) or {}))
         defaults = {
             "min_confidence": float(ac.get("default_min_confidence", 0.55)),
             "sustain_windows": int(ac.get("default_sustain_windows", 3)),
@@ -145,12 +153,16 @@ class ActionEngine:
             events_log = Path(events_log_raw)
             if not events_log.is_absolute() and cfg.project_root is not None:
                 events_log = cfg.project_root / events_log
-        ha = integrations.get("home_assistant") or {}
+        plug = integrations.get("smart_plug") or {}
+        thermo = integrations.get("thermostat") or {}
         log.info(
-            "Action engine: %d rules, dry_run=%s, home_assistant.enabled=%s",
+            "Action engine: %d rules, dry_run=%s, smart_plug.enabled=%s (%s), thermostat.enabled=%s (%s)",
             len(rules),
             bool(ac.get("dry_run", True)),
-            bool(ha.get("enabled")) if isinstance(ha, dict) else False,
+            bool(plug.get("enabled")) if isinstance(plug, dict) else False,
+            plug.get("brand", "?") if isinstance(plug, dict) else "?",
+            bool(thermo.get("enabled")) if isinstance(thermo, dict) else False,
+            thermo.get("brand", "?") if isinstance(thermo, dict) else "?",
         )
         return cls(
             rules=rules,

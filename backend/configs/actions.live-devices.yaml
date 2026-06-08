@@ -1,0 +1,9 @@
+# Overlay: real device control from Preferences when room state changes.
+# Usage: ROOMOS_ACTIONS_CONFIG=configs/actions.live-devices.yaml
+#
+# Requires devices enabled in Settings and integrations saved to data/integrations.json
+
+extends: default.yaml
+
+actions:
+  dry_run: false

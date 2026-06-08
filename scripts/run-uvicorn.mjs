@@ -34,7 +34,11 @@ const child = spawn(
     "--port",
     "8000",
   ],
-  { cwd: getBackendDir(), stdio: "inherit", env: { ...process.env } },
+  {
+    cwd: getBackendDir(),
+    stdio: "inherit",
+    env: { ...process.env, OPENCV_LOG_LEVEL: process.env.OPENCV_LOG_LEVEL || "ERROR" },
+  },
 );
 
 child.on("exit", (code) => process.exit(code ?? 1));

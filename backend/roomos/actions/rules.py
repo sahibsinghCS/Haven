@@ -132,8 +132,26 @@ def build_handler(
         ha = (integrations or {}).get("home_assistant") if integrations else {}
         kwargs["integration"] = dict(ha) if isinstance(ha, dict) else {}
         return HomeAssistantHandler(**kwargs)
+    if type_name == "kasa":
+        from .kasa import KasaHandler
+
+        kasa = (integrations or {}).get("kasa") if integrations else {}
+        kwargs["integration"] = dict(kasa) if isinstance(kasa, dict) else {}
+        return KasaHandler(**kwargs)
+    if type_name == "smart_plug":
+        from .smart_plug import SmartPlugHandler
+
+        plug = (integrations or {}).get("smart_plug") if integrations else {}
+        kwargs["integration"] = dict(plug) if isinstance(plug, dict) else {}
+        return SmartPlugHandler(**kwargs)
+    if type_name == "thermostat":
+        from .thermostat_action import ThermostatHandler
+
+        thermo = (integrations or {}).get("thermostat") if integrations else {}
+        kwargs["integration"] = dict(thermo) if isinstance(thermo, dict) else {}
+        return ThermostatHandler(**kwargs)
     cls = _HANDLERS.get(type_name)
     if cls is None:
-        known = sorted(_HANDLERS) + ["home_assistant"]
+        known = sorted(_HANDLERS) + ["home_assistant", "kasa", "smart_plug", "thermostat"]
         raise ValueError(f"Unknown action type: {type_name!r}. Known: {known}")
     return cls(**kwargs)

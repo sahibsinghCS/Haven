@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import queue
 import threading
 import time
@@ -598,7 +599,10 @@ class LiveInferenceEngine:
         raw_primary_conf = float(model_only.get(pred.label, pred.confidence))
         last_automation: Dict[str, object] = {}
         automation_mode = "off"
+        scene = self._scene_for(pred.label)
+        actions_dry_run = True
         if self._actions is not None:
+            actions_dry_run = bool(self._actions.dry_run)
             try:
                 self._actions.on_prediction(
                     label=pred.label,
@@ -611,6 +615,45 @@ class LiveInferenceEngine:
             except Exception as e:
                 log.warning("Action engine raised: %s", e)
 
+        if pred.switched and pred.label in self._ui_classes:
+            try:
+                from ..devices.scene_apply import (
+                    apply_preference_scene_async,
+                    automation_summary,
+                )
+
+                integrations = (
+                    dict(self._actions.integrations)
+                    if self._actions is not None
+                    else {}
+                )
+                if not integrations and self._actions is None:
+                    from ..integrations.device_bridge import merge_runtime_integrations
+
+                    integrations = merge_runtime_integrations({})
+
+                pref_record = asyncio.run(
+                    apply_preference_scene_async(
+                        scene,
+                        dry_run=actions_dry_run,
+                        integrations=integrations,
+                        room_state=pred.label,
+                    )
+                )
+                if pref_record.get("results") or pref_record.get("would_apply"):
+                    last_automation = {
+                        "rule": "preference_sync",
+                        "activity": pred.label,
+                        "action_type": "preference_sync",
+                        "dry_run": actions_dry_run,
+                        "result": pref_record,
+                        "summary": automation_summary(pref_record),
+                    }
+                    if self._actions is not None:
+                        self._actions.last_automation = last_automation
+            except Exception as e:
+                log.warning("Preference device sync failed: %s", e)
+
         snap = LiveSnapshot(
             captured_at=now_iso,
             sequence=self._snapshot_seq,
@@ -621,7 +664,7 @@ class LiveInferenceEngine:
             rationale=self._rationale(
                 fused, pred, raw_probs, personalization, occupancy
             ),
-            applied_scene=self._scene_for(pred.label),
+            applied_scene=scene,
             confidence_history=list(self._history),
             personalization=dict(personalization or {}),
             last_automation=last_automation,

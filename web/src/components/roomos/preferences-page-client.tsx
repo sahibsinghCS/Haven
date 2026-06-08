@@ -1,12 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { Check, Fan, Lightbulb, RotateCcw, ShieldCheck, Sparkles, Thermometer } from "lucide-react"
 
+import { useHavenAuth } from "@/components/auth/haven-auth-provider"
+import { HavenAccountBar } from "@/components/roomos/haven-account-bar"
 import { PreferencesPresetToggle } from "@/components/roomos/preferences/preferences-preset-toggle"
 import { StatePreferenceCard } from "@/components/roomos/preferences/state-preference-card"
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
@@ -51,6 +53,7 @@ function presetToFormValues(preset: PreferencePreset): PreferenceMatrixFormValue
 }
 
 export function PreferencesPageClient() {
+  const { user } = useHavenAuth()
   const presets = useRoomOsPreferencesStore((s) => s.presets)
   const activePresetId = useRoomOsPreferencesStore((s) => s.activePresetId)
   const hydrate = useRoomOsPreferencesStore((s) => s.hydrate)
@@ -58,7 +61,7 @@ export function PreferencesPageClient() {
   const replacePreset = useRoomOsPreferencesStore((s) => s.replacePreset)
 
   const docQuery = useQuery({
-    queryKey: ["roomos", "preferences"],
+    queryKey: ["roomos", "preferences", user?.id ?? "local"],
     queryFn: async () => {
       try {
         const doc = await fetchPreferenceDocument()
@@ -166,6 +169,9 @@ export function PreferencesPageClient() {
           repo root) to sync preferences to disk on this machine.
         </p>
       ) : null}
+
+      <HavenAccountBar />
+
       <header className="relative overflow-hidden rounded-[2.15rem] border border-[color:var(--haven-line-strong)] bg-[linear-gradient(165deg,rgba(255,254,251,0.995)_0%,rgba(251,246,238,0.97)_44%,rgba(236,228,218,0.94)_100%)] p-6 shadow-[var(--haven-shadow-float)] ring-1 ring-[color:var(--haven-edge-light)] sm:p-8 lg:p-10">
         <div
           aria-hidden

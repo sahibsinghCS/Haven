@@ -36,7 +36,7 @@ const FEEDBACK_STATUS_POLL_MS = 10_000
 export function LiveQuickCorrection({
   snapshot,
   disabled = false,
-  disabledReason = "Feedback unavailable in demo replay.",
+  disabledReason = "Feedback unavailable.",
   compact = false,
 }: {
   snapshot: LiveInferenceSnapshot

@@ -1,16 +1,16 @@
 extends: default.yaml
 
-# DroidCam virtual webcam — index from `npm run probe:cameras`.
-# Use 4:3 capture (not 1280×720): forcing 16:9 crops the frame vs the phone app.
-# Best quality: quit DroidCam Client and set source: "droidcam:auto"
+# Default webcam (index 0 on this machine). Run `npm run probe:cameras` after
+# plugging in DroidCam or another camera, then set source/backend to match.
+# DroidCam: use source: "droidcam:auto" or the index probe reports; backend msmf
+# often works for the virtual cam, while built-in laptops need dshow on Windows.
 video:
-  source: 1
-  backend: msmf
-  capture_width: 1280
-  capture_height: 960
-  capture_fps: 30
+  source: 0
+  backend: dshow
+  # Let the driver pick native resolution (forcing 1280×960 broke some built-in cams).
   frame_preprocess:
-    enabled: false
+    enabled: true
+    strip_letterbox: true
   preview:
     max_fps: 30          # target preview FPS (>= the 25 we want on /live)
     max_width: 1280      # cap encode size so CPU can sustain 30 FPS

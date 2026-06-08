@@ -10,26 +10,53 @@ from roomos.preferences.document import PreferenceValidationError, resolve_activ
 from roomos.preferences.store import read_preferences_document, save_preferences_document
 from roomos.utils.logging import get_logger
 
+from .persistence import load_json_document, save_json_document
 from .preferences_store import DEFAULT_PREFERENCES_DOC, preferences_store_path
 from .core.preferences_events import PreferencesEvent
 from .core.state import state
+from roomos.preferences.document import normalize_preference_document
 
 log = get_logger("roomos.preferences.service")
 
 
 def load_preferences() -> dict[str, Any]:
-    path = preferences_store_path()
-    if not path.exists():
+    def _default() -> dict[str, Any]:
         return dict(DEFAULT_PREFERENCES_DOC)
-    try:
-        return read_preferences_document(path)
-    except Exception as e:
-        log.warning("Preferences read failed (%s); using defaults.", e)
-        return dict(DEFAULT_PREFERENCES_DOC)
+
+    def _normalize(raw: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return normalize_preference_document(raw)
+        except Exception as e:
+            log.warning("Preferences normalize failed (%s); using defaults.", e)
+            return _default()
+
+    return load_json_document(
+        "preferences",
+        default_fn=_default,
+        normalize_fn=_normalize,
+        local_filename="preferences.json",
+    )
 
 
 def save_preferences(doc: dict[str, Any]) -> dict[str, Any]:
-    return save_preferences_document(preferences_store_path(), doc)
+    def _normalize(raw: dict[str, Any]) -> dict[str, Any]:
+        return normalize_preference_document(raw)
+
+    saved = save_json_document(
+        "preferences",
+        doc,
+        normalize_fn=_normalize,
+        local_filename="preferences.json",
+    )
+    # Keep canonical on-disk format via existing helper when using default room
+    try:
+        from .room_context import get_user_id
+
+        if not get_user_id():
+            save_preferences_document(preferences_store_path(), saved)
+    except Exception:
+        pass
+    return saved
 
 
 def apply_and_save_preferences(

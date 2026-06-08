@@ -44,6 +44,22 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
 
+    # Supabase (cloud save + Auth) — service role server-only; anon key for JWT verify
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_role_key: str = ""
+    haven_room_id_default: str = "default"
+    haven_require_auth: bool = True
+
+    @field_validator("haven_require_auth", mode="before")
+    @classmethod
+    def _coerce_haven_require_auth(cls, value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return bool(value)
+
     @field_validator("telegram_enabled", mode="before")
     @classmethod
     def _coerce_telegram_enabled(cls, value: object) -> bool:

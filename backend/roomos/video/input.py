@@ -13,6 +13,7 @@ A thin wrapper around ``cv2.VideoCapture`` that:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 import time
@@ -48,6 +49,40 @@ _BACKEND_ALIASES = {
     "v4l2": "CAP_V4L2",
     "avfoundation": "CAP_AVFOUNDATION",
 }
+
+
+@contextlib.contextmanager
+def _quiet_opencv():
+    """Hide benign OpenCV WARN spam when probing missing webcam indices."""
+    import cv2
+
+    logging_mod = getattr(getattr(cv2, "utils", None), "logging", None)
+    if logging_mod is None:
+        yield
+        return
+    prev = logging_mod.getLogLevel()
+    logging_mod.setLogLevel(logging_mod.LOG_LEVEL_ERROR)
+    try:
+        yield
+    finally:
+        logging_mod.setLogLevel(prev)
+
+
+def _windows_video_device_names() -> List[str]:
+    if not sys.platform.startswith("win"):
+        return []
+    return [n for n in _list_windows_dshow_names() if "audio" not in n.lower()]
+
+
+def _effective_probe_max_index(max_index: int) -> int:
+    """Do not probe webcam indices that cannot exist (reduces DSHOW noise on Windows)."""
+    max_index = max(0, int(max_index))
+    if sys.platform.startswith("win"):
+        names = _windows_video_device_names()
+        if names:
+            return min(max_index, len(names) - 1)
+        return min(max_index, 2)
+    return max_index
 
 
 @dataclass
@@ -186,10 +221,12 @@ def _backend_chain(backend: Optional[VideoBackend], source: Union[int, str]) -> 
             seen.add(name)
         return chain if chain else [primary]
 
-    chain: List[Tuple[int, str]] = [primary]
-    seen = {primary[1]}
+    chain: List[Tuple[int, str]] = []
+    seen: set[str] = set()
     if sys.platform.startswith("win"):
-        for name in ("CAP_DSHOW", "CAP_MSMF", "CAP_ANY"):
+        # DSHOW opens most laptop webcams; MSMF is listed first in many configs but
+        # often fails isOpened() on index 0 — try DSHOW before the configured primary.
+        for name in ("CAP_DSHOW", primary[1], "CAP_MSMF", "CAP_ANY"):
             if name in seen:
                 continue
             api = getattr(cv2, name, None)
@@ -198,6 +235,8 @@ def _backend_chain(backend: Optional[VideoBackend], source: Union[int, str]) -> 
             chain.append((api, name))
             seen.add(name)
     else:
+        chain.append(primary)
+        seen.add(primary[1])
         for name in ("CAP_V4L2", "CAP_AVFOUNDATION", "CAP_ANY"):
             if name in seen:
                 continue
@@ -255,7 +294,8 @@ def _open_capture(
     last_err: Optional[str] = None
     for api, name in chain:
         try:
-            cap = cv2.VideoCapture(source, api) if api else cv2.VideoCapture(source)
+            with _quiet_opencv():
+                cap = cv2.VideoCapture(source, api) if api else cv2.VideoCapture(source)
         except Exception as e:
             last_err = f"{name}: open raised {e!r}"
             continue
@@ -452,80 +492,154 @@ def _list_windows_dshow_names() -> List[str]:
     return names
 
 
-def probe_cameras(max_index: int = 4) -> List[dict]:
+def _probe_one_index(idx: int, bname: str, api: int, *, warm_reads: int) -> dict:
+    """Try opening a single (index, backend) pair."""
+    import cv2
+
+    entry: dict = {
+        "index": idx,
+        "backend": bname,
+        "ok": False,
+        "mean_luma": None,
+        "error": None,
+        "device_hint": None,
+    }
+    cap = None
+    try:
+        with _quiet_opencv():
+            cap = cv2.VideoCapture(idx, api)
+        if not cap.isOpened():
+            entry["error"] = "isOpened() == False"
+        else:
+            best_luma = -1.0
+            best_shape: Optional[Tuple[int, ...]] = None
+            for _ in range(warm_reads):
+                ok, frame = cap.read()
+                if ok and frame is not None:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    luma = float(gray.mean())
+                    if luma > best_luma:
+                        best_luma = luma
+                        best_shape = tuple(frame.shape)
+                time.sleep(0.05)
+            if best_shape is None:
+                entry["error"] = "opened but no frames"
+            else:
+                entry["ok"] = True
+                entry["mean_luma"] = best_luma
+                entry["frame_shape"] = list(best_shape)
+    except Exception as e:  # noqa: BLE001
+        entry["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception:
+                pass
+    return entry
+
+
+def probe_cameras(max_index: int = 4, *, exhaustive: bool = True) -> List[dict]:
     """Probe webcam indices 0..max_index across known backends.
 
     Returns a list of dicts ``{index, backend, ok, mean_luma, error}`` so the
     operator can pick a working camera/backend pair when the default goes
-    black. Intentionally side-effect free for shell use.
+    black.
 
-    On Windows, DroidCam often appears as index 1 with **CAP_MSMF** while index 0
-    is the laptop webcam (DSHOW may open index 0 with black frames). We warm up
-    several reads and keep the brightest frame so transient dark frames do not
-    hide a working device.
+    When ``exhaustive`` is False (UI listing), only probe indices that likely
+    exist and stop after the first working backend per index.
     """
     import cv2
 
     results: List[dict] = []
     if sys.platform.startswith("win"):
-        # MSMF first: DroidCam Virtual Output often fails DSHOW-by-index but works here.
-        backend_names = ("CAP_MSMF", "CAP_DSHOW", "CAP_ANY")
+        backend_names = ("CAP_DSHOW", "CAP_MSMF", "CAP_ANY")
     elif sys.platform == "darwin":
         backend_names = ("CAP_AVFOUNDATION", "CAP_ANY")
     else:
         backend_names = ("CAP_V4L2", "CAP_ANY")
 
     dshow_names = _list_windows_dshow_names() if sys.platform.startswith("win") else []
+    last_index = _effective_probe_max_index(max_index)
+    warm_reads = 8 if exhaustive else 5
 
-    for idx in range(max_index + 1):
+    for idx in range(last_index + 1):
+        index_opened = False
         for bname in backend_names:
             api = getattr(cv2, bname, None)
             if api is None:
                 continue
-            entry: dict = {
-                "index": idx,
-                "backend": bname,
-                "ok": False,
-                "mean_luma": None,
-                "error": None,
-                "device_hint": None,
-            }
-            cap = None
-            try:
-                cap = cv2.VideoCapture(idx, api)
-                if not cap.isOpened():
-                    entry["error"] = "isOpened() == False"
-                else:
-                    best_luma = -1.0
-                    best_shape: Optional[Tuple[int, ...]] = None
-                    for _ in range(20):
-                        ok, frame = cap.read()
-                        if ok and frame is not None:
-                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                            luma = float(gray.mean())
-                            if luma > best_luma:
-                                best_luma = luma
-                                best_shape = tuple(frame.shape)
-                        time.sleep(0.05)
-                    if best_shape is None:
-                        entry["error"] = "opened but no frames"
-                    else:
-                        entry["ok"] = True
-                        entry["mean_luma"] = best_luma
-                        entry["frame_shape"] = list(best_shape)
-            except Exception as e:  # noqa: BLE001
-                entry["error"] = f"{type(e).__name__}: {e}"
-            finally:
-                if cap is not None:
-                    try:
-                        cap.release()
-                    except Exception:
-                        pass
+            entry = _probe_one_index(idx, bname, api, warm_reads=warm_reads)
             results.append(entry)
+            if entry["ok"]:
+                index_opened = True
+                if not exhaustive:
+                    break
+        if not exhaustive and not index_opened and idx >= 1:
+            # No device at this index — higher indices are unlikely on Windows.
+            break
 
     if dshow_names:
         _attach_windows_device_hints(results, dshow_names)
     return results
+
+
+def _backend_name_to_hint(bname: str) -> str:
+    return bname.replace("CAP_", "").lower()
+
+
+def list_available_cameras(max_index: int = 4) -> List[dict]:
+    """Summarize probe results into one entry per webcam index for the UI.
+
+    Each item: ``index``, ``source``, ``backend``, ``label``, ``available``,
+    ``mean_luma`` (optional).
+    """
+    raw = probe_cameras(max_index=max_index, exhaustive=False)
+    video_names = _windows_video_device_names()
+
+    best_per_index: dict[int, dict] = {}
+    for row in raw:
+        if not row.get("ok"):
+            continue
+        idx = int(row["index"])
+        prev = best_per_index.get(idx)
+        luma = float(row.get("mean_luma") or 0)
+        if prev is None or luma > float(prev.get("mean_luma") or 0):
+            best_per_index[idx] = row
+
+    cameras: List[dict] = []
+    for idx in range(max_index + 1):
+        if idx in best_per_index:
+            row = best_per_index[idx]
+            hint = row.get("device_hint")
+            if not hint and idx < len(video_names):
+                hint = video_names[idx]
+            cameras.append(
+                {
+                    "index": idx,
+                    "source": idx,
+                    "backend": _backend_name_to_hint(str(row["backend"])),
+                    "label": str(hint or f"Camera {idx}"),
+                    "available": True,
+                    "mean_luma": row.get("mean_luma"),
+                    "frame_shape": row.get("frame_shape"),
+                }
+            )
+        elif idx < len(video_names):
+            cameras.append(
+                {
+                    "index": idx,
+                    "source": idx,
+                    "backend": "dshow",
+                    "label": video_names[idx],
+                    "available": False,
+                    "mean_luma": None,
+                    "frame_shape": None,
+                }
+            )
+
+    cameras.sort(key=lambda c: int(c["index"]))
+    return cameras
 
 
 def _attach_windows_device_hints(results: List[dict], dshow_names: List[str]) -> None:

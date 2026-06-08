@@ -102,7 +102,12 @@ export function useSelectedPresetId(): string | null {
 export const useRoomOsAmbientStore = create<{
   primaryState: RoomStateId | null
   setPrimaryState: (state: RoomStateId | null) => void
+  cameraRefreshNonce: number
+  bumpCameraRefresh: () => void
 }>((set) => ({
   primaryState: null,
   setPrimaryState: (primaryState) => set({ primaryState }),
+  cameraRefreshNonce: 0,
+  bumpCameraRefresh: () =>
+    set((s) => ({ cameraRefreshNonce: s.cameraRefreshNonce + 1 })),
 }))

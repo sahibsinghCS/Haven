@@ -1,4 +1,7 @@
+import { havenRequestHeaders } from "@/lib/roomos/haven-auth"
+import { parseDeviceSettingsDocument } from "@/lib/roomos/device-settings-schema"
 import { parsePreferenceDocument } from "@/lib/roomos/preferences-document-schema"
+import type { DeviceSettingsDocument } from "@/types/device-settings"
 import type {
   LiveInferenceSnapshot,
   PreferenceDocument,
@@ -300,7 +303,7 @@ export type CompatReport = {
   mismatches: CompatMismatch[]
 }
 
-export type LiveMode = "off" | "live" | "replay"
+export type LiveMode = "off" | "live"
 
 export type BootPhase =
   | "off"
@@ -314,7 +317,6 @@ export type ModelKind =
   | "generic"
   | "personal"
   | "trained"
-  | "replay"
   | "unknown"
 
 export type LiveEngineStatus = {
@@ -322,12 +324,11 @@ export type LiveEngineStatus = {
   engine_error: string | null
   has_snapshot: boolean
   live_mode?: LiveMode
-  demo_mode?: boolean
-  demo_replay_active?: boolean
   compat_ok?: boolean | null
   compat_report?: CompatReport | null
-  /** OpenCV source label or demo replay label */
   inference_source?: string | null
+  video_source?: number | string | null
+  video_backend?: string | null
   preview_available?: boolean
   /** True when /preview.jpg is the same OpenCV feed as burst inference */
   preview_is_inference_feed?: boolean
@@ -349,7 +350,46 @@ export type LiveEngineStatus = {
   /** Whether MediaPipe pose features are active in this inference run. */
   pose_enabled?: boolean | null
   data_source?: string | null
-  demo_fixture?: string | null
+}
+
+export type CameraOption = {
+  index: number
+  source: number | string
+  backend: string
+  label: string
+  available: boolean
+  mean_luma?: number | null
+}
+
+export type CamerasResponse = {
+  cameras: CameraOption[]
+  current: {
+    source: number | string
+    backend: string
+    label: string
+  }
+}
+
+export async function fetchCameras(signal?: AbortSignal): Promise<CamerasResponse> {
+  const res = await fetch(`${API_BASE}/api/live/cameras`, { signal, cache: "no-store" })
+  if (!res.ok) throw new Error(`cameras ${res.status}`)
+  return (await res.json()) as CamerasResponse
+}
+
+export async function setCamera(params: {
+  source: number | string
+  backend?: string
+}): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/api/live/camera`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+  const body = (await res.json()) as Record<string, unknown> & { error?: string }
+  if (!res.ok) {
+    throw new Error(body.error ?? `setCamera failed: ${res.status}`)
+  }
+  return body
 }
 
 export const LIVE_PREVIEW_URL = `${API_BASE}/api/live/preview.jpg`
@@ -384,27 +424,6 @@ export async function startEngine(): Promise<unknown> {
 export async function stopEngine(): Promise<unknown> {
   const res = await fetch(`${API_BASE}/api/live/stop`, { method: "POST" })
   return res.json()
-}
-
-export type SetLiveModeResult = {
-  status: string
-  live_mode?: LiveMode
-  error?: string
-  inference_source?: string
-}
-
-/** Switch between live camera + model and deterministic demo replay. */
-export async function setLiveMode(mode: "live" | "replay" | "off"): Promise<SetLiveModeResult> {
-  const res = await fetch(`${API_BASE}/api/live/mode`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
-  })
-  const body = (await res.json()) as SetLiveModeResult
-  if (!res.ok) {
-    throw new Error(body.error ?? `setLiveMode failed: ${res.status}`)
-  }
-  return body
 }
 
 export type FeedbackProbabilityPreview = {
@@ -756,8 +775,30 @@ export async function submitLiveFeedback(input: {
   }
 }
 
+export type HavenCloudStatus = {
+  ok: boolean
+  supabase: boolean
+  room_id: string
+  storage: string
+  message: string
+}
+
+export async function fetchCloudStatus(signal?: AbortSignal): Promise<HavenCloudStatus> {
+  const res = await fetch(`${API_BASE}/api/settings/status`, {
+    signal,
+    cache: "no-store",
+    headers: havenRequestHeaders(),
+  })
+  if (!res.ok) throw new Error(`settings status failed: ${res.status}`)
+  return (await res.json()) as HavenCloudStatus
+}
+
 export async function fetchPreferenceDocument(signal?: AbortSignal): Promise<PreferenceDocument> {
-  const res = await fetch(`${API_BASE}/api/preferences`, { signal, cache: "no-store" })
+  const res = await fetch(`${API_BASE}/api/preferences`, {
+    signal,
+    cache: "no-store",
+    headers: havenRequestHeaders(),
+  })
   if (!res.ok) throw new Error(`preferences fetch failed: ${res.status}`)
   const raw: unknown = await res.json()
   const doc = parsePreferenceDocument(raw)
@@ -768,7 +809,7 @@ export async function fetchPreferenceDocument(signal?: AbortSignal): Promise<Pre
 export async function savePreferenceDocument(doc: PreferenceDocument): Promise<PreferenceDocument> {
   const res = await fetch(`${API_BASE}/api/preferences`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: havenRequestHeaders(),
     body: JSON.stringify(doc),
   })
   if (!res.ok) throw new Error(`preferences save failed: ${res.status}`)
@@ -776,6 +817,111 @@ export async function savePreferenceDocument(doc: PreferenceDocument): Promise<P
   const parsed = parsePreferenceDocument(raw)
   if (!parsed) throw new Error("preferences save response failed validation")
   return parsed
+}
+
+export async function fetchDeviceSettingsDocument(
+  signal?: AbortSignal,
+): Promise<DeviceSettingsDocument> {
+  const res = await fetch(`${API_BASE}/api/integrations`, {
+    signal,
+    cache: "no-store",
+    headers: havenRequestHeaders(),
+  })
+  if (res.status === 401) {
+    throw new Error("Sign in required to load saved device connections.")
+  }
+  if (!res.ok) throw new Error(`integrations fetch failed: ${res.status}`)
+  const raw: unknown = await res.json()
+  return parseDeviceSettingsDocument(raw)
+}
+
+export async function saveDeviceSettingsDocument(
+  doc: DeviceSettingsDocument,
+): Promise<DeviceSettingsDocument> {
+  const res = await fetch(`${API_BASE}/api/integrations`, {
+    method: "PUT",
+    headers: havenRequestHeaders(),
+    body: JSON.stringify(doc),
+  })
+  if (res.status === 401) {
+    throw new Error("Sign in required to save device connections.")
+  }
+  if (!res.ok) throw new Error(`integrations save failed: ${res.status}`)
+  const raw: unknown = await res.json()
+  return parseDeviceSettingsDocument(raw)
+}
+
+async function parseIntegrationError(res: Response, fallback: string): Promise<never> {
+  let detail = fallback
+  try {
+    const err = (await res.json()) as { detail?: string }
+    if (err.detail) detail = err.detail
+  } catch {
+    /* ignore */
+  }
+  throw new Error(detail)
+}
+
+export async function testSmartPlug(body: {
+  host?: string
+  brand?: string
+  state?: "on" | "off"
+}): Promise<{ ok: boolean; host?: string; state?: string; device?: string; brand?: string; driver?: string }> {
+  const res = await fetch(`${API_BASE}/api/integrations/smart-plug/test`, {
+    method: "POST",
+    headers: havenRequestHeaders(),
+    body: JSON.stringify({
+      host: body.host ?? "",
+      brand: body.brand ?? "",
+      state: body.state ?? "on",
+    }),
+  })
+  if (!res.ok) await parseIntegrationError(res, `Plug test failed: ${res.status}`)
+  return (await res.json()) as {
+    ok: boolean
+    host?: string
+    state?: string
+    device?: string
+    brand?: string
+    driver?: string
+  }
+}
+
+/** @deprecated Use testSmartPlug */
+export async function testKasaPlug(body: {
+  host: string
+  state?: "on" | "off"
+}): Promise<{ ok: boolean; host?: string; state?: string; device?: string }> {
+  return testSmartPlug({ host: body.host, brand: "tplink_kasa", state: body.state })
+}
+
+export async function testThermostat(body: {
+  heat_f?: number
+  cool_f?: number
+}): Promise<{ ok: boolean; current_temperature_f?: number; device?: string }> {
+  const res = await fetch(`${API_BASE}/api/integrations/thermostat/test`, {
+    method: "POST",
+    headers: havenRequestHeaders(),
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseIntegrationError(res, `Thermostat test failed: ${res.status}`)
+  return (await res.json()) as { ok: boolean; current_temperature_f?: number; device?: string }
+}
+
+export async function testLights(body?: {
+  brightness?: number
+  light_color_hex?: string
+}): Promise<{ ok: boolean; executed?: boolean; brand?: string }> {
+  const res = await fetch(`${API_BASE}/api/integrations/lights/test`, {
+    method: "POST",
+    headers: havenRequestHeaders(),
+    body: JSON.stringify({
+      brightness: body?.brightness ?? 50,
+      light_color_hex: body?.light_color_hex ?? "#E8F4FF",
+    }),
+  })
+  if (!res.ok) await parseIntegrationError(res, `Lights test failed: ${res.status}`)
+  return (await res.json()) as { ok: boolean; executed?: boolean; brand?: string }
 }
 
 export { normalizeSnapshot }

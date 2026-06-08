@@ -11,6 +11,7 @@ import {
   type LiveMode,
   type ModelKind,
 } from "@/lib/roomos/api-client"
+import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 
 export type LiveEngineHookStatus = "idle" | "starting" | "running" | "error"
 
@@ -44,8 +45,8 @@ export function useLiveEngineAutostart(enabled = true) {
   const [poseEnabled, setPoseEnabled] = useState<boolean | null>(null)
   const [compatReport, setCompatReport] = useState<CompatReport | null>(null)
   const [liveMode, setLiveMode] = useState<LiveMode>("off")
-  const [demoMode, setDemoMode] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const cameraRefreshNonce = useRoomOsAmbientStore((s) => s.cameraRefreshNonce)
 
   const refreshStatus = useCallback(() => setRefreshKey((k) => k + 1), [])
 
@@ -74,8 +75,7 @@ export function useLiveEngineAutostart(enabled = true) {
         typeof st.pose_enabled === "boolean" ? st.pose_enabled : null,
       )
       setCompatReport(st.compat_report ?? null)
-      setLiveMode(st.live_mode ?? (st.demo_mode ? "replay" : "off"))
-      setDemoMode(Boolean(st.demo_mode ?? st.demo_replay_active))
+      setLiveMode(st.live_mode ?? "off")
     }
 
     ;(async () => {
@@ -129,7 +129,7 @@ export function useLiveEngineAutostart(enabled = true) {
             // Transient network errors during polling shouldn't tank the UI;
             // the next tick will recover.
           }
-        }, STATUS_POLL_MS)
+        }, STATUS_POLL_STREAMING_MS)
       } catch (err) {
         if (cancelled) return
         setStatus("error")
@@ -141,7 +141,7 @@ export function useLiveEngineAutostart(enabled = true) {
       cancelled = true
       if (pollTimer) clearInterval(pollTimer)
     }
-  }, [enabled, refreshKey])
+  }, [enabled, refreshKey, cameraRefreshNonce])
 
   return {
     status,
@@ -158,7 +158,6 @@ export function useLiveEngineAutostart(enabled = true) {
     poseEnabled,
     compatReport,
     liveMode,
-    demoMode,
     refreshStatus,
   }
 }

@@ -76,13 +76,10 @@ export function LivePageClient() {
       <LiveVideoStage
         snapshot={snapshot}
         engineStatus={engine.status}
-        liveMode={engine.liveMode}
-        demoMode={engine.demoMode}
         previewDark={engine.previewDark}
         previewMeanLuma={engine.previewMeanLuma}
         previewFit={engine.previewFit}
         modelKind={engine.modelKind}
-        onModeChanged={engine.refreshStatus}
         feedbackEvent={live.lastFeedbackEvent}
         onDismissFeedbackEvent={live.dismissFeedbackEvent}
         preferencesEvent={live.lastPreferencesEvent}

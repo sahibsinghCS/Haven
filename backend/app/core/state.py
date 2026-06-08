@@ -8,19 +8,20 @@ order.
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from pathlib import Path
-from typing import Literal, Optional, Set
+from typing import Any, Literal, Optional, Set, Union
 
 import numpy as np
 
 from roomos.config import Config, load_config
-from roomos.demo.replay import DATA_SOURCE, INFERENCE_SOURCE_LABEL, load_replay_engine
 from roomos.demo.readiness import format_missing_model_help, resolve_bundle_dir
 from roomos.inference.live_pipeline import LiveInferenceEngine, LiveSnapshot, build_engine
 from roomos.model.compat import TrainServeCompatibilityError, gate_live_engine_start
 from roomos.model.registry import MODEL_ARTIFACT_FILES
 from roomos.utils.logging import get_logger
+from roomos.video.input import list_available_cameras
 
 from .config import settings
 from .feedback_events import FeedbackEventHub
@@ -28,7 +29,11 @@ from .preferences_events import PreferencesEventHub
 
 log = get_logger("roomos.app.state")
 
-LiveMode = Literal["off", "live", "replay"]
+LiveMode = Literal["off", "live"]
+
+VideoSourceLike = Union[int, str]
+
+_CAMERA_PREFS_PATH = Path(__file__).resolve().parents[2] / "data" / "camera_selection.json"
 
 
 def describe_video_source(cfg: Config) -> str:
@@ -44,6 +49,27 @@ def describe_video_source(cfg: Config) -> str:
     if s.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm")):
         return f"Video file {s}"
     return f"Source {s}"
+
+
+def _load_camera_prefs() -> tuple[Optional[VideoSourceLike], Optional[str]]:
+    if not _CAMERA_PREFS_PATH.is_file():
+        return None, None
+    try:
+        data = json.loads(_CAMERA_PREFS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("Could not read %s: %s", _CAMERA_PREFS_PATH, e)
+        return None, None
+    source = data.get("source")
+    if isinstance(source, str) and source.isdigit():
+        source = int(source)
+    backend = data.get("backend")
+    return source, str(backend) if backend else None
+
+
+def _save_camera_prefs(source: VideoSourceLike, backend: str) -> None:
+    _CAMERA_PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"source": source, "backend": backend}
+    _CAMERA_PREFS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 class PreviewHub:
@@ -94,12 +120,7 @@ class PreviewHub:
 
 
 class SnapshotHub:
-    """Async-aware fan-out of LiveSnapshot updates.
-
-    The ML engine pushes synchronously from a background thread; we shuttle
-    each update onto the asyncio loop so any number of WebSocket clients can
-    subscribe via a queue.
-    """
+    """Async-aware fan-out of LiveSnapshot updates."""
 
     def __init__(self) -> None:
         self._latest: Optional[LiveSnapshot] = None
@@ -115,7 +136,6 @@ class SnapshotHub:
         return self._latest
 
     def push_from_thread(self, snap: LiveSnapshot) -> None:
-        """Called from the ML engine's background thread."""
         self._latest = snap
         loop = self._loop
         if loop is None or loop.is_closed():
@@ -123,7 +143,6 @@ class SnapshotHub:
         loop.call_soon_threadsafe(self._fanout, snap)
 
     def _fanout(self, snap: LiveSnapshot) -> None:
-        """Push the newest snapshot; drop stale queued items (UI only needs latest)."""
         for q in list(self._subscribers):
             try:
                 while not q.empty():
@@ -153,7 +172,6 @@ class SnapshotHub:
 class AppState:
     def __init__(self) -> None:
         self.engine: Optional[LiveInferenceEngine] = None
-        self.replay: Optional[object] = None  # DemoReplayEngine
         self.live_mode: LiveMode = "off"
         self.engine_error: Optional[str] = None
         self.engine_compat_report: Optional[dict] = None
@@ -162,12 +180,79 @@ class AppState:
         self.feedback_hub: FeedbackEventHub = FeedbackEventHub()
         self.preferences_hub: PreferencesEventHub = PreferencesEventHub()
         self.preview: PreviewHub = PreviewHub()
+        saved_source, saved_backend = _load_camera_prefs()
+        self.video_source_override: Optional[VideoSourceLike] = saved_source
+        self.video_backend_override: Optional[str] = saved_backend
 
     @property
     def is_running(self) -> bool:
-        if self.live_mode == "replay":
-            return self.replay is not None and self.replay.is_running()
         return self.engine is not None and self.engine.is_running()
+
+    def _effective_video_config(self, cfg: Config) -> tuple[VideoSourceLike, str]:
+        source = (
+            self.video_source_override
+            if self.video_source_override is not None
+            else cfg.video.source
+        )
+        backend = (
+            self.video_backend_override
+            if self.video_backend_override is not None
+            else str(cfg.video.get("backend", "auto") or "auto")
+        )
+        return source, backend
+
+    def _apply_video_overrides(self, cfg: Config) -> Config:
+        source, backend = self._effective_video_config(cfg)
+        cfg.video.source = source
+        cfg.video.backend = backend
+        return cfg
+
+    def list_cameras(self, *, max_index: int = 6) -> dict[str, Any]:
+        cameras = list_available_cameras(max_index=max_index)
+        cfg = load_config(settings.roomos_config)
+        cfg = self._apply_video_overrides(cfg)
+        current_source, current_backend = self._effective_video_config(cfg)
+        current_label = describe_video_source(cfg)
+        for cam in cameras:
+            if cam.get("source") == current_source:
+                current_label = str(cam.get("label") or current_label)
+                break
+        return {
+            "cameras": cameras,
+            "current": {
+                "source": current_source,
+                "backend": current_backend,
+                "label": current_label,
+            },
+        }
+
+    def set_video_source(
+        self,
+        source: VideoSourceLike,
+        *,
+        backend: Optional[str] = None,
+    ) -> dict[str, Any]:
+        if isinstance(source, str) and source.isdigit():
+            source = int(source)
+        backend_hint = (backend or self.video_backend_override or "auto").strip().lower()
+        self.video_source_override = source
+        self.video_backend_override = backend_hint
+        _save_camera_prefs(source, backend_hint)
+        log.info("Video source set to %r (backend=%s)", source, backend_hint)
+        was_live = self.live_mode == "live" and self.is_running
+        if was_live:
+            result = self.start_engine(mode="live")
+            result["engine_restarted"] = True
+            return result
+        cfg = load_config(settings.roomos_config)
+        self.inference_source = describe_video_source(self._apply_video_overrides(cfg))
+        return {
+            "status": "updated",
+            "source": source,
+            "backend": backend_hint,
+            "inference_source": self.inference_source,
+            "engine_restarted": False,
+        }
 
     def _push_preview_frame(
         self,
@@ -199,75 +284,33 @@ class AppState:
         if ok:
             self.preview.push_from_thread(buf.tobytes(), mean_luma=mean_luma)
 
-    def _push_preview_jpeg(self, jpeg: bytes) -> None:
-        # Replay pushes pre-encoded JPEGs; luma decoding is unnecessary for the
-        # synthetic frames, so mark them as well-lit so the UI doesn't warn.
-        self.preview.push_from_thread(jpeg, mean_luma=128.0)
-
-    def _stop_all_engines(self) -> None:
+    def _stop_engine(self) -> None:
         if self.engine is not None and self.engine.is_running():
             self.engine.stop()
-        if self.replay is not None and self.replay.is_running():
-            self.replay.stop()
         self.engine = None
-        self.replay = None
         self.live_mode = "off"
         self.preview.clear()
 
-    def _resolve_start_mode(self, mode: Optional[str]) -> LiveMode:
-        if mode in ("live", "replay"):
-            return mode  # type: ignore[return-value]
-        default = (settings.roomos_demo_mode or "off").strip().lower()
-        if default in ("replay", "demo", "demo-replay"):
-            return "replay"
-        return "live"
-
     def start_engine(self, *, mode: Optional[str] = None) -> dict:
-        target = self._resolve_start_mode(mode)
-        if self.is_running and self.live_mode == target:
+        target: LiveMode = "live"
+        if mode == "off":
+            return self.stop_engine()
+
+        if self.is_running and self.live_mode == "live":
             return {
                 "status": "already_running",
                 "live_mode": self.live_mode,
                 "inference_source": self.inference_source,
             }
 
-        self._stop_all_engines()
+        self._stop_engine()
         self.engine_error = None
-
-        if target == "replay":
-            return self._start_replay()
         return self._start_live()
-
-    def _start_replay(self) -> dict:
-        try:
-            backend = Path(__file__).resolve().parents[2]
-            fixture = settings.roomos_demo_fixture
-            self.replay = load_replay_engine(
-                fixture,
-                on_snapshot=self.hub.push_from_thread,
-                on_preview_jpeg=self._push_preview_jpeg,
-                project_root=backend,
-            )
-            self.replay.start_background()
-            self.live_mode = "replay"
-            self.inference_source = INFERENCE_SOURCE_LABEL
-            self.engine_compat_report = None
-            return {
-                "status": "started",
-                "live_mode": "replay",
-                "inference_source": self.inference_source,
-                "demo_fixture": fixture,
-                "data_source": DATA_SOURCE,
-            }
-        except Exception as e:
-            self.engine_error = f"Demo replay failed: {e!r}"
-            log.exception("Demo replay start failed")
-            self._stop_all_engines()
-            return {"status": "error", "error": self.engine_error, "live_mode": "off"}
 
     def _start_live(self) -> dict:
         try:
             cfg = load_config(settings.roomos_config)
+            cfg = self._apply_video_overrides(cfg)
             bundle_dir = resolve_bundle_dir(cfg)
             missing = [n for n in MODEL_ARTIFACT_FILES if not (bundle_dir / n).exists()]
             if missing:
@@ -313,12 +356,15 @@ class AppState:
             self.engine = engine
             self.live_mode = "live"
             self.engine_error = None
+            src, bkd = self._effective_video_config(cfg)
             return {
                 "status": "started",
                 "live_mode": "live",
                 "config": settings.roomos_config,
                 "inference_source": self.inference_source,
                 "data_source": "roomos-ml",
+                "video_source": src,
+                "video_backend": bkd,
             }
         except TrainServeCompatibilityError as e:
             self.engine_compat_report = e.report.to_dict() if e.report else None
@@ -345,10 +391,8 @@ class AppState:
             return {"status": "error", "error": self.engine_error, "live_mode": "off"}
 
     def set_live_mode(self, mode: str) -> dict:
-        """Switch between live camera inference and deterministic demo replay."""
+        """Start or stop live camera inference."""
         m = mode.strip().lower()
-        if m in ("demo", "demo-replay", "replay"):
-            return self.start_engine(mode="replay")
         if m == "live":
             return self.start_engine(mode="live")
         if m == "off":
@@ -359,7 +403,7 @@ class AppState:
         if not self.is_running and self.live_mode == "off":
             return {"status": "not_running", "live_mode": "off"}
         prev = self.live_mode
-        self._stop_all_engines()
+        self._stop_engine()
         return {"status": "stopped", "live_mode": "off", "previous_mode": prev}
 
     def status_payload(self) -> dict:
@@ -375,13 +419,6 @@ class AppState:
                         (actions.integrations.get("home_assistant") or {}).get("enabled")
                     ),
                 }
-        elif self.live_mode == "replay" and self.hub.latest is not None:
-            snap = self.hub.latest
-            automation = {
-                "mode": snap.automation_mode,
-                "dry_run": snap.automation_mode == "dry_run",
-                "last": snap.last_automation,
-            }
 
         latest = self.hub.latest
 
@@ -392,14 +429,10 @@ class AppState:
         )
         reported_error = run_error or self.engine_error
 
-        # Engine-derived hints for the UI's boot screen / dark-camera banner.
         boot_phase = "off"
         model_kind = "unknown"
         pose_enabled: Optional[bool] = None
-        if self.live_mode == "replay":
-            boot_phase = "streaming" if latest is not None else "warming_up"
-            model_kind = "replay"
-        elif self.live_mode == "live" and self.engine is not None:
+        if self.live_mode == "live" and self.engine is not None:
             boot_phase = getattr(self.engine, "boot_phase", "starting")
             model_kind = getattr(self.engine, "model_kind", "unknown")
             pose_enabled = getattr(self.engine, "pose_enabled", None)
@@ -407,6 +440,8 @@ class AppState:
         preview_fit = "cover"
         preview_frame_shape = None
         capture_size = None
+        video_source: Optional[VideoSourceLike] = None
+        video_backend: Optional[str] = None
         if self.live_mode == "live" and self.engine is not None:
             preview_fit = getattr(self.engine, "_preview_fit", "cover") or "cover"
             shape = getattr(self.engine, "_preview_frame_shape", None)
@@ -415,11 +450,13 @@ class AppState:
             cap = getattr(self.engine, "_capture_size", None)
             if cap and len(cap) == 2:
                 capture_size = [int(cap[0]), int(cap[1])]
+            try:
+                cfg = load_config(settings.roomos_config)
+                video_source, video_backend = self._effective_video_config(cfg)
+            except Exception:
+                pass
 
         preview_mean_luma = self.preview.mean_luma
-        # Anything below ~10/255 average brightness is effectively black on
-        # consumer screens; expose a normalized flag so the UI doesn't have to
-        # invent its own threshold.
         preview_dark = (
             preview_mean_luma is not None
             and self.preview.available
@@ -430,8 +467,6 @@ class AppState:
         return {
             "engine_running": self.is_running,
             "live_mode": self.live_mode,
-            "demo_mode": self.live_mode == "replay",
-            "demo_replay_active": self.live_mode == "replay",
             "engine_error": reported_error,
             "compat_ok": self.engine_compat_report.get("ok")
             if self.engine_compat_report
@@ -439,6 +474,8 @@ class AppState:
             "compat_report": self.engine_compat_report,
             "has_snapshot": latest is not None,
             "inference_source": self.inference_source,
+            "video_source": video_source,
+            "video_backend": video_backend,
             "preview_available": self.preview.available,
             "preview_is_inference_feed": self.live_mode == "live",
             "preview_mean_luma": preview_mean_luma,
@@ -451,9 +488,6 @@ class AppState:
             "model_kind": model_kind,
             "pose_enabled": pose_enabled,
             "data_source": latest.data_source if latest else None,
-            "demo_fixture": settings.roomos_demo_fixture
-            if self.live_mode == "replay"
-            else None,
             "automation": automation,
         }
 

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { motion, useReducedMotion } from "framer-motion"
 import Link from "next/link"
 
+import { LiveCameraSelect } from "@/components/roomos/live-camera-select"
 import { cn } from "@/lib/utils"
 import { ROOM_STATE_ACCENT } from "@/lib/roomos/state-meta"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
@@ -15,6 +16,7 @@ const nav = [
   { href: "/live", label: "Live" },
   { href: "/review", label: "Review" },
   { href: "/preferences", label: "Preferences" },
+  { href: "/settings", label: "Settings" },
 ] as const
 
 export function RoomDashboardShell({ children }: { children: React.ReactNode }) {
@@ -184,6 +186,7 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
             </span>
           </Link>
 
+          <div className="flex shrink-0 items-center gap-2">
           <nav
             ref={navWrapRef}
             aria-label="Primary"
@@ -239,6 +242,8 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
               )
             })}
           </nav>
+          {isLive ? <LiveCameraSelect /> : null}
+          </div>
         </div>
       </header>
 

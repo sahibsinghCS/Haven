@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { useState } from "react"
 import dynamic from "next/dynamic"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { HavenAuthProvider } from "@/components/auth/haven-auth-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/sonner"
 
@@ -28,10 +29,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider delayDuration={200}>
-        {children}
-        <Toaster closeButton position="bottom-right" richColors={false} />
-      </TooltipProvider>
+      <HavenAuthProvider>
+        <TooltipProvider delayDuration={200}>
+          {children}
+          <Toaster closeButton position="bottom-right" richColors={false} />
+        </TooltipProvider>
+      </HavenAuthProvider>
       {process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_RQ_DEVTOOLS === "1" ? (
         <ReactQueryDevtools buttonPosition="top-right" />
       ) : null}

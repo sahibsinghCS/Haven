@@ -1,0 +1,18 @@
+extends: actions.yaml
+
+# Opt-in overlay: enables direct Kasa control (no Home Assistant).
+# Also enable the sleep_fan_kasa / work_fan_off_kasa rules in actions.yaml (enabled: true).
+
+actions:
+  dry_run: false
+
+  integrations:
+    kasa:
+      enabled: true
+      host: ""
+      host_env: "KASA_PLUG_HOST"
+      username: ""
+      password: ""
+      username_env: "KASA_USERNAME"
+      password_env: "KASA_PASSWORD"
+      timeout_sec: 10.0
