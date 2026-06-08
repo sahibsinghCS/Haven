@@ -47,6 +47,9 @@ export interface SmartPlugSettings {
   merossEmail?: string
   merossPassword?: string
   shellyGen?: string
+  /** Tapo app account (P110M and newer plugs use KLAP — same login as the mobile app). */
+  tapoEmail?: string
+  tapoPassword?: string
 }
 
 export interface LightsSettings {

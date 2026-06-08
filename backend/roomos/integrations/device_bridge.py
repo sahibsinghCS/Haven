@@ -41,7 +41,11 @@ def load_ui_device_settings() -> Dict[str, Any]:
 def plug_runtime_config(plug: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(plug, dict):
         return {}
-    brand = str(plug.get("brand") or plug.get("provider") or "tplink_kasa")
+    brand = str(plug.get("brand") or plug.get("provider") or "tapo")
+    tapo_email = str(plug.get("tapoEmail") or plug.get("username") or "").strip()
+    tapo_password = str(plug.get("tapoPassword") or plug.get("password") or "").strip()
+    if tapo_email and tapo_password:
+        brand = "tapo"
     host = str(plug.get("host") or "").strip()
     enabled = bool(plug.get("enabled"))
     cfg: Dict[str, Any] = {
@@ -50,6 +54,10 @@ def plug_runtime_config(plug: Dict[str, Any]) -> Dict[str, Any]:
         "host": host,
         "label": str(plug.get("label") or ""),
         "timeout_sec": float(plug.get("timeout_sec", 12.0)),
+        "tapoEmail": tapo_email,
+        "tapoPassword": tapo_password,
+        "username": tapo_email,
+        "password": tapo_password,
         "tuyaDeviceId": str(plug.get("tuyaDeviceId") or ""),
         "tuyaLocalKey": str(plug.get("tuyaLocalKey") or ""),
         "tuyaVersion": plug.get("tuyaVersion") or "3.3",
@@ -116,6 +124,10 @@ def merge_runtime_integrations(yaml_integrations: Dict[str, Any]) -> Dict[str, A
             kasa["enabled"] = plug_cfg.get("enabled", False) or kasa.get("enabled", False)
             if plug_cfg.get("host"):
                 kasa["host"] = plug_cfg["host"]
+            if plug_cfg.get("username"):
+                kasa["username"] = plug_cfg["username"]
+            if plug_cfg.get("password"):
+                kasa["password"] = plug_cfg["password"]
             out["kasa"] = kasa
 
     thermo = devices.get("thermostat")

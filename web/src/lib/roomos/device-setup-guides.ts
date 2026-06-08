@@ -7,6 +7,11 @@ export type DeviceCategory = "smart_plug" | "lights" | "thermostat"
 
 export type ConnectionKind = "local_wifi" | "cloud_account" | "hub_bridge" | "matter"
 
+export interface SetupTroubleshootItem {
+  problem: string
+  fix: string
+}
+
 export interface DeviceSetupGuide {
   id: string
   label: string
@@ -19,6 +24,13 @@ export interface DeviceSetupGuide {
   supportsDirectControl?: boolean
   /** Extra tip after steps */
   tip?: string
+  /** Highlight a specific model (e.g. P110M) */
+  featuredModel?: string
+  /** Important callouts (firmware, third-party toggle, etc.) */
+  warnings?: string[]
+  troubleshooting?: SetupTroubleshootItem[]
+  /** Short line for “no hub required” messaging */
+  directControlNote?: string
 }
 
 export const CONNECTION_KIND_LABELS: Record<ConnectionKind, string> = {
@@ -33,10 +45,10 @@ export const CATEGORY_INTROS: Record<
   { title: string; paragraphs: string[] }
 > = {
   smart_plug: {
-    title: "Smart plugs",
+    title: "Connect devices to HAVEN",
     paragraphs: [
-      "Most Wi‑Fi plugs join your home router like a phone. HAVEN turns them on or off when your room mood changes (for example, a fan on a plug for sleep vs work).",
-      "Pick the brand that matches the app on your phone. For plugs that support local control, you’ll enter the device’s IP address from your router’s device list.",
+      "HAVEN talks to your gear directly over home Wi‑Fi or the manufacturer’s cloud — no Home Assistant hub required.",
+      "When Live detects a mood change, HAVEN applies that mood’s Preferences (fan on/off, lights, temperature). Connect each device once here, then tune comfort on the Preferences page.",
     ],
   },
   lights: {
@@ -96,18 +108,52 @@ export const SMART_PLUG_GUIDES: DeviceSetupGuide[] = [
     id: "tapo",
     label: "TP-Link Tapo",
     connectionKind: "local_wifi",
-    tagline: "P100/P110 and newer Tapo plugs",
+    tagline: "P110M energy monitor, P110, P105, P100",
+    featuredModel: "Tapo P110M",
     supportsDirectControl: true,
+    directControlNote:
+      "Direct LAN control from this PC — you do not need Home Assistant, Alexa, or a separate hub.",
     prerequisites: [
-      "Device added in the Tapo app.",
-      "Same home network as this computer.",
+      "Plug paired in the Tapo app and toggles on/off from your phone.",
+      "Phone and this computer on the same home Wi‑Fi (2.4 GHz during setup is most reliable).",
+      "Tapo account email + password (same login as the Tapo mobile app).",
+    ],
+    warnings: [
+      "Firmware 1.4.1 or newer: in the Tapo app open Me → Voice Assistant → Third-Party Compatibility and turn it ON. Without this, local control from HAVEN may fail with an auth error.",
+      "Close the Tapo desktop client on your PC while testing if you use it — only one local connection to the plug is allowed at a time.",
     ],
     steps: [
-      "Finish setup in the Tapo app first.",
-      "Find the plug’s IP in your router’s device list.",
-      "Enter the IP below and run Test connection (uses the same local driver as Kasa).",
+      "In the Tapo app, add the P110M and confirm you can turn it on/off from your phone.",
+      "Enable Third-Party Compatibility (Me → Voice Assistant) if your firmware is recent.",
+      "Find the plug’s IP: Tapo app → your plug → Settings (gear) → Device Info → IP Address. Or check your router’s connected-devices list for a device named TAPO or your plug label.",
+      "Enter your Tapo account email and password below (HAVEN uses the same secure local protocol as other Tapo tools — credentials stay on this machine).",
+      "Paste the IP address, pick a name (e.g. “Fan”), and tap Connect & test plug. You should hear a click and see the plug turn on.",
+      "Turn on Mood automations on this card, then open Preferences to choose when the fan runs for each mood.",
     ],
-    tip: "Tapo and Kasa use different apps; pick Tapo only if your box says Tapo.",
+    tip: "P110M also supports Matter — you can use Matter with Apple/Google Home separately. For HAVEN, use the Tapo Wi‑Fi path above (fastest, includes energy monitoring later).",
+    troubleshooting: [
+      {
+        problem: "“Device response did not match our challenge” (even with correct email/password)",
+        fix:
+          "This is a Tapo firmware handshake issue, not always a typo. In the Tapo app: Me → Tapo Lab (or Voice Assistant) → Third-Party Compatibility → ON — toggle OFF, wait 10s, ON again. Close the Tapo PC app. If it still fails: unplug all other TP-Link/Tapo devices, factory-reset the plug, enable Third-Party Compatibility, then add only this plug in Tapo.",
+      },
+      {
+        problem: "Authentication failed or 403 error",
+        fix: "Double-check Tapo email/password. Enable Third-Party Compatibility in the Tapo app. Update plug firmware in the app if offered.",
+      },
+      {
+        problem: "Cannot reach plug / timeout",
+        fix: "Confirm the IP is correct and the plug is online in Tapo. This PC must be on the same LAN (not guest Wi‑Fi).",
+      },
+      {
+        problem: "Plug is busy or unavailable",
+        fix: "Quit the Tapo PC client or any other app controlling the plug, wait 10 seconds, and test again.",
+      },
+      {
+        problem: "Test works but Live does not control the plug",
+        fix: "Enable Mood automations here, set fan on/off in Preferences, and ensure actions run for real (ROOMOS_ACTIONS_CONFIG=configs/actions.live-devices.yaml).",
+      },
+    ],
   },
   {
     id: "meross",
@@ -270,14 +316,20 @@ export const LIGHTS_GUIDES: DeviceSetupGuide[] = [
   {
     id: "tuya",
     label: "Tuya / Smart Life",
-    connectionKind: "cloud_account",
-    tagline: "Many budget brands use Smart Life",
-    prerequisites: ["Smart Life or Tuya Smart app account."],
-    steps: [
-      "Add the device in Smart Life and confirm it responds.",
-      "Some devices support a local key in the app (device info → LAN); save that in notes if shown.",
-      "HAVEN can use Tuya’s cloud or local control depending on your model.",
+    connectionKind: "local_wifi",
+    tagline: "Smart Life, Gosund, and many budget bulbs",
+    supportsDirectControl: true,
+    prerequisites: [
+      "Bulb added in Smart Life or Tuya Smart app.",
+      "HAVEN backend running on the same Wi‑Fi.",
     ],
+    steps: [
+      "Confirm the bulb toggles in the Smart Life app.",
+      "On the HAVEN computer, run: python -m tinytuya wizard (sign in with your Tuya account).",
+      "Copy Device ID, Local Key, and IP from the wizard output.",
+      "Paste them below and tap Connect lights — the bulb should brighten.",
+    ],
+    tip: "After a factory reset you must run the wizard again — the local key changes.",
   },
   {
     id: "matter",
@@ -455,7 +507,7 @@ export function migrateLegacyProvider(
     return "other_lights"
   }
   if (legacy === "matter") return "matter"
-  if (legacy === "none") return category === "smart_plug" ? "tplink_kasa" : "none"
+  if (legacy === "none") return category === "smart_plug" ? "tapo" : "none"
   if (legacy === "other") {
     return category === "smart_plug"
       ? "other_plug"

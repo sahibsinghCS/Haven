@@ -783,11 +783,26 @@ export type HavenCloudStatus = {
   message: string
 }
 
+export type HavenAuthConfig = {
+  auth_configured: boolean
+  supabase_url: string | null
+  require_auth: boolean
+}
+
+export async function fetchAuthConfig(signal?: AbortSignal): Promise<HavenAuthConfig> {
+  const res = await fetch(`${API_BASE}/api/auth/config`, {
+    signal,
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error(`auth config failed: ${res.status}`)
+  return (await res.json()) as HavenAuthConfig
+}
+
 export async function fetchCloudStatus(signal?: AbortSignal): Promise<HavenCloudStatus> {
   const res = await fetch(`${API_BASE}/api/settings/status`, {
     signal,
     cache: "no-store",
-    headers: havenRequestHeaders(),
+    headers: await havenRequestHeaders(),
   })
   if (!res.ok) throw new Error(`settings status failed: ${res.status}`)
   return (await res.json()) as HavenCloudStatus
@@ -797,7 +812,7 @@ export async function fetchPreferenceDocument(signal?: AbortSignal): Promise<Pre
   const res = await fetch(`${API_BASE}/api/preferences`, {
     signal,
     cache: "no-store",
-    headers: havenRequestHeaders(),
+    headers: await havenRequestHeaders(),
   })
   if (!res.ok) throw new Error(`preferences fetch failed: ${res.status}`)
   const raw: unknown = await res.json()
@@ -809,7 +824,7 @@ export async function fetchPreferenceDocument(signal?: AbortSignal): Promise<Pre
 export async function savePreferenceDocument(doc: PreferenceDocument): Promise<PreferenceDocument> {
   const res = await fetch(`${API_BASE}/api/preferences`, {
     method: "PUT",
-    headers: havenRequestHeaders(),
+    headers: await havenRequestHeaders(),
     body: JSON.stringify(doc),
   })
   if (!res.ok) throw new Error(`preferences save failed: ${res.status}`)
@@ -825,7 +840,7 @@ export async function fetchDeviceSettingsDocument(
   const res = await fetch(`${API_BASE}/api/integrations`, {
     signal,
     cache: "no-store",
-    headers: havenRequestHeaders(),
+    headers: await havenRequestHeaders(),
   })
   if (res.status === 401) {
     throw new Error("Sign in required to load saved device connections.")
@@ -840,7 +855,7 @@ export async function saveDeviceSettingsDocument(
 ): Promise<DeviceSettingsDocument> {
   const res = await fetch(`${API_BASE}/api/integrations`, {
     method: "PUT",
-    headers: havenRequestHeaders(),
+    headers: await havenRequestHeaders(),
     body: JSON.stringify(doc),
   })
   if (res.status === 401) {
@@ -869,7 +884,7 @@ export async function testSmartPlug(body: {
 }): Promise<{ ok: boolean; host?: string; state?: string; device?: string; brand?: string; driver?: string }> {
   const res = await fetch(`${API_BASE}/api/integrations/smart-plug/test`, {
     method: "POST",
-    headers: havenRequestHeaders(),
+    headers: await havenRequestHeaders(),
     body: JSON.stringify({
       host: body.host ?? "",
       brand: body.brand ?? "",
@@ -901,7 +916,7 @@ export async function testThermostat(body: {
 }): Promise<{ ok: boolean; current_temperature_f?: number; device?: string }> {
   const res = await fetch(`${API_BASE}/api/integrations/thermostat/test`, {
     method: "POST",
-    headers: havenRequestHeaders(),
+    headers: await havenRequestHeaders(),
     body: JSON.stringify(body),
   })
   if (!res.ok) await parseIntegrationError(res, `Thermostat test failed: ${res.status}`)
@@ -914,7 +929,7 @@ export async function testLights(body?: {
 }): Promise<{ ok: boolean; executed?: boolean; brand?: string }> {
   const res = await fetch(`${API_BASE}/api/integrations/lights/test`, {
     method: "POST",
-    headers: havenRequestHeaders(),
+    headers: await havenRequestHeaders(),
     body: JSON.stringify({
       brightness: body?.brightness ?? 50,
       light_color_hex: body?.light_color_hex ?? "#E8F4FF",

@@ -9,7 +9,8 @@ from ..utils.logging import get_logger
 
 log = get_logger("roomos.devices.smart_plug")
 
-KASA_FAMILY = frozenset({"tplink_kasa", "tapo", "kasa"})
+KASA_FAMILY = frozenset({"tplink_kasa", "kasa"})
+TAPO_BRANDS = frozenset({"tapo"})
 
 
 def _normalize_state(state: str) -> str:
@@ -33,12 +34,34 @@ def _host(config: Dict[str, Any]) -> str:
     return str(config.get("host") or "").strip()
 
 
+async def _apply_tapo(config: Dict[str, Any], state: str) -> Dict[str, Any]:
+    from ..actions.tapo_plug import apply_tapo_state, resolve_tapo_credentials
+
+    host = _host(config)
+    if not host:
+        raise ValueError("Plug IP address is required for TP-Link Tapo.")
+    email, password = resolve_tapo_credentials(config)
+    timeout = float(config.get("timeout_sec", 12.0))
+    label = str(config.get("label") or "").strip()
+    device_id = str(config.get("deviceId") or config.get("device_id") or "").strip()
+    result = await apply_tapo_state(
+        host,
+        state,
+        email=email,
+        password=password,
+        timeout_sec=timeout,
+        label=label,
+        device_id=device_id,
+    )
+    return {"driver": "tapo", "brand": "tapo", **result}
+
+
 async def _apply_kasa_family(config: Dict[str, Any], state: str) -> Dict[str, Any]:
     from ..actions.kasa import apply_kasa_state, resolve_kasa_credentials
 
     host = _host(config)
     if not host:
-        raise ValueError("Plug IP address is required for TP-Link Kasa / Tapo.")
+        raise ValueError("Plug IP address is required for TP-Link Kasa.")
     username, password = resolve_kasa_credentials(config)
     timeout = float(config.get("timeout_sec", 12.0))
     result = await apply_kasa_state(
@@ -177,6 +200,8 @@ async def _apply_meross(config: Dict[str, Any], state: str) -> Dict[str, Any]:
 
 
 def _resolve_driver(brand: str, config: Dict[str, Any]) -> str:
+    if brand in TAPO_BRANDS:
+        return "tapo"
     if brand in KASA_FAMILY:
         return "kasa"
     if brand == "shelly":
@@ -210,6 +235,8 @@ async def apply_smart_plug_state(config: Dict[str, Any], state: str) -> Dict[str
     brand = _brand(cfg)
     driver = _resolve_driver(brand, cfg)
 
+    if driver == "tapo":
+        return await _apply_tapo(cfg, normalized)
     if driver == "kasa":
         return await _apply_kasa_family(cfg, normalized)
     if driver == "shelly":

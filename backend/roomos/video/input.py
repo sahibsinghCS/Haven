@@ -152,6 +152,27 @@ def _opencv_can_read_url(url: str, timeout_sec: float = 4.0) -> bool:
             return False
 
 
+def _is_remote_video_source(source: VideoSourceLike) -> bool:
+    """True for HTTP/RTSP URLs and droidcam:auto (not local webcam indices)."""
+    if isinstance(source, int):
+        return False
+    s = str(source)
+    if s.isdigit():
+        return False
+    if s == "droidcam:auto":
+        return True
+    return "://" in s
+
+
+def _mjpeg_connect_error(url: str, exc: BaseException) -> RuntimeError:
+    return RuntimeError(
+        f"Could not connect to MJPEG camera at {url}: {exc}. "
+        "If this is DroidCam, open the DroidCam app on your phone and the PC client, "
+        "then confirm live video works in DroidCam. "
+        "Or pick a different camera: npm run probe:cameras"
+    )
+
+
 def _probe_droidcam() -> Optional[str]:
     """Return the first DroidCam URL OpenCV can actually decode, or None."""
     for host in _DROIDCAM_DEFAULT_HOSTS:
@@ -341,10 +362,14 @@ class _MjpegHttpCapture:
     """VideoCapture-like reader for DroidCam-style MJPEG over HTTP (stdlib)."""
 
     def __init__(self, url: str) -> None:
+        import urllib.error
         import urllib.request
 
         self.url = url
-        self._resp = urllib.request.urlopen(url, timeout=10)
+        try:
+            self._resp = urllib.request.urlopen(url, timeout=10)
+        except urllib.error.URLError as exc:
+            raise _mjpeg_connect_error(url, exc) from exc
         self._buffer = b""
         self._opened = True
 
@@ -724,8 +749,10 @@ class FrameSource:
         capture_height: Optional[int] = None,
         capture_fps: Optional[float] = None,
         frame_preprocess: Optional[dict] = None,
+        fallback_to_webcam: bool = False,
     ) -> None:
         self.requested_source = source
+        self.fallback_to_webcam = bool(fallback_to_webcam)
         self.coerced_source = _coerce_source(source)
         self.sample_fps = max(0.1, float(sample_fps))
         self.resize_width = resize_width
@@ -763,7 +790,26 @@ class FrameSource:
     # --- context manager -----------------------------------------------
 
     def __enter__(self) -> "FrameSource":
-        self.open()
+        try:
+            self.open()
+        except Exception as primary_exc:
+            if not self.fallback_to_webcam or not _is_remote_video_source(self.requested_source):
+                raise
+            cameras = [c for c in list_available_cameras(max_index=6) if c.get("available")]
+            if not cameras:
+                raise primary_exc
+            fallback = cameras[0]
+            log.warning(
+                "Could not open %r (%s). Falling back to local webcam %r (index %s).",
+                self.requested_source,
+                primary_exc,
+                fallback.get("label"),
+                fallback.get("source"),
+            )
+            self.requested_source = fallback["source"]
+            self.coerced_source = _coerce_source(fallback["source"])
+            self.backend = fallback.get("backend") or self.backend
+            self.open()
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -908,6 +954,7 @@ def open_video_source(
     capture_height: Optional[int] = None,
     capture_fps: Optional[float] = None,
     frame_preprocess: Optional[dict] = None,
+    fallback_to_webcam: bool = False,
 ) -> FrameSource:
     """Functional convenience wrapper — does not open the device yet."""
     return FrameSource(
@@ -917,6 +964,7 @@ def open_video_source(
         read_timeout_sec=read_timeout_sec,
         log_every=log_every,
         backend=backend,
+        fallback_to_webcam=fallback_to_webcam,
         preview_fps=preview_fps,
         preview_callback=preview_callback,
         capture_width=capture_width,

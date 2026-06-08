@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { HavenAuthProvider } from "@/components/auth/haven-auth-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/sonner"
+import type { SupabasePublicConfig } from "@/lib/supabase/env"
 
 const ReactQueryDevtools = dynamic(
   () =>
@@ -14,7 +15,13 @@ const ReactQueryDevtools = dynamic(
   { ssr: false },
 )
 
-export function AppProviders({ children }: { children: ReactNode }) {
+export function AppProviders({
+  children,
+  supabase,
+}: {
+  children: ReactNode
+  supabase?: SupabasePublicConfig | null
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -29,7 +36,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <HavenAuthProvider>
+      <HavenAuthProvider supabase={supabase}>
         <TooltipProvider delayDuration={200}>
           {children}
           <Toaster closeButton position="bottom-right" richColors={false} />

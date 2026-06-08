@@ -48,14 +48,18 @@ NEXT_PUBLIC_ROOMOS_API_BASE=http://127.0.0.1:8000
 npm run demo
 ```
 
-Open the app → you are redirected to **Sign in** → create an account → **Settings** and **Preferences** save to your user.
+Open the app → you are redirected to **Sign in** → create an account → **Connections** and **Preferences** save to your user.
 
-## 6. Auth redirect URL (if email confirm or OAuth later)
+Auth pages: `/login`, `/login/sign-up`, `/login/forgot-password`, `/auth/reset-password`.
+
+## 6. Auth redirect URLs
 
 In Supabase **Authentication → URL configuration**, add:
 
 - Site URL: `http://localhost:3000`
-- Redirect URLs: `http://localhost:3000/auth/callback`
+- Redirect URLs:
+  - `http://localhost:3000/auth/callback`
+  - `http://localhost:3000/auth/reset-password`
 
 ## Local dev without auth
 

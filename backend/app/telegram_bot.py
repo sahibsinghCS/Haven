@@ -148,6 +148,10 @@ async def start_telegram_bot() -> None:
             log.warning("TELEGRAM_ENABLED=1 but token or TELEGRAM_ALLOWED_CHAT_IDS missing — bot not started.")
         return
 
+    # Uvicorn --reload can start a new process before the old bot stops polling.
+    if _application is not None:
+        await stop_telegram_bot()
+
     token = settings.telegram_bot_token.strip()
     allowed = parse_allowed_chat_ids(settings.telegram_allowed_chat_ids)
     bot_id = bot_user_id_from_token(token)
@@ -329,7 +333,26 @@ async def start_telegram_bot() -> None:
             reply_message=update.message,
         )
 
+    from telegram.error import Conflict
+
     app = Application.builder().token(token).build()
+
+    async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        err = context.error
+        if isinstance(err, Conflict):
+            log.error(
+                "Telegram bot conflict: another instance is already polling getUpdates. "
+                "Stop duplicate `npm run demo` processes or set TELEGRAM_ENABLED=0 in backend/.env."
+            )
+            try:
+                if app.updater.running:
+                    await app.updater.stop()
+            except Exception:
+                log.debug("Telegram updater stop after conflict failed", exc_info=True)
+            return
+        log.exception("Telegram handler error: %s", err)
+
+    app.add_error_handler(on_error)
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
@@ -338,6 +361,10 @@ async def start_telegram_bot() -> None:
 
     await app.initialize()
     await app.start()
+    try:
+        await app.bot.delete_webhook(drop_pending_updates=True)
+    except Exception:
+        log.debug("delete_webhook before polling failed", exc_info=True)
     await app.updater.start_polling(drop_pending_updates=True)
     _application = app
     log.info("Haven Telegram bot polling (allowed chats: %s)", sorted(allowed))

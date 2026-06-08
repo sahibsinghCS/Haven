@@ -1,17 +1,17 @@
 import { createBrowserClient } from "@supabase/ssr"
 
-export function isSupabaseAuthEnabled(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim(),
-  )
-}
+import {
+  getSupabasePublicConfig,
+  isSupabaseAuthEnabled,
+  type SupabasePublicConfig,
+} from "@/lib/supabase/env"
 
-export function createSupabaseBrowserClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url?.trim() || !key?.trim()) {
+export { getSupabasePublicConfig, isSupabaseAuthEnabled, type SupabasePublicConfig }
+
+export function createSupabaseBrowserClient(config?: SupabasePublicConfig | null) {
+  const resolved = config ?? getSupabasePublicConfig()
+  if (!resolved) {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
   }
-  return createBrowserClient(url.trim(), key.trim())
+  return createBrowserClient(resolved.url, resolved.anonKey)
 }

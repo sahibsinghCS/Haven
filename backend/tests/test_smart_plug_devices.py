@@ -9,6 +9,21 @@ import pytest
 from roomos.devices.smart_plug import apply_smart_plug_state
 
 
+def test_tapo_routes_to_native_driver():
+    import asyncio
+
+    with patch("roomos.devices.smart_plug._apply_tapo", new_callable=AsyncMock) as mock:
+        mock.return_value = {"driver": "tapo", "state": "on"}
+        result = asyncio.run(
+            apply_smart_plug_state(
+                {"brand": "tapo", "host": "192.168.1.50", "tapoEmail": "a@b.com", "tapoPassword": "x"},
+                "on",
+            )
+        )
+        mock.assert_awaited_once()
+        assert result["driver"] == "tapo"
+
+
 def test_kasa_family_routes_to_kasa():
     import asyncio
 

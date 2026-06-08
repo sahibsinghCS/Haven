@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Lightbulb, Plug, Save, Thermometer } from "lucide-react"
+import { Lightbulb, Save, Thermometer } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -11,10 +11,9 @@ import {
   SettingsInput,
   SettingsTextarea,
 } from "@/components/roomos/settings/device-connection-card"
-import {
-  CategoryIntro,
-  DeviceSetupInstructions,
-} from "@/components/roomos/settings/device-setup-instructions"
+import { DeviceSetupInstructions } from "@/components/roomos/settings/device-setup-instructions"
+import { HavenConnectHero } from "@/components/roomos/settings/haven-connect-hero"
+import { SimplePlugConnect } from "@/components/roomos/settings/simple-plug-connect"
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,19 +34,12 @@ import {
 } from "@/lib/roomos/api-client"
 import { defaultDeviceSettingsDocument } from "@/lib/roomos/device-settings-schema"
 import { loadDeviceSettingsLocal, saveDeviceSettingsLocal } from "@/lib/roomos/device-settings-persistence"
-import {
-  CATEGORY_INTROS,
-  getGuide,
-  LIGHTS_GUIDES,
-  SMART_PLUG_GUIDES,
-  THERMOSTAT_GUIDES,
-} from "@/lib/roomos/device-setup-guides"
+import { getGuide, LIGHTS_GUIDES, THERMOSTAT_GUIDES } from "@/lib/roomos/device-setup-guides"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import type { DeviceSettingsDocument, LightsBrand, SmartPlugBrand, ThermostatBrand } from "@/types/device-settings"
 
 import { cn } from "@/lib/utils"
 
-const PLUG_BRANDS_WITH_IP: SmartPlugBrand[] = ["tplink_kasa", "tapo", "shelly", "wemo", "other_plug"]
 const PLUG_CLOUD_ONLY: SmartPlugBrand[] = ["wyze", "amazon"]
 const THERMOSTAT_TEST_BRANDS: ThermostatBrand[] = [
   "honeywell_home",
@@ -59,6 +51,15 @@ const THERMOSTAT_TEST_BRANDS: ThermostatBrand[] = [
 function validatePlugForTest(plug: DeviceSettingsDocument["devices"]["smartPlug"]): string | null {
   if (PLUG_CLOUD_ONLY.includes(plug.brand)) {
     return "Wyze and Amazon plugs are not supported for direct control yet. Try TP-Link Kasa, Shelly, Tuya, or Meross."
+  }
+  if (plug.brand === "tapo") {
+    if (!plug.tapoEmail?.trim() || !plug.tapoPassword?.trim()) {
+      return "Enter your Tapo app email and password (same login as on your phone)."
+    }
+    if (!plug.host?.trim()) {
+      return "Enter the plug’s IP from Tapo → Device Info or your router."
+    }
+    return null
   }
   if (plug.brand === "meross") {
     if (!plug.merossEmail?.trim() || !plug.merossPassword?.trim()) {
@@ -147,10 +148,6 @@ export function SettingsPageClient() {
     onError: () => toast.error("Could not save settings"),
   })
 
-  const plugGuide = useMemo(
-    () => getGuide("smart_plug", doc?.devices.smartPlug.brand ?? "tplink_kasa"),
-    [doc?.devices.smartPlug.brand],
-  )
   const lightsGuide = useMemo(
     () => getGuide("lights", doc?.devices.lights.brand ?? "none"),
     [doc?.devices.lights.brand],
@@ -162,7 +159,7 @@ export function SettingsPageClient() {
 
   const canTestPlug =
     doc &&
-    plugGuide?.supportsDirectControl &&
+    getGuide("smart_plug", doc.devices.smartPlug.brand)?.supportsDirectControl &&
     !PLUG_CLOUD_ONLY.includes(doc.devices.smartPlug.brand)
 
   const persistBeforeTest = async (payload: DeviceSettingsDocument) => {
@@ -191,12 +188,17 @@ export function SettingsPageClient() {
   const markDeviceConnected = async (
     payload: DeviceSettingsDocument,
     key: "smartPlug" | "lights" | "thermostat",
+    extra?: Partial<DeviceSettingsDocument["devices"]["smartPlug"]>,
   ) => {
     const connectedDoc: DeviceSettingsDocument = {
       ...payload,
       devices: {
         ...payload.devices,
-        [key]: { ...payload.devices[key], connected: true },
+        [key]: {
+          ...payload.devices[key],
+          connected: true,
+          ...(key === "smartPlug" ? { enabled: true, ...extra } : {}),
+        },
       },
     }
     try {
@@ -239,7 +241,7 @@ export function SettingsPageClient() {
         state: "on",
       })
       await markDeviceConnected(saved, "smartPlug")
-      toast.success("Plug connected — it should have turned on. Mood automations use Preferences when Live runs.")
+      toast.success("Connected — your plug should have turned on. Set fan on/off per mood in Preferences.")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Plug test failed")
     } finally {
@@ -325,7 +327,7 @@ export function SettingsPageClient() {
   const { smartPlug, lights, thermostat } = doc.devices
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 pb-32">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 pb-24">
       {authRequired && authEnabled && !session ? (
         <p
           className={cn(
@@ -352,270 +354,35 @@ export function SettingsPageClient() {
         </p>
       ) : null}
 
-      <header className="relative overflow-hidden rounded-[2.15rem] border border-[color:var(--haven-line-strong)] bg-[linear-gradient(165deg,rgba(255,254,251,0.995)_0%,rgba(251,246,238,0.97)_44%,rgba(236,228,218,0.94)_100%)] p-6 shadow-[var(--haven-shadow-float)] ring-1 ring-[color:var(--haven-edge-light)] sm:p-8">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--haven-faint)]">
-          Connections
-        </p>
-        <h1 className="mt-2 font-serif text-[clamp(2rem,4.5vw,2.75rem)] font-medium leading-[1.08] tracking-[-0.03em] text-[color:var(--haven-ink)]">
-          Settings
-        </h1>
-        <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-[color:var(--haven-muted)]">
-          Pick your brand, enter Wi‑Fi IP or cloud credentials, then use{" "}
-          <strong className="font-semibold text-[color:var(--haven-ink)]">Connect &amp; test</strong> — HAVEN
-          talks to the real device from this computer (same network for local plugs).{" "}
-          <strong className="font-semibold text-[color:var(--haven-ink)]">Preferences</strong> set comfort
-          per mood; turn on <strong className="font-semibold">Mood automations</strong> on each card when
-          Live should apply them.
-        </p>
-        <ol className="mt-4 max-w-2xl list-decimal space-y-1 pl-5 text-[13px] leading-relaxed text-[color:var(--haven-muted)]">
-          <li>Run <span className="font-mono text-[12px]">npm run demo</span> on the PC on your home Wi‑Fi.</li>
-          <li>Choose brand → fill IP or account fields → Connect &amp; test.</li>
-          <li>Save if you edited without testing; cloud sync needs sign-in when Supabase is on.</li>
-        </ol>
-      </header>
+      <HavenConnectHero />
+
+      <SimplePlugConnect
+        plug={smartPlug}
+        connected={smartPlug.connected}
+        testing={testingPlug}
+        canConnect={Boolean(canTestPlug)}
+        onConnect={() => void handleTestPlug()}
+        onChange={(patch) =>
+          patchDoc((d) => ({
+            ...d,
+            devices: {
+              ...d.devices,
+              smartPlug: { ...d.devices.smartPlug, ...patch },
+            },
+          }))
+        }
+      />
 
       <HavenAccountBar />
 
-      <CategoryIntro
-        title="Works with most Wi‑Fi smart home gear"
-        paragraphs={[
-          "HAVEN connects over your home Wi‑Fi (local control) or through the same cloud accounts you already use in the manufacturer’s app — no extra hub required for many devices.",
-          "Pick your brand, fill in the fields, save, then use Test connection. When your room mood changes on Live, HAVEN applies that mood’s Preferences to these devices (set dry_run: false in actions config).",
-        ]}
-      />
-
-      <div className="flex flex-col gap-6">
-        <DeviceConnectionCard
-          icon={Plug}
-          title="Smart plug"
-          description="Outlets for fans, lamps, or desk gear — TP-Link, Meross, Shelly, Wyze, and more."
-          enabled={smartPlug.enabled}
-          onEnabledChange={(v) =>
-            patchDoc((d) => ({
-              ...d,
-              devices: { ...d.devices, smartPlug: { ...d.devices.smartPlug, enabled: v } },
-            }))
-          }
-          connected={smartPlug.connected}
-          onTest={canTestPlug ? handleTestPlug : undefined}
-          testLabel="Connect & test plug"
-          testing={testingPlug}
-          footer={
-            PLUG_CLOUD_ONLY.includes(smartPlug.brand) ? (
-              <p className="text-[12px] leading-relaxed text-[color:var(--haven-muted)]">
-                {smartPlug.brand === "wyze" ? "Wyze" : "Amazon"} plugs need cloud linking (coming soon). Use
-                TP-Link Kasa, Shelly, Tuya, or Meross for Connect &amp; test today.
-              </p>
-            ) : undefined
-          }
-        >
-          <SettingsField label="Brand">
-            <Select
-              value={smartPlug.brand}
-              onValueChange={(v) =>
-                patchDoc((d) => ({
-                  ...d,
-                  devices: {
-                    ...d.devices,
-                    smartPlug: {
-                      ...d.devices.smartPlug,
-                      brand: v as SmartPlugBrand,
-                      connected: false,
-                    },
-                  },
-                }))
-              }
-            >
-              <SelectTrigger className="w-full max-w-sm">
-                <SelectValue placeholder="Choose brand…" />
-              </SelectTrigger>
-              <SelectContent>
-                {SMART_PLUG_GUIDES.filter((g) => g.id !== "other_plug").map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.label}
-                  </SelectItem>
-                ))}
-                <SelectItem value="other_plug">Other brand</SelectItem>
-              </SelectContent>
-            </Select>
-          </SettingsField>
-
-          {plugGuide ? <DeviceSetupInstructions guide={plugGuide} /> : null}
-
-          {(smartPlug.brand === "tuya" || smartPlug.brand === "other_plug") && (
-            <>
-              <SettingsField label="Tuya device ID" hint="From python -m tinytuya wizard or the Smart Life app device info.">
-                <SettingsInput
-                  value={smartPlug.tuyaDeviceId ?? ""}
-                  onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        smartPlug: {
-                          ...d.devices.smartPlug,
-                          tuyaDeviceId: e.target.value,
-                          connected: false,
-                        },
-                      },
-                    }))
-                  }
-                  className="font-mono text-[13px]"
-                />
-              </SettingsField>
-              <SettingsField label="Local key">
-                <SettingsInput
-                  type="password"
-                  value={smartPlug.tuyaLocalKey ?? ""}
-                  onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        smartPlug: {
-                          ...d.devices.smartPlug,
-                          tuyaLocalKey: e.target.value,
-                          connected: false,
-                        },
-                      },
-                    }))
-                  }
-                  className="font-mono text-[13px]"
-                />
-              </SettingsField>
-              <SettingsField label="Protocol version" hint="Usually 3.3 — check wizard output if control fails.">
-                <SettingsInput
-                  value={smartPlug.tuyaVersion ?? "3.3"}
-                  onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        smartPlug: { ...d.devices.smartPlug, tuyaVersion: e.target.value },
-                      },
-                    }))
-                  }
-                  className="font-mono text-[13px]"
-                />
-              </SettingsField>
-            </>
-          )}
-
-          {smartPlug.brand === "meross" && (
-            <>
-              <SettingsField label="Meross account email">
-                <SettingsInput
-                  type="email"
-                  value={smartPlug.merossEmail ?? ""}
-                  onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        smartPlug: { ...d.devices.smartPlug, merossEmail: e.target.value },
-                      },
-                    }))
-                  }
-                />
-              </SettingsField>
-              <SettingsField label="Meross password">
-                <SettingsInput
-                  type="password"
-                  value={smartPlug.merossPassword ?? ""}
-                  onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        smartPlug: { ...d.devices.smartPlug, merossPassword: e.target.value },
-                      },
-                    }))
-                  }
-                />
-              </SettingsField>
-            </>
-          )}
-
-          {PLUG_BRANDS_WITH_IP.includes(smartPlug.brand) || smartPlug.brand === "tuya" ? (
-            <SettingsField
-              label="Device IP address (on your Wi‑Fi)"
-              hint="From your router’s device list. Tuya can use Auto if discovery works."
-            >
-              <SettingsInput
-                value={smartPlug.host}
-                onChange={(e) =>
-                  patchDoc((d) => ({
-                    ...d,
-                    devices: {
-                      ...d.devices,
-                      smartPlug: { ...d.devices.smartPlug, host: e.target.value, connected: false },
-                    },
-                  }))
-                }
-                placeholder={smartPlug.brand === "tuya" ? "192.168.1.50 or leave blank for Auto" : "192.168.1.50"}
-                className="font-mono text-[13px]"
-              />
-            </SettingsField>
-          ) : null}
-
-          {smartPlug.brand === "shelly" && (
-            <SettingsField label="Shelly generation">
-              <Select
-                value={smartPlug.shellyGen ?? "1"}
-                onValueChange={(v) =>
-                  patchDoc((d) => ({
-                    ...d,
-                    devices: { ...d.devices, smartPlug: { ...d.devices.smartPlug, shellyGen: v } },
-                  }))
-                }
-              >
-                <SelectTrigger className="w-full max-w-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Gen 1 (relay URL)</SelectItem>
-                  <SelectItem value="2">Gen 2 (RPC)</SelectItem>
-                </SelectContent>
-              </Select>
-            </SettingsField>
-          )}
-
-          {!PLUG_CLOUD_ONLY.includes(smartPlug.brand) && (
-            <SettingsField label="Name in your home" hint="e.g. Fan — used to pick the right Meross plug if you have several.">
-              <SettingsInput
-                value={smartPlug.label}
-                onChange={(e) =>
-                  patchDoc((d) => ({
-                    ...d,
-                    devices: {
-                      ...d.devices,
-                      smartPlug: { ...d.devices.smartPlug, label: e.target.value },
-                    },
-                  }))
-                }
-              />
-            </SettingsField>
-          )}
-
-          {PLUG_CLOUD_ONLY.includes(smartPlug.brand) && (
-            <SettingsField label="Device name" hint="These brands need the manufacturer app; pick a LAN plug above for direct HAVEN control.">
-              <SettingsInput
-                value={smartPlug.label}
-                onChange={(e) =>
-                  patchDoc((d) => ({
-                    ...d,
-                    devices: {
-                      ...d.devices,
-                      smartPlug: { ...d.devices.smartPlug, label: e.target.value },
-                    },
-                  }))
-                }
-              />
-            </SettingsField>
-          )}
-        </DeviceConnectionCard>
-
-        <CategoryIntro title={CATEGORY_INTROS.lights.title} paragraphs={CATEGORY_INTROS.lights.paragraphs} />
+      <details className="group rounded-2xl border border-[color:var(--haven-line)] bg-[color-mix(in_oklab,#fffefb_88%,transparent)]">
+        <summary className="cursor-pointer list-none px-5 py-4 text-[14px] font-semibold text-[color:var(--haven-ink)] marker:content-none [&::-webkit-details-marker]:hidden">
+          More devices
+          <span className="ml-2 text-[12px] font-normal text-[color:var(--haven-faint)]">
+            lights, thermostat
+          </span>
+        </summary>
+        <div className="flex flex-col gap-6 border-t border-[color:var(--haven-line)] p-5">
 
         <DeviceConnectionCard
           icon={Lightbulb}
@@ -740,11 +507,6 @@ export function SettingsPageClient() {
             />
           </SettingsField>
         </DeviceConnectionCard>
-
-        <CategoryIntro
-          title={CATEGORY_INTROS.thermostat.title}
-          paragraphs={CATEGORY_INTROS.thermostat.paragraphs}
-        />
 
         <DeviceConnectionCard
           icon={Thermometer}
@@ -994,7 +756,8 @@ export function SettingsPageClient() {
             />
           </SettingsField>
         </DeviceConnectionCard>
-      </div>
+        </div>
+      </details>
 
       <div
         className={cn(

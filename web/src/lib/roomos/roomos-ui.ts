@@ -35,6 +35,11 @@ export const roomosUi = {
   /** Focus rings: Preferences (light offset) */
   focusRingLight:
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--haven-canvas,#f7f4ee)]",
+  /** Primary CTA on light Haven pages — overrides shadcn dark `default` variant. */
+  havenPrimaryBtn:
+    "!border-0 !bg-teal-800 !text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_22px_-10px_rgba(15,118,110,0.65)] hover:!bg-teal-900 hover:!text-white dark:!bg-teal-800 dark:!text-white dark:hover:!bg-teal-900",
+  havenOutlineBtn:
+    "border-stone-300/90 bg-white/90 text-stone-800 shadow-sm hover:bg-white hover:text-stone-900 dark:border-stone-400/40 dark:bg-white/95 dark:text-stone-900",
 } as const
 
 /** Left accent: visible on light preference cards */

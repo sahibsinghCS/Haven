@@ -80,6 +80,23 @@ def _lights_config_from_request() -> dict[str, Any]:
     return cfg
 
 
+def _maybe_heal_plug_host(cfg: dict[str, Any], result: dict[str, Any]) -> None:
+    """If discovery found the plug at a new IP, persist it so it stops drifting."""
+    new_host = str(result.get("host") or "").strip()
+    old_host = str(cfg.get("host") or "").strip()
+    if not new_host or new_host == old_host:
+        return
+    try:
+        doc = load_integrations()
+        plug = doc.get("devices", {}).get("smartPlug")
+        if isinstance(plug, dict):
+            plug["host"] = new_host
+            save_integrations(doc)
+            log.info("Healed smart plug host: %s -> %s", old_host or "(unset)", new_host)
+    except Exception as e:
+        log.warning("Could not persist healed plug host: %s", e)
+
+
 @router.get("")
 def get_integrations() -> dict[str, Any]:
     return load_integrations()
@@ -105,6 +122,7 @@ def test_smart_plug(body: PlugTestBody) -> dict[str, Any]:
         from roomos.devices.smart_plug import apply_smart_plug_state
 
         result = asyncio.run(apply_smart_plug_state(cfg, state))
+        _maybe_heal_plug_host(cfg, result)
         return {"ok": True, **result}
     except Exception as e:
         log.warning("Smart plug test failed: %s", e)

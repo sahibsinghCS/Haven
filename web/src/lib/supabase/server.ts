@@ -1,16 +1,19 @@
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import type { User } from "@supabase/supabase-js"
+
+import { getSupabasePublicConfig } from "@/lib/supabase/env"
 
 export async function createSupabaseServerClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url?.trim() || !key?.trim()) {
+  const config = getSupabasePublicConfig()
+  if (!config) {
     throw new Error("Missing Supabase env vars")
   }
+  const { url, anonKey: key } = config
 
   const cookieStore = await cookies()
 
-  return createServerClient(url.trim(), key.trim(), {
+  return createServerClient(url, key, {
     cookies: {
       getAll() {
         return cookieStore.getAll()
@@ -26,4 +29,18 @@ export async function createSupabaseServerClient() {
       },
     },
   })
+}
+
+export async function getSupabaseUser(): Promise<User | null> {
+  const config = getSupabasePublicConfig()
+  if (!config) return null
+  try {
+    const supabase = await createSupabaseServerClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    return user
+  } catch {
+    return null
+  }
 }

@@ -58,6 +58,8 @@ const smartPlugSchema = z.object({
   merossEmail: z.string().optional(),
   merossPassword: z.string().optional(),
   shellyGen: z.string().optional(),
+  tapoEmail: z.string().optional(),
+  tapoPassword: z.string().optional(),
 })
 
 const lightsSchema = z.object({
@@ -110,9 +112,11 @@ export function defaultDeviceSettingsDocument(): DeviceSettingsDocument {
       smartPlug: {
         enabled: false,
         connected: false,
-        brand: "tplink_kasa",
+        brand: "tapo",
         host: "",
-        label: "Fan plug",
+        label: "Desk plug",
+        tapoEmail: "",
+        tapoPassword: "",
       },
       lights: {
         enabled: false,
@@ -132,12 +136,17 @@ export function defaultDeviceSettingsDocument(): DeviceSettingsDocument {
 
 function coerceSmartPlug(raw: Record<string, unknown>): Record<string, unknown> {
   const legacyBrand = raw.brand ?? raw.provider
-  let brand = typeof legacyBrand === "string" ? legacyBrand : "tplink_kasa"
+  let brand = typeof legacyBrand === "string" ? legacyBrand : "tapo"
   if (brand === "kasa" || brand === "other") {
     brand = brand === "kasa" ? "tplink_kasa" : "other_plug"
   }
   if (!smartPlugBrandSchema.safeParse(brand).success) {
-    brand = migrateLegacyProvider("smart_plug", String(legacyBrand ?? "kasa"))
+    brand = migrateLegacyProvider("smart_plug", String(legacyBrand ?? "tapo"))
+  }
+  const tapoEmail = String(raw.tapoEmail ?? "").trim()
+  const tapoPassword = String(raw.tapoPassword ?? "").trim()
+  if (tapoEmail && tapoPassword) {
+    brand = "tapo"
   }
   return { ...raw, brand }
 }

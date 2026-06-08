@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import { AppProviders } from "@/components/providers/app-providers";
+import { getSupabasePublicConfig } from "@/lib/supabase/env";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,6 +34,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = getSupabasePublicConfig();
+
   return (
     <html
       lang="en"
@@ -40,7 +43,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} dark h-full antialiased`}
     >
       <body className="relative bg-background text-foreground flex min-h-full flex-col">
-        <AppProviders>{children}</AppProviders>
+        <AppProviders supabase={supabase}>{children}</AppProviders>
       </body>
     </html>
   );

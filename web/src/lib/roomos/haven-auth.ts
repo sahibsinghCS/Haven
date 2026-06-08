@@ -1,37 +1,65 @@
-import { createSupabaseBrowserClient, isSupabaseAuthEnabled } from "@/lib/supabase/client"
-
-let accessToken: string | null = null
+import {
+  createSupabaseBrowserClient,
+  getSupabasePublicConfig,
+  isSupabaseAuthEnabled,
+} from "@/lib/supabase/client"
+import { getHavenRoomId } from "@/lib/roomos/haven-room"
 
 export { isSupabaseAuthEnabled }
 
-export function setHavenAccessToken(token: string | null) {
-  accessToken = token?.trim() || null
-}
+let browserClient: ReturnType<typeof createSupabaseBrowserClient> | null = null
 
-export function getHavenAccessToken(): string | null {
-  return accessToken
+function getBrowserClient() {
+  if (!isSupabaseAuthEnabled()) return null
+  if (!browserClient) {
+    browserClient = createSupabaseBrowserClient()
+  }
+  return browserClient
 }
 
 export async function refreshHavenAccessToken(): Promise<string | null> {
-  if (!isSupabaseAuthEnabled()) return null
+  const client = getBrowserClient()
+  if (!client) return null
   try {
-    const supabase = createSupabaseBrowserClient()
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token ?? null
-    setHavenAccessToken(token)
-    return token
+    const { data } = await client.auth.getSession()
+    return data.session?.access_token ?? null
   } catch {
     return null
   }
 }
 
-export function havenRequestHeaders(extra?: HeadersInit): HeadersInit {
+export async function havenRequestHeaders(extra?: HeadersInit): Promise<HeadersInit> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "X-Haven-Room-Id": getHavenRoomId(),
   }
-  const token = getHavenAccessToken()
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
+
+  const client = getBrowserClient()
+  if (client) {
+    const { data } = await client.auth.getSession()
+    const token = data.session?.access_token
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
+    }
   }
+
   return { ...headers, ...extra }
+}
+
+/** @deprecated Use async havenRequestHeaders() */
+export function setHavenAccessToken(_token: string | null) {
+  /* no-op — session cookies are the source of truth */
+}
+
+/** @deprecated Use async havenRequestHeaders() */
+export function getHavenAccessToken(): string | null {
+  return null
+}
+
+export function resetHavenAuthClient() {
+  browserClient = null
+}
+
+export function getSupabaseConfigFromEnv() {
+  return getSupabasePublicConfig()
 }

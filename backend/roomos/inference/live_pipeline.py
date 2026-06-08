@@ -426,6 +426,7 @@ class LiveInferenceEngine:
             capture_height=int(capture_height) if capture_height else None,
             capture_fps=float(capture_fps) if capture_fps else None,
             frame_preprocess=frame_preprocess if frame_preprocess.get("enabled", True) else None,
+            fallback_to_webcam=True,
         ) as fs:
             self._capture_size = getattr(fs, "_capture_size", None)
             pipe.reset_motion()

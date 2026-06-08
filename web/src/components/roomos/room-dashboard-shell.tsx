@@ -16,7 +16,7 @@ const nav = [
   { href: "/live", label: "Live" },
   { href: "/review", label: "Review" },
   { href: "/preferences", label: "Preferences" },
-  { href: "/settings", label: "Settings" },
+  { href: "/connections", label: "Connections" },
 ] as const
 
 export function RoomDashboardShell({ children }: { children: React.ReactNode }) {

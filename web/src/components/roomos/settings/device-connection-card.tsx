@@ -134,7 +134,7 @@ export function SettingsField({
 }) {
   return (
     <div className="space-y-2">
-      <Label className="text-[13px] font-semibold text-[color:var(--haven-ink)]">{label}</Label>
+      <Label className="font-sans text-[13px] font-semibold text-stone-900">{label}</Label>
       {children}
       {hint ? (
         <p className="text-[12px] leading-relaxed text-[color:var(--haven-muted)]">{hint}</p>

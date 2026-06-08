@@ -6,6 +6,7 @@ websockets>=14,<16
 pydantic-settings>=2.7,<3
 httpx>=0.28,<1
 python-kasa>=0.7,<1
+tapo>=0.8,<1
 tinytuya>=1.13,<2
 pywemo>=0.10,<1
 somecomfort>=0.8,<1

@@ -1,18 +1,22 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { LogOut, User } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { Cloud, LogOut } from "lucide-react"
 
+import { signOutAction } from "@/app/(auth)/actions"
 import { useHavenAuth } from "@/components/auth/haven-auth-provider"
 import { fetchCloudStatus } from "@/lib/roomos/api-client"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 
+function userInitial(email: string | undefined): string {
+  const ch = email?.trim().charAt(0).toUpperCase()
+  return ch && /[A-Z0-9]/i.test(ch) ? ch : "?"
+}
+
 export function HavenAccountBar() {
-  const { enabled, user, signOut, loading } = useHavenAuth()
-  const router = useRouter()
+  const { enabled, user, loading } = useHavenAuth()
 
   const cloudQuery = useQuery({
     queryKey: ["haven", "cloud-status", user?.id],
@@ -26,15 +30,17 @@ export function HavenAccountBar() {
       <section
         className={cn(
           roomosUi.prefsCallout,
-          "border-amber-500/25 bg-amber-50/90 px-5 py-4 text-[13px] text-amber-950",
+          "border-amber-500/25 bg-amber-50/90 px-5 py-4 text-[13px] leading-relaxed text-amber-950",
         )}
       >
-        Cloud accounts are off — add Supabase URL and anon key to <span className="font-mono">web/.env.local</span>.
+        <strong className="font-semibold">Local mode.</strong> Cloud sign-in is off — settings stay on
+        this device. Add Supabase keys to <span className="font-mono">web/.env.local</span> to enable
+        accounts.
       </section>
     )
   }
 
-  if (loading) return null
+  if (loading || !user) return null
 
   return (
     <section
@@ -44,32 +50,32 @@ export function HavenAccountBar() {
       )}
     >
       <div className="flex items-start gap-3">
-        <User className="mt-0.5 size-5 shrink-0 text-teal-800" aria-hidden />
+        <span
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-teal-800 text-[14px] font-semibold text-white"
+          aria-hidden
+        >
+          {userInitial(user.email)}
+        </span>
         <div>
-          <p className="text-[14px] font-semibold text-[color:var(--haven-ink)]">Your account</p>
-          <p className="text-[13px] text-[color:var(--haven-muted)]">
-            {user?.email ?? "Not signed in"}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[14px] font-semibold text-[color:var(--haven-ink)]">Your account</p>
+            <span className="inline-flex items-center gap-1 rounded-full border border-teal-700/25 bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-900">
+              <Cloud className="size-3" aria-hidden />
+              Cloud sync on
+            </span>
+          </div>
+          <p className="text-[13px] text-[color:var(--haven-muted)]">{user.email}</p>
           {cloudQuery.data?.message ? (
             <p className="mt-1 text-[12px] text-[color:var(--haven-muted)]">{cloudQuery.data.message}</p>
           ) : null}
         </div>
       </div>
-      {user ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="gap-2"
-          onClick={async () => {
-            await signOut()
-            router.replace("/login")
-          }}
-        >
+      <form action={signOutAction}>
+        <Button type="submit" variant="outline" size="sm" className="gap-2">
           <LogOut className="size-4" aria-hidden />
           Sign out
         </Button>
-      ) : null}
+      </form>
     </section>
   )
 }
