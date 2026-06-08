@@ -203,8 +203,13 @@ class AppState:
 
     def _apply_video_overrides(self, cfg: Config) -> Config:
         source, backend = self._effective_video_config(cfg)
-        cfg.video.source = source
-        cfg.video.backend = backend
+        # NOTE: ``cfg.video`` returns a *fresh copy* on every attribute access
+        # (Config.__getattr__ -> _wrap -> new _AttrDict), so assigning to
+        # ``cfg.video.source`` would mutate a throwaway and never reach the
+        # engine. Write straight into the backing dict so build_engine sees it.
+        video = cfg.raw.setdefault("video", {})
+        video["source"] = source
+        video["backend"] = backend
         return cfg
 
     def list_cameras(self, *, max_index: int = 6) -> dict[str, Any]:
