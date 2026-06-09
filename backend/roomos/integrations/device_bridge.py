@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from ..utils.logging import get_logger
 
@@ -49,6 +49,7 @@ def plug_runtime_config(plug: Dict[str, Any]) -> Dict[str, Any]:
     host = str(plug.get("host") or "").strip()
     enabled = bool(plug.get("enabled"))
     cfg: Dict[str, Any] = {
+        "id": str(plug.get("id") or ""),
         "enabled": enabled,
         "brand": brand,
         "host": host,
@@ -72,6 +73,7 @@ def thermostat_runtime_config(thermo: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(thermo, dict):
         return {}
     return {
+        "id": str(thermo.get("id") or ""),
         "enabled": bool(thermo.get("enabled")),
         "brand": str(thermo.get("brand") or thermo.get("provider") or "none"),
         "label": str(thermo.get("label") or ""),
@@ -95,15 +97,30 @@ def thermostat_runtime_config(thermo: Dict[str, Any]) -> Dict[str, Any]:
 def lights_runtime_config(lights: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(lights, dict):
         return {}
-    return {
-        "enabled": bool(lights.get("enabled")),
-        "brand": str(lights.get("brand") or "none"),
-        "host": str(lights.get("host") or ""),
-        "notes": str(lights.get("notes") or ""),
-        "tuyaDeviceId": str(lights.get("tuyaDeviceId") or ""),
-        "tuyaLocalKey": str(lights.get("tuyaLocalKey") or ""),
-        "tuyaVersion": lights.get("tuyaVersion") or "3.3",
-    }
+    out: Dict[str, Any] = {str(k): v for k, v in lights.items()}
+    out.update(
+        {
+            "id": str(lights.get("id") or ""),
+            "enabled": bool(lights.get("enabled")),
+            "brand": str(lights.get("brand") or "none"),
+            "host": str(lights.get("host") or ""),
+            "notes": str(lights.get("notes") or ""),
+            "tuyaDeviceId": str(lights.get("tuyaDeviceId") or ""),
+            "tuyaLocalKey": str(lights.get("tuyaLocalKey") or ""),
+            "tuyaVersion": lights.get("tuyaVersion") or "3.3",
+        }
+    )
+    return out
+
+
+def _device_array(devices: Dict[str, Any], key: str, legacy_key: str) -> List[Dict[str, Any]]:
+    items = devices.get(key)
+    if isinstance(items, list):
+        return [item for item in items if isinstance(item, dict)]
+    legacy = devices.get(legacy_key)
+    if isinstance(legacy, dict):
+        return [legacy]
+    return []
 
 
 def merge_runtime_integrations(yaml_integrations: Dict[str, Any]) -> Dict[str, Any]:
@@ -114,28 +131,40 @@ def merge_runtime_integrations(yaml_integrations: Dict[str, Any]) -> Dict[str, A
     if not isinstance(devices, dict):
         return out
 
-    plug = devices.get("smartPlug")
-    if isinstance(plug, dict):
-        plug_cfg = plug_runtime_config(plug)
-        out["smart_plug"] = plug_cfg
-        brand = plug_cfg.get("brand", "")
+    smart_plugs = _device_array(devices, "smartPlugs", "smartPlug")
+    plug_cfgs = [plug_runtime_config(p) for p in smart_plugs]
+    out["smart_plugs"] = plug_cfgs
+
+    lights_list = _device_array(devices, "lights", "lights")
+    lights_cfgs = [lights_runtime_config(l) for l in lights_list]
+    out["lights_list"] = lights_cfgs
+
+    thermostats = _device_array(devices, "thermostats", "thermostat")
+    thermo_cfgs = [thermostat_runtime_config(t) for t in thermostats]
+    out["thermostats"] = thermo_cfgs
+
+    # Backward-compatible single slots for legacy action handlers
+    first_plug = next((p for p in plug_cfgs if p.get("enabled")), plug_cfgs[0] if plug_cfgs else None)
+    if isinstance(first_plug, dict):
+        out["smart_plug"] = first_plug
+        brand = first_plug.get("brand", "")
         if brand in ("tplink_kasa", "tapo", "kasa"):
             kasa = dict(out.get("kasa") or {})
-            kasa["enabled"] = plug_cfg.get("enabled", False) or kasa.get("enabled", False)
-            if plug_cfg.get("host"):
-                kasa["host"] = plug_cfg["host"]
-            if plug_cfg.get("username"):
-                kasa["username"] = plug_cfg["username"]
-            if plug_cfg.get("password"):
-                kasa["password"] = plug_cfg["password"]
+            kasa["enabled"] = first_plug.get("enabled", False) or kasa.get("enabled", False)
+            if first_plug.get("host"):
+                kasa["host"] = first_plug["host"]
+            if first_plug.get("username"):
+                kasa["username"] = first_plug["username"]
+            if first_plug.get("password"):
+                kasa["password"] = first_plug["password"]
             out["kasa"] = kasa
 
-    thermo = devices.get("thermostat")
-    if isinstance(thermo, dict):
-        out["thermostat"] = thermostat_runtime_config(thermo)
+    first_thermo = next((t for t in thermo_cfgs if t.get("enabled")), thermo_cfgs[0] if thermo_cfgs else None)
+    if isinstance(first_thermo, dict):
+        out["thermostat"] = first_thermo
 
-    lights = devices.get("lights")
-    if isinstance(lights, dict):
-        out["lights"] = lights_runtime_config(lights)
+    first_lights = next((l for l in lights_cfgs if l.get("enabled")), lights_cfgs[0] if lights_cfgs else None)
+    if isinstance(first_lights, dict):
+        out["lights"] = first_lights
 
     return out

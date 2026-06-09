@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import type { LiveFeedbackEvent } from "@/types/feedback-event"
 import type { LivePreferencesEvent } from "@/types/preferences-event"
+import { formatAppliedSceneSummary } from "@/lib/roomos/format-applied-scene"
 import type { LiveInferenceSnapshot } from "@/types/roomos"
 
 /**
@@ -165,7 +166,10 @@ export function LiveVideoStage({
             <PrimaryStateOverlay
               state={snapshot.primaryState}
               confidence={liveConfidence}
-              sceneSummary={formatSceneTargets(snapshot)}
+              sceneSummary={formatAppliedSceneSummary(
+                snapshot.appliedScene,
+                snapshot.connectedCategories,
+              )}
               overlayShellClassName={cn(
                 roomosUi.liveOverlayGlassTranslucent,
                 "bg-zinc-950/50",
@@ -177,9 +181,4 @@ export function LiveVideoStage({
       </div>
     </section>
   )
-}
-
-function formatSceneTargets(snapshot: LiveInferenceSnapshot): string {
-  const s = snapshot.appliedScene
-  return `Lights ${s.brightness}% · ${s.fanOn ? "Fan on" : "Off"} · ${s.temperatureF}°F`
 }

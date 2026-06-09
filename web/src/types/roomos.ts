@@ -8,6 +8,16 @@ export const ROOM_STATE_ORDER = [
 
 export type RoomStateId = (typeof ROOM_STATE_ORDER)[number]
 
+/** Moods users can author on the Preferences page (gaming excluded). */
+export const PREFERENCE_MOOD_ORDER = [
+  "sleep",
+  "work",
+  "relaxing",
+  "away",
+] as const
+
+export type PreferenceMoodId = (typeof PREFERENCE_MOOD_ORDER)[number]
+
 /** Per-state probability mass; sums to ~1 when normalized for display. */
 export type RoomStateDistribution = Record<RoomStateId, number>
 
@@ -20,12 +30,14 @@ export interface LiveStreamMeta {
   aspectLabel?: string
 }
 
+export type ConnectedDeviceCategory = "smartPlugs" | "lights" | "thermostats"
+
 export interface RoomDeviceTargets {
-  lightColorHex: string
-  brightness: number
-  fanOn: boolean
+  lightColorHex?: string
+  brightness?: number
+  fanOn?: boolean
   /** Fahrenheit; backend may later use Celsius with a unit field */
-  temperatureF: number
+  temperatureF?: number
 }
 
 export interface LivePersonalizationMeta {
@@ -68,6 +80,8 @@ export interface LiveInferenceSnapshot {
   /** Human-readable bullets for the overlay explainer */
   rationale: string[]
   appliedScene: RoomDeviceTargets
+  /** Connected + enabled device categories from Settings (drives room scene summary). */
+  connectedCategories?: ConnectedDeviceCategory[]
   personalization?: LivePersonalizationMeta
   lastAutomation?: LastAutomationEvent
   automationMode?: AutomationMode
@@ -84,14 +98,18 @@ export interface LiveInferenceSnapshot {
   }>
 }
 
-export interface StateEnvironmentPreference {
-  lightColorHex: string
-  brightness: number
-  fanOn: boolean
-  temperatureF: number
+export interface DevicePreferenceTarget {
+  fanOn?: boolean
+  brightness?: number
+  lightColorHex?: string
+  temperatureF?: number
 }
 
-export type PreferenceMatrix = Record<RoomStateId, StateEnvironmentPreference>
+export interface StateEnvironmentPreference {
+  devices: Record<string, DevicePreferenceTarget>
+}
+
+export type PreferenceMatrix = Record<PreferenceMoodId, StateEnvironmentPreference>
 
 export interface PreferencePreset {
   id: string
@@ -102,9 +120,16 @@ export interface PreferencePreset {
 }
 
 export interface PreferenceDocument {
-  schemaVersion: 1
+  schemaVersion: 2
   updatedAt: string
   presets: PreferencePreset[]
   /** Preset id used by live inference for appliedScene (canonical active preset). */
   activePresetId: string
+}
+
+export type ConnectedDeviceRef = {
+  id: string
+  category: "smart_plug" | "lights" | "thermostat"
+  label: string
+  brand: string
 }

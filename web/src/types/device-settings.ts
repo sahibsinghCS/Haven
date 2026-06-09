@@ -58,9 +58,19 @@ export interface LightsSettings {
   brand: LightsBrand
   notes: string
   host?: string
+  label?: string
   tuyaDeviceId?: string
   tuyaLocalKey?: string
   tuyaVersion?: string
+  /** Philips Hue local bridge application key (minted via the link button). */
+  hueAppKey?: string
+  /** Nanoleaf auth token (minted by holding the power button). */
+  nanoleafToken?: string
+  /** Govee cloud API key (LAN control uses host only). */
+  goveeApiKey?: string
+  /** Tapo/Kasa bulb login — same account as the mobile app (KLAP). */
+  tapoEmail?: string
+  tapoPassword?: string
 }
 
 export interface ThermostatSettings {
@@ -84,12 +94,20 @@ export interface ThermostatSettings {
   targetCoolF?: number
 }
 
+export type DeviceInstance<T> = T & { id: string }
+
+export type SmartPlugDevice = DeviceInstance<SmartPlugSettings>
+export type LightsDevice = DeviceInstance<LightsSettings>
+export type ThermostatDevice = DeviceInstance<ThermostatSettings>
+
+export type DeviceCategoryKey = "smartPlugs" | "lights" | "thermostats"
+
 export interface DeviceSettingsDocument {
-  schemaVersion: 1
+  schemaVersion: 2
   updatedAt: string
   devices: {
-    smartPlug: SmartPlugSettings
-    lights: LightsSettings
-    thermostat: ThermostatSettings
+    smartPlugs: SmartPlugDevice[]
+    lights: LightsDevice[]
+    thermostats: ThermostatDevice[]
   }
 }

@@ -23,7 +23,7 @@ from .api import preferences as preferences_api
 from .api import settings as settings_api
 from .auth_service import auth_configured, verify_access_token
 from .room_context import clear_user, is_authenticated, normalize_room_id, set_room_id, set_user
-from .supabase_store import supabase_configured
+from .supabase_store import probe_supabase_schema, supabase_configured
 from roomos.demo.readiness import bundle_readiness, resolve_bundle_dir
 
 from .core.config import settings
@@ -70,6 +70,8 @@ def _path_auth_optional(path: str) -> bool:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     setup_logging(level=settings.roomos_log_level)
+    if supabase_configured():
+        probe_supabase_schema()
     set_room_id(settings.haven_room_id_default)
     loop = asyncio.get_running_loop()
     state.hub.bind_loop(loop)

@@ -11,6 +11,7 @@ from roomos.video.input import (
     _MjpegHttpCapture,
     _is_remote_video_source,
     _mjpeg_connect_error,
+    _should_fallback_to_webcam,
 )
 
 
@@ -27,6 +28,24 @@ def test_mjpeg_connect_error_message() -> None:
     assert isinstance(err, RuntimeError)
     assert "DroidCam" in str(err)
     assert "127.0.0.1:4747" in str(err)
+
+
+def test_should_fallback_only_for_droidcam_auto() -> None:
+    assert _should_fallback_to_webcam("droidcam:auto") is True
+    assert _should_fallback_to_webcam("http://192.168.1.18:4747/video") is False
+    assert _should_fallback_to_webcam(0) is False
+    assert _should_fallback_to_webcam("1") is False
+
+
+def test_mjpeg_http_capture_droidcam_busy_html() -> None:
+    html = b"<!doctype html><html><h5>DroidCam is Busy</h5></html>"
+    mock_resp = MagicMock()
+    mock_resp.headers = {"Content-Type": "text/html; charset=UTF-8"}
+    mock_resp.read.return_value = html
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        with pytest.raises(RuntimeError, match="DroidCam at .+ is busy"):
+            _MjpegHttpCapture("http://192.168.1.18:4747/video")
 
 
 def test_mjpeg_http_capture_urlerror_becomes_runtime_error() -> None:

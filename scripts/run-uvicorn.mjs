@@ -33,11 +33,18 @@ const child = spawn(
     "127.0.0.1",
     "--port",
     "8000",
+    "--no-access-log",
+    "--log-level",
+    "warning",
   ],
   {
     cwd: getBackendDir(),
     stdio: "inherit",
-    env: { ...process.env, OPENCV_LOG_LEVEL: process.env.OPENCV_LOG_LEVEL || "ERROR" },
+    env: {
+      ...process.env,
+      OPENCV_LOG_LEVEL: process.env.OPENCV_LOG_LEVEL || "ERROR",
+      ROOMOS_LOG_RICH: process.env.ROOMOS_LOG_RICH || "0",
+    },
   },
 );
 

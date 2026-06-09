@@ -30,6 +30,7 @@ from ..preferences.document import active_preset_preferences
 from ..utils.io import append_jsonl, read_json
 from ..utils.logging import get_logger
 from ..video import open_video_source
+from ..video.input import _should_fallback_to_webcam
 from .activity_hints import ActivityHintGate, build_activity_hints_from_config
 from .occupancy import OccupancyDecision, OccupancyGate, build_gate_from_config
 from .overlays import draw_overlay
@@ -52,6 +53,7 @@ class LiveSnapshot:
     distribution: Dict[str, float] = field(default_factory=dict)
     rationale: List[str] = field(default_factory=list)
     applied_scene: Dict[str, object] = field(default_factory=dict)
+    connected_categories: List[str] = field(default_factory=list)
     confidence_history: List[Dict[str, object]] = field(default_factory=list)
     personalization: Dict[str, object] = field(default_factory=dict)
     model_probs: Dict[str, float] = field(default_factory=dict)
@@ -77,6 +79,7 @@ class LiveSnapshot:
             "modelDistribution": _normalize_ui_distribution(self.model_probs),
             "rationale": list(self.rationale),
             "appliedScene": dict(self.applied_scene),
+            "connectedCategories": list(self.connected_categories),
             "confidenceHistory": list(self.confidence_history),
             "personalization": dict(self.personalization),
             "lastAutomation": dict(self.last_automation),
@@ -244,7 +247,8 @@ class LiveInferenceEngine:
             if Path(prefs_path).is_absolute()
             else config.resolve_path(Path(prefs_path))
         )
-        self._preferences_cache: tuple[float, dict[str, dict[str, object]]] = (0.0, {})
+        self._preferences_cache: tuple[str, dict[str, dict[str, object]]] = ("", {})
+        self._last_synced_mood: Optional[str] = None
 
         self._log_predictions = bool(infer_cfg.get("log_predictions", True))
         self._pred_log_path = Path(infer_cfg.get("predictions_log", "data/logs/predictions.jsonl"))
@@ -426,7 +430,7 @@ class LiveInferenceEngine:
             capture_height=int(capture_height) if capture_height else None,
             capture_fps=float(capture_fps) if capture_fps else None,
             frame_preprocess=frame_preprocess if frame_preprocess.get("enabled", True) else None,
-            fallback_to_webcam=True,
+            fallback_to_webcam=_should_fallback_to_webcam(source),
         ) as fs:
             self._capture_size = getattr(fs, "_capture_size", None)
             pipe.reset_motion()
@@ -600,7 +604,10 @@ class LiveInferenceEngine:
         raw_primary_conf = float(model_only.get(pred.label, pred.confidence))
         last_automation: Dict[str, object] = {}
         automation_mode = "off"
-        scene = self._scene_for(pred.label)
+        from ..devices.scene_apply import connected_device_categories
+
+        connected = connected_device_categories()
+        scene = self._scene_for(pred.label, connected=connected)
         actions_dry_run = True
         if self._actions is not None:
             actions_dry_run = bool(self._actions.dry_run)
@@ -616,11 +623,18 @@ class LiveInferenceEngine:
             except Exception as e:
                 log.warning("Action engine raised: %s", e)
 
-        if pred.switched and pred.label in self._ui_classes:
+        mood_needs_sync = (
+            pred.label in self._ui_classes
+            and pred.label != self._last_synced_mood
+            and bool(connected)
+        )
+        if mood_needs_sync:
             try:
                 from ..devices.scene_apply import (
                     apply_preference_scene_async,
                     automation_summary,
+                    preference_sync_dry_run,
+                    resolve_apply_scene_for_mood,
                 )
 
                 integrations = (
@@ -633,25 +647,37 @@ class LiveInferenceEngine:
 
                     integrations = merge_runtime_integrations({})
 
+                apply_scene = resolve_apply_scene_for_mood(pred.label)
+                pref_dry_run = preference_sync_dry_run(actions_dry_run)
+
                 pref_record = asyncio.run(
                     apply_preference_scene_async(
-                        scene,
-                        dry_run=actions_dry_run,
+                        apply_scene,
+                        dry_run=pref_dry_run,
                         integrations=integrations,
                         room_state=pred.label,
                     )
                 )
+                previous_mood = self._last_synced_mood
+                self._last_synced_mood = pred.label
+                self._preferences_cache = ("", {})
                 if pref_record.get("results") or pref_record.get("would_apply"):
                     last_automation = {
                         "rule": "preference_sync",
                         "activity": pred.label,
                         "action_type": "preference_sync",
-                        "dry_run": actions_dry_run,
+                        "dry_run": pref_dry_run,
                         "result": pref_record,
                         "summary": automation_summary(pref_record),
                     }
                     if self._actions is not None:
                         self._actions.last_automation = last_automation
+                log.info(
+                    "[preference_sync] mood %s -> %s (dry_run=%s)",
+                    previous_mood,
+                    pred.label,
+                    pref_dry_run,
+                )
             except Exception as e:
                 log.warning("Preference device sync failed: %s", e)
 
@@ -666,6 +692,7 @@ class LiveInferenceEngine:
                 fused, pred, raw_probs, personalization, occupancy
             ),
             applied_scene=scene,
+            connected_categories=sorted(connected),
             confidence_history=list(self._history),
             personalization=dict(personalization or {}),
             last_automation=last_automation,
@@ -1198,7 +1225,9 @@ class LiveInferenceEngine:
 
         return bullets[:5]
 
-    def _scene_for(self, label: str) -> Dict[str, object]:
+    def _scene_for(self, label: str, *, connected: frozenset[str]) -> Dict[str, object]:
+        from ..devices.scene_apply import scene_to_display_targets
+
         defaults = {
             "work":     {"lightColorHex": "#E8F4FF", "brightness": 72, "fanOn": False, "temperatureF": 72},
             "sleep":    {"lightColorHex": "#1E2A4A", "brightness": 8,  "fanOn": True,  "temperatureF": 68},
@@ -1206,10 +1235,19 @@ class LiveInferenceEngine:
             "relaxing": {"lightColorHex": "#2FB8A8", "brightness": 42, "fanOn": False, "temperatureF": 73},
             "away":     {"lightColorHex": "#2A2A2A", "brightness": 0,  "fanOn": False, "temperatureF": 76},
         }
-        if label not in defaults:
-            return {"lightColorHex": "#222222", "brightness": 30, "fanOn": False, "temperatureF": 72}
+        fallback = defaults.get(
+            label,
+            {"lightColorHex": "#222222", "brightness": 30, "fanOn": False, "temperatureF": 72},
+        )
         prefs = self._preference_scene_for(label)
-        return prefs if prefs is not None else defaults[label]
+        if prefs is not None:
+            display = scene_to_display_targets(prefs, connected=connected)
+            devices_in = prefs.get("devices")
+            if isinstance(devices_in, dict) and devices_in:
+                return display
+            if any(k in prefs for k in ("fanOn", "brightness", "temperatureF", "lightColorHex")):
+                return display
+        return scene_to_display_targets(fallback, connected=connected)
 
     def _preference_scene_for(self, label: str) -> Optional[Dict[str, object]]:
         scenes = self._load_preference_scenes()
@@ -1221,20 +1259,27 @@ class LiveInferenceEngine:
             mtime = path.stat().st_mtime if path.exists() else 0.0
         except OSError:
             mtime = 0.0
-        cached_mtime, cached = self._preferences_cache
-        if mtime == cached_mtime and cached:
-            return cached
-        if not path.exists():
-            self._preferences_cache = (mtime, {})
-            return {}
+        cached_key, cached = self._preferences_cache
         try:
-            doc = read_json(path)
+            from app.preferences_service import load_preferences
+
+            doc = load_preferences()
+            integ_key = ""
+            try:
+                from app.integrations_service import load_integrations
+
+                integ_key = str(load_integrations().get("updatedAt", ""))
+            except Exception:
+                pass
+            cache_key = f"{mtime}:{doc.get('updatedAt', '')}:{integ_key}"
+            if cache_key == cached_key and cached:
+                return cached
             out = active_preset_preferences(doc)
-            self._preferences_cache = (mtime, out)
+            self._preferences_cache = (cache_key, out)
             return out
         except Exception as e:
             log.debug("Could not load preferences for scene: %s", e)
-            self._preferences_cache = (mtime, {})
+            self._preferences_cache = (str(mtime), {})
             return {}
 
 

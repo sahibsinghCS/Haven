@@ -11,9 +11,9 @@ Data is stored in `haven_user_data` keyed by `auth.users.id`.
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. **Authentication → Providers → Email**: enable Email provider (confirm email optional for dev).
-3. **SQL Editor** — run in order:
-   - `supabase/migrations/001_haven_room_data.sql` (legacy shared room id; optional)
-   - `supabase/migrations/002_haven_user_data.sql` (**required for auth**)
+3. **Create tables** — either:
+   - `npm run supabase:migrate` after setting `SUPABASE_DB_PASSWORD` in `backend/.env` (Database password in Supabase → Project Settings → Database), **or**
+   - SQL Editor — run in order: `supabase/migrations/001_haven_room_data.sql`, then `002_haven_user_data.sql`
 
 ## 2. API keys
 

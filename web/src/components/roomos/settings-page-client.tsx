@@ -32,11 +32,25 @@ import {
   testSmartPlug,
   testThermostat,
 } from "@/lib/roomos/api-client"
-import { defaultDeviceSettingsDocument } from "@/lib/roomos/device-settings-schema"
+import {
+  defaultDeviceSettingsDocument,
+  defaultLightsDevice,
+  defaultSmartPlugDevice,
+  defaultThermostatDevice,
+  ensureMinimumDevices,
+} from "@/lib/roomos/device-settings-schema"
 import { loadDeviceSettingsLocal, saveDeviceSettingsLocal } from "@/lib/roomos/device-settings-persistence"
 import { getGuide, LIGHTS_GUIDES, THERMOSTAT_GUIDES } from "@/lib/roomos/device-setup-guides"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
-import type { DeviceSettingsDocument, LightsBrand, SmartPlugBrand, ThermostatBrand } from "@/types/device-settings"
+import type {
+  DeviceSettingsDocument,
+  LightsBrand,
+  LightsDevice,
+  SmartPlugBrand,
+  SmartPlugDevice,
+  ThermostatBrand,
+  ThermostatDevice,
+} from "@/types/device-settings"
 
 import { cn } from "@/lib/utils"
 
@@ -48,7 +62,7 @@ const THERMOSTAT_TEST_BRANDS: ThermostatBrand[] = [
   "nest",
 ]
 
-function validatePlugForTest(plug: DeviceSettingsDocument["devices"]["smartPlug"]): string | null {
+function validatePlugForTest(plug: SmartPlugDevice): string | null {
   if (PLUG_CLOUD_ONLY.includes(plug.brand)) {
     return "Wyze and Amazon plugs are not supported for direct control yet. Try TP-Link Kasa, Shelly, Tuya, or Meross."
   }
@@ -77,6 +91,25 @@ function validatePlugForTest(plug: DeviceSettingsDocument["devices"]["smartPlug"
     return "Enter the plug’s IP address from your router’s connected-devices list."
   }
   return null
+}
+
+type DeviceArrayKey = "smartPlugs" | "lights" | "thermostats"
+
+function patchPrimaryDevice(
+  doc: DeviceSettingsDocument,
+  key: DeviceArrayKey,
+  patch: Record<string, unknown>,
+): DeviceSettingsDocument {
+  const ensured = ensureMinimumDevices(doc)
+  return {
+    ...ensured,
+    devices: {
+      ...ensured.devices,
+      [key]: ensured.devices[key].map((item, index) =>
+        index === 0 ? { ...item, ...patch } : item,
+      ),
+    },
+  }
 }
 
 export function SettingsPageClient() {
@@ -148,19 +181,23 @@ export function SettingsPageClient() {
     onError: () => toast.error("Could not save settings"),
   })
 
+  const primaryPlug = doc?.devices.smartPlugs[0]
+  const primaryLights = doc?.devices.lights[0]
+  const primaryThermostat = doc?.devices.thermostats[0]
+
   const lightsGuide = useMemo(
-    () => getGuide("lights", doc?.devices.lights.brand ?? "none"),
-    [doc?.devices.lights.brand],
+    () => getGuide("lights", primaryLights?.brand ?? "none"),
+    [primaryLights?.brand],
   )
   const thermostatGuide = useMemo(
-    () => getGuide("thermostat", doc?.devices.thermostat.brand ?? "none"),
-    [doc?.devices.thermostat.brand],
+    () => getGuide("thermostat", primaryThermostat?.brand ?? "none"),
+    [primaryThermostat?.brand],
   )
 
   const canTestPlug =
-    doc &&
-    getGuide("smart_plug", doc.devices.smartPlug.brand)?.supportsDirectControl &&
-    !PLUG_CLOUD_ONLY.includes(doc.devices.smartPlug.brand)
+    primaryPlug &&
+    getGuide("smart_plug", primaryPlug.brand)?.supportsDirectControl &&
+    !PLUG_CLOUD_ONLY.includes(primaryPlug.brand)
 
   const persistBeforeTest = async (payload: DeviceSettingsDocument) => {
     try {
@@ -187,18 +224,24 @@ export function SettingsPageClient() {
 
   const markDeviceConnected = async (
     payload: DeviceSettingsDocument,
-    key: "smartPlug" | "lights" | "thermostat",
-    extra?: Partial<DeviceSettingsDocument["devices"]["smartPlug"]>,
+    key: "smartPlugs" | "lights" | "thermostats",
+    deviceId: string,
+    extra?: Partial<SmartPlugDevice>,
   ) => {
     const connectedDoc: DeviceSettingsDocument = {
       ...payload,
       devices: {
         ...payload.devices,
-        [key]: {
-          ...payload.devices[key],
-          connected: true,
-          ...(key === "smartPlug" ? { enabled: true, ...extra } : {}),
-        },
+        [key]: payload.devices[key].map((item) =>
+          item.id === deviceId
+            ? {
+                ...item,
+                connected: true,
+                enabled: true,
+                ...(key === "smartPlugs" ? extra : {}),
+              }
+            : item,
+        ),
       },
     }
     try {
@@ -222,7 +265,8 @@ export function SettingsPageClient() {
 
   const handleTestPlug = async () => {
     if (!doc) return
-    const validation = validatePlugForTest(doc.devices.smartPlug)
+    const plug = doc.devices.smartPlugs[0] ?? defaultSmartPlugDevice()
+    const validation = validatePlugForTest(plug)
     if (validation) {
       toast.error(validation)
       return
@@ -234,13 +278,14 @@ export function SettingsPageClient() {
         toast.error("Start the HAVEN API on this computer (npm run demo), then try again.")
         return
       }
-      const plug = saved.devices.smartPlug
+      const savedPlug = saved.devices.smartPlugs[0] ?? plug
       await testSmartPlug({
-        brand: plug.brand,
-        host: plug.host,
+        device_id: savedPlug.id,
+        brand: savedPlug.brand,
+        host: savedPlug.host,
         state: "on",
       })
-      await markDeviceConnected(saved, "smartPlug")
+      await markDeviceConnected(saved, "smartPlugs", savedPlug.id)
       toast.success("Connected — your plug should have turned on. Set fan on/off per mood in Preferences.")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Plug test failed")
@@ -251,11 +296,12 @@ export function SettingsPageClient() {
 
   const handleTestLights = async () => {
     if (!doc) return
-    if (doc.devices.lights.brand !== "tuya") {
+    const lights = doc.devices.lights[0] ?? defaultLightsDevice()
+    if (lights.brand !== "tuya") {
       toast.error("Direct light control is available for Tuya / Smart Life bulbs today. Pick that brand or use the manufacturer app.")
       return
     }
-    if (!doc.devices.lights.tuyaDeviceId?.trim() || !doc.devices.lights.tuyaLocalKey?.trim()) {
+    if (!lights.tuyaDeviceId?.trim() || !lights.tuyaLocalKey?.trim()) {
       toast.error("Enter Tuya device ID and local key for your bulb.")
       return
     }
@@ -266,8 +312,9 @@ export function SettingsPageClient() {
         toast.error("Start the HAVEN API (npm run demo), then try again.")
         return
       }
-      await testLights({ brightness: 60, light_color_hex: "#E8F4FF" })
-      await markDeviceConnected(saved, "lights")
+      const savedLights = saved.devices.lights[0] ?? lights
+      await testLights({ device_id: savedLights.id, brightness: 60, light_color_hex: "#E8F4FF" })
+      await markDeviceConnected(saved, "lights", savedLights.id)
       toast.success("Lights connected — check the bulb.")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Lights test failed")
@@ -278,7 +325,7 @@ export function SettingsPageClient() {
 
   const handleTestThermostat = async () => {
     if (!doc) return
-    const t = doc.devices.thermostat
+    const t = doc.devices.thermostats[0] ?? defaultThermostatDevice()
     if (t.brand === "honeywell_home" || t.brand === "honeywell_tcc") {
       if (!t.username?.trim() || !t.password?.trim()) {
         toast.error("Enter the same Honeywell account email and password as the mobile app.")
@@ -300,12 +347,13 @@ export function SettingsPageClient() {
         toast.error("Start the HAVEN API (npm run demo), then try again.")
         return
       }
-      const thermo = saved.devices.thermostat
+      const thermo = saved.devices.thermostats[0] ?? t
       const result = await testThermostat({
+        device_id: thermo.id,
         heat_f: thermo.targetHeatF ?? 70,
         cool_f: thermo.targetCoolF,
       })
-      await markDeviceConnected(saved, "thermostat")
+      await markDeviceConnected(saved, "thermostats", thermo.id)
       const temp =
         result.current_temperature_f != null
           ? ` Current temperature ${result.current_temperature_f}°F.`
@@ -324,7 +372,10 @@ export function SettingsPageClient() {
 
   const apiOnline = docQuery.data?.apiOnline ?? true
   const authRequired = docQuery.data?.authRequired ?? false
-  const { smartPlug, lights, thermostat } = doc.devices
+  const docWithDefaults = ensureMinimumDevices(doc)
+  const smartPlug = docWithDefaults.devices.smartPlugs[0]!
+  const lights = docWithDefaults.devices.lights[0]!
+  const thermostat = docWithDefaults.devices.thermostats[0]!
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 pb-24">
@@ -363,13 +414,18 @@ export function SettingsPageClient() {
         canConnect={Boolean(canTestPlug)}
         onConnect={() => void handleTestPlug()}
         onChange={(patch) =>
-          patchDoc((d) => ({
-            ...d,
-            devices: {
-              ...d.devices,
-              smartPlug: { ...d.devices.smartPlug, ...patch },
-            },
-          }))
+          patchDoc((d) => {
+            const ensured = ensureMinimumDevices(d)
+            return {
+              ...ensured,
+              devices: {
+                ...ensured.devices,
+                smartPlugs: ensured.devices.smartPlugs.map((p, i) =>
+                  i === 0 ? { ...p, ...patch } : p,
+                ),
+              },
+            }
+          })
         }
       />
 
@@ -389,12 +445,7 @@ export function SettingsPageClient() {
           title="Lights"
           description="Bulbs, strips, and switches — Hue, LIFX, WiZ, Govee, Matter, and more."
           enabled={lights.enabled}
-          onEnabledChange={(v) =>
-            patchDoc((d) => ({
-              ...d,
-              devices: { ...d.devices, lights: { ...d.devices.lights, enabled: v } },
-            }))
-          }
+          onEnabledChange={(v) => patchDoc((d) => patchPrimaryDevice(d, "lights", { enabled: v }))}
           connected={lights.connected}
           onTest={lights.brand === "tuya" ? handleTestLights : undefined}
           testLabel="Connect & test lights"
@@ -412,17 +463,9 @@ export function SettingsPageClient() {
             <Select
               value={lights.brand}
               onValueChange={(v) =>
-                patchDoc((d) => ({
-                  ...d,
-                  devices: {
-                    ...d.devices,
-                    lights: {
-                      ...d.devices.lights,
-                      brand: v as LightsBrand,
-                      connected: false,
-                    },
-                  },
-                }))
+                patchDoc((d) =>
+                  patchPrimaryDevice(d, "lights", { brand: v as LightsBrand, connected: false }),
+                )
               }
             >
               <SelectTrigger className="w-full max-w-sm">
@@ -448,13 +491,7 @@ export function SettingsPageClient() {
                 <SettingsInput
                   value={lights.tuyaDeviceId ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        lights: { ...d.devices.lights, tuyaDeviceId: e.target.value },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "lights", { tuyaDeviceId: e.target.value }))
                   }
                   className="font-mono text-[13px]"
                 />
@@ -464,13 +501,7 @@ export function SettingsPageClient() {
                   type="password"
                   value={lights.tuyaLocalKey ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        lights: { ...d.devices.lights, tuyaLocalKey: e.target.value },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "lights", { tuyaLocalKey: e.target.value }))
                   }
                   className="font-mono text-[13px]"
                 />
@@ -478,12 +509,7 @@ export function SettingsPageClient() {
               <SettingsField label="Bulb IP (optional)">
                 <SettingsInput
                   value={lights.host ?? ""}
-                  onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: { ...d.devices, lights: { ...d.devices.lights, host: e.target.value } },
-                    }))
-                  }
+                  onChange={(e) => patchDoc((d) => patchPrimaryDevice(d, "lights", { host: e.target.value }))}
                   className="font-mono text-[13px]"
                 />
               </SettingsField>
@@ -496,12 +522,7 @@ export function SettingsPageClient() {
           >
             <SettingsTextarea
               value={lights.notes}
-              onChange={(e) =>
-                patchDoc((d) => ({
-                  ...d,
-                  devices: { ...d.devices, lights: { ...d.devices.lights, notes: e.target.value } },
-                }))
-              }
+              onChange={(e) => patchDoc((d) => patchPrimaryDevice(d, "lights", { notes: e.target.value }))}
               rows={3}
               placeholder="Bedroom main, Desk strip, Sleep scene…"
             />
@@ -513,12 +534,7 @@ export function SettingsPageClient() {
           title="Thermostat"
           description="Nest, ecobee, Honeywell Home, Sensi, and other Wi‑Fi thermostats."
           enabled={thermostat.enabled}
-          onEnabledChange={(v) =>
-            patchDoc((d) => ({
-              ...d,
-              devices: { ...d.devices, thermostat: { ...d.devices.thermostat, enabled: v } },
-            }))
-          }
+          onEnabledChange={(v) => patchDoc((d) => patchPrimaryDevice(d, "thermostats", { enabled: v }))}
           connected={thermostat.connected}
           onTest={
             THERMOSTAT_TEST_BRANDS.includes(thermostat.brand) ? handleTestThermostat : undefined
@@ -538,17 +554,9 @@ export function SettingsPageClient() {
             <Select
               value={thermostat.brand}
               onValueChange={(v) =>
-                patchDoc((d) => ({
-                  ...d,
-                  devices: {
-                    ...d.devices,
-                    thermostat: {
-                      ...d.devices.thermostat,
-                      brand: v as ThermostatBrand,
-                      connected: false,
-                    },
-                  },
-                }))
+                patchDoc((d) =>
+                  patchPrimaryDevice(d, "thermostats", { brand: v as ThermostatBrand, connected: false }),
+                )
               }
             >
               <SelectTrigger className="w-full max-w-sm">
@@ -576,13 +584,7 @@ export function SettingsPageClient() {
                 <SettingsInput
                   value={thermostat.username ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        thermostat: { ...d.devices.thermostat, username: e.target.value },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "thermostats", { username: e.target.value }))
                   }
                 />
               </SettingsField>
@@ -591,13 +593,7 @@ export function SettingsPageClient() {
                   type="password"
                   value={thermostat.password ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        thermostat: { ...d.devices.thermostat, password: e.target.value },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "thermostats", { password: e.target.value }))
                   }
                 />
               </SettingsField>
@@ -613,13 +609,7 @@ export function SettingsPageClient() {
                 <SettingsInput
                   value={thermostat.nestProjectId ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        thermostat: { ...d.devices.thermostat, nestProjectId: e.target.value },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "thermostats", { nestProjectId: e.target.value }))
                   }
                   className="font-mono text-[13px]"
                 />
@@ -628,13 +618,7 @@ export function SettingsPageClient() {
                 <SettingsInput
                   value={thermostat.nestClientId ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        thermostat: { ...d.devices.thermostat, nestClientId: e.target.value },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "thermostats", { nestClientId: e.target.value }))
                   }
                   className="font-mono text-[13px]"
                 />
@@ -644,16 +628,7 @@ export function SettingsPageClient() {
                   type="password"
                   value={thermostat.nestClientSecret ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        thermostat: {
-                          ...d.devices.thermostat,
-                          nestClientSecret: e.target.value,
-                        },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "thermostats", { nestClientSecret: e.target.value }))
                   }
                 />
               </SettingsField>
@@ -662,16 +637,7 @@ export function SettingsPageClient() {
                   type="password"
                   value={thermostat.nestRefreshToken ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        thermostat: {
-                          ...d.devices.thermostat,
-                          nestRefreshToken: e.target.value,
-                        },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "thermostats", { nestRefreshToken: e.target.value }))
                   }
                   className="font-mono text-[13px]"
                 />
@@ -685,13 +651,7 @@ export function SettingsPageClient() {
                 <SettingsInput
                   value={thermostat.ecobeeApiKey ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        thermostat: { ...d.devices.thermostat, ecobeeApiKey: e.target.value },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "thermostats", { ecobeeApiKey: e.target.value }))
                   }
                   className="font-mono text-[13px]"
                 />
@@ -701,16 +661,7 @@ export function SettingsPageClient() {
                   type="password"
                   value={thermostat.ecobeeRefreshToken ?? ""}
                   onChange={(e) =>
-                    patchDoc((d) => ({
-                      ...d,
-                      devices: {
-                        ...d.devices,
-                        thermostat: {
-                          ...d.devices.thermostat,
-                          ecobeeRefreshToken: e.target.value,
-                        },
-                      },
-                    }))
+                    patchDoc((d) => patchPrimaryDevice(d, "thermostats", { ecobeeRefreshToken: e.target.value }))
                   }
                   className="font-mono text-[13px]"
                 />
@@ -724,16 +675,9 @@ export function SettingsPageClient() {
                 type="number"
                 value={thermostat.targetHeatF ?? 70}
                 onChange={(e) =>
-                  patchDoc((d) => ({
-                    ...d,
-                    devices: {
-                      ...d.devices,
-                      thermostat: {
-                        ...d.devices.thermostat,
-                        targetHeatF: Number(e.target.value) || 70,
-                      },
-                    },
-                  }))
+                  patchDoc((d) =>
+                    patchPrimaryDevice(d, "thermostats", { targetHeatF: Number(e.target.value) || 70 }),
+                  )
                 }
               />
             </SettingsField>
@@ -743,13 +687,7 @@ export function SettingsPageClient() {
             <SettingsTextarea
               value={thermostat.notes}
               onChange={(e) =>
-                patchDoc((d) => ({
-                  ...d,
-                  devices: {
-                    ...d.devices,
-                    thermostat: { ...d.devices.thermostat, notes: e.target.value },
-                  },
-                }))
+                patchDoc((d) => patchPrimaryDevice(d, "thermostats", { notes: e.target.value }))
               }
               rows={3}
               placeholder="Downstairs, heat 68°F sleep / 72°F work…"

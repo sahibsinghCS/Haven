@@ -15,6 +15,8 @@ create index if not exists haven_room_data_updated_at_idx
 -- Optional: enable RLS for anon access later; service role bypasses RLS.
 alter table public.haven_room_data enable row level security;
 
+grant all on table public.haven_room_data to anon, authenticated, service_role;
+
 -- Demo policy: allow read/write for anon if you use the anon key on clients (not recommended for secrets).
 -- For production, keep all reads/writes through the RoomOS API with the service role key.
 

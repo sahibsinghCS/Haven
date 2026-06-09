@@ -65,6 +65,66 @@ def strip_letterbox_pillarbox(
     return cropped if cropped.size else frame
 
 
+def strip_droidcam_watermark(
+    frame: np.ndarray,
+    *,
+    height_ratio: float = 0.11,
+    min_band_px: int = 36,
+    sample_rows: int = 10,
+    blur_ksize: int = 15,
+    feather_px: int = 0,
+) -> np.ndarray:
+    """Hide DroidCam free-tier overlay (``using droidcam.app``) on the top band.
+
+    Fills the top strip from the per-column median of rows *below* the watermark
+    (full frame width), then soft-feathers into the live frame. This removes the
+    centered text without the sideways seam caused by partial patch copies.
+    """
+    if frame is None or frame.size == 0:
+        return frame
+    try:
+        import cv2
+    except ImportError:
+        return frame
+
+    h, w = frame.shape[:2]
+    band_h = max(min_band_px, int(round(h * height_ratio)))
+    sample_h = max(2, int(sample_rows))
+    if band_h < 4 or band_h + sample_h >= h:
+        return frame
+
+    sample = frame[band_h : band_h + sample_h, :].astype(np.float32)
+    fill_row = np.median(sample, axis=0).astype(np.uint8)
+
+    out = frame.copy()
+    out[0:band_h, :] = fill_row
+
+    k = max(3, int(blur_ksize))
+    if k % 2 == 0:
+        k += 1
+    band_region = out[0 : min(h, band_h + max(4, band_h // 2)), :]
+    smoothed = cv2.GaussianBlur(band_region, (k, k), 0)
+    out[0:band_h, :] = smoothed[0:band_h, :]
+
+    feather = int(feather_px) if feather_px > 0 else max(8, band_h // 2)
+    blend_end = min(h, band_h + feather)
+    for y in range(band_h, blend_end):
+        alpha = (y - band_h) / float(max(1, blend_end - band_h))
+        out[y, :] = cv2.addWeighted(out[y, :], 1.0 - alpha, frame[y, :], alpha, 0)
+
+    return out
+
+
+def flip_horizontal(frame: np.ndarray) -> np.ndarray:
+    if frame is None or frame.size == 0:
+        return frame
+    try:
+        import cv2
+    except ImportError:
+        return frame
+    return cv2.flip(frame, 1)
+
+
 def center_crop_aspect(
     frame: np.ndarray,
     aspect: Tuple[float, float],
@@ -102,6 +162,17 @@ def preprocess_frame(
             out,
             threshold=int(cfg.get("letterbox_threshold", 14)),
             margin=int(cfg.get("letterbox_margin", 2)),
+        )
+    if bool(cfg.get("flip_horizontal", False)):
+        out = flip_horizontal(out)
+    if bool(cfg.get("strip_droidcam_watermark", False)):
+        out = strip_droidcam_watermark(
+            out,
+            height_ratio=float(cfg.get("droidcam_watermark_height_ratio", 0.11)),
+            min_band_px=int(cfg.get("droidcam_watermark_min_px", 36)),
+            sample_rows=int(cfg.get("droidcam_watermark_sample_rows", 10)),
+            blur_ksize=int(cfg.get("droidcam_watermark_blur_ksize", 15)),
+            feather_px=int(cfg.get("droidcam_watermark_feather_px", 0)),
         )
     aspect = parse_aspect_ratio(cfg.get("aspect_ratio"))
     if aspect is not None:

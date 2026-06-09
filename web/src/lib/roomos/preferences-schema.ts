@@ -1,21 +1,25 @@
 import { z } from "zod"
 
 import type { PreferenceDocument, PreferencePreset } from "@/types/roomos"
+import { PREFERENCE_MOOD_ORDER } from "@/types/roomos"
 
 const hex = z
   .string()
   .regex(/^#[0-9A-Fa-f]{6}$/i, "Use a 6-digit hex color (e.g. #1E2A4A)")
 
+export const devicePreferenceTargetSchema = z.object({
+  fanOn: z.boolean().optional(),
+  brightness: z.number().min(0).max(100).optional(),
+  lightColorHex: hex.optional(),
+  temperatureF: z.number().min(60).max(82).optional(),
+})
+
 export const statePreferenceSchema = z.object({
-  lightColorHex: hex,
-  brightness: z.number().min(0).max(100),
-  fanOn: z.boolean(),
-  temperatureF: z.number().min(60).max(82),
+  devices: z.record(z.string(), devicePreferenceTargetSchema),
 })
 
 export const preferenceMatrixSchema = z.object({
   sleep: statePreferenceSchema,
-  gaming: statePreferenceSchema,
   work: statePreferenceSchema,
   relaxing: statePreferenceSchema,
   away: statePreferenceSchema,
@@ -23,19 +27,13 @@ export const preferenceMatrixSchema = z.object({
 
 export type PreferenceMatrixFormValues = z.infer<typeof preferenceMatrixSchema>
 
-/** Stable defaults before API/local hydration (matches backend shape). */
-export const EMPTY_PREFERENCE_MATRIX: PreferenceMatrixFormValues = {
+/** Legacy v1 defaults — used when seeding per-device targets. */
+export const LEGACY_MOOD_DEFAULTS = {
   sleep: {
     lightColorHex: "#1E2A4A",
     brightness: 8,
     fanOn: true,
     temperatureF: 68,
-  },
-  gaming: {
-    lightColorHex: "#6D4AFF",
-    brightness: 78,
-    fanOn: true,
-    temperatureF: 70,
   },
   work: {
     lightColorHex: "#E8F4FF",
@@ -55,20 +53,23 @@ export const EMPTY_PREFERENCE_MATRIX: PreferenceMatrixFormValues = {
     fanOn: false,
     temperatureF: 76,
   },
-}
+} as const
 
-const CUSTOM_PREFERENCE_MATRIX: PreferenceMatrixFormValues = {
+/** Stable defaults before API/local hydration (matches backend shape). */
+export const EMPTY_PREFERENCE_MATRIX: PreferenceMatrixFormValues = PREFERENCE_MOOD_ORDER.reduce(
+  (acc, stateId) => {
+    acc[stateId] = { devices: {} }
+    return acc
+  },
+  {} as PreferenceMatrixFormValues,
+)
+
+const CUSTOM_LEGACY_MOOD_DEFAULTS = {
   sleep: {
     lightColorHex: "#0F172A",
     brightness: 4,
     fanOn: true,
     temperatureF: 67,
-  },
-  gaming: {
-    lightColorHex: "#7C3AED",
-    brightness: 88,
-    fanOn: true,
-    temperatureF: 69,
   },
   work: {
     lightColorHex: "#D7F9FF",
@@ -88,7 +89,7 @@ const CUSTOM_PREFERENCE_MATRIX: PreferenceMatrixFormValues = {
     fanOn: false,
     temperatureF: 78,
   },
-}
+} as const
 
 /** Defaults when the API is offline (matches backend ``_DEFAULT_DOC``). */
 export function defaultPreferenceDocument(): PreferenceDocument {
@@ -105,14 +106,18 @@ export function defaultPreferenceDocument(): PreferenceDocument {
       name: "Custom",
       description: "Your personal mix. Adjust any mood, then save.",
       isDefault: false,
-      preferences: { ...CUSTOM_PREFERENCE_MATRIX },
+      preferences: PREFERENCE_MOOD_ORDER.reduce((acc, stateId) => {
+        acc[stateId] = { devices: {} }
+        return acc
+      }, {} as PreferenceMatrixFormValues),
     },
   ]
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: new Date().toISOString(),
     presets,
     activePresetId: "preset_basic",
   }
 }
 
+export { CUSTOM_LEGACY_MOOD_DEFAULTS }

@@ -173,6 +173,37 @@ def _mjpeg_connect_error(url: str, exc: BaseException) -> RuntimeError:
     )
 
 
+def _droidcam_busy_error(url: str) -> RuntimeError:
+    return RuntimeError(
+        f"DroidCam at {url} is busy (another app is using the feed). "
+        "Quit the DroidCam Windows client (File -> Exit) and any other app using the "
+        "phone camera, then reload /live. Or pick the DroidCam virtual webcam in the "
+        "camera menu: npm run probe:cameras"
+    )
+
+
+def _mjpeg_not_stream_error(url: str, content_type: str) -> RuntimeError:
+    return RuntimeError(
+        f"Expected an MJPEG video stream at {url} but got {content_type or 'non-video'} "
+        "content. If this is DroidCam, confirm the phone app is connected and the URL "
+        "shows live video in a browser. Or run: npm run probe:cameras"
+    )
+
+
+def _should_fallback_to_webcam(source: VideoSourceLike) -> bool:
+    """Only auto-fallback for droidcam:auto — not explicit Wi-Fi URLs saved in Settings."""
+    if isinstance(source, int):
+        return False
+    s = str(source).strip()
+    if s.isdigit():
+        return False
+    if s == "droidcam:auto":
+        return True
+    if "://" in s:
+        return False
+    return False
+
+
 def _probe_droidcam() -> Optional[str]:
     """Return the first DroidCam URL OpenCV can actually decode, or None."""
     for host in _DROIDCAM_DEFAULT_HOSTS:
@@ -370,7 +401,15 @@ class _MjpegHttpCapture:
             self._resp = urllib.request.urlopen(url, timeout=10)
         except urllib.error.URLError as exc:
             raise _mjpeg_connect_error(url, exc) from exc
-        self._buffer = b""
+        content_type = str(self._resp.headers.get("Content-Type") or "").lower()
+        peek = self._resp.read(1024)
+        if "text/html" in content_type or peek.lstrip().startswith(b"<!"):
+            body = peek.decode("utf-8", "replace").lower()
+            self._resp.close()
+            if "droidcam is busy" in body or "droidcam_busy" in body:
+                raise _droidcam_busy_error(url)
+            raise _mjpeg_not_stream_error(url, content_type or "text/html")
+        self._buffer = peek
         self._opened = True
 
     def isOpened(self) -> bool:
@@ -425,7 +464,7 @@ def _open_mjpeg_http(url: str) -> _MjpegHttpCapture:
         raise RuntimeError(
             f"Could not read MJPEG frames from {url}. "
             "If DroidCam Client is open, the HTTP feed is often busy — quit the client "
-            "(File → Exit) and retry, or use the virtual webcam: npm run probe:cameras "
+            "(File -> Exit) and retry, or use the virtual webcam: npm run probe:cameras "
             "(on Windows try source=1 backend=msmf for 'DroidCam Video')."
         )
     log.info("Opened video source %r via mjpeg-http (OpenCV fallback)", url)

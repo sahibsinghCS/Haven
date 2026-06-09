@@ -1,6 +1,6 @@
 import {
-  deviceSettingsDocumentSchema,
   defaultDeviceSettingsDocument,
+  parseDeviceSettingsDocument,
 } from "@/lib/roomos/device-settings-schema"
 import type { DeviceSettingsDocument } from "@/types/device-settings"
 
@@ -12,8 +12,7 @@ export function loadDeviceSettingsLocal(): DeviceSettingsDocument | null {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
-    const result = deviceSettingsDocumentSchema.safeParse(parsed)
-    return result.success ? result.data : null
+    return parseDeviceSettingsDocument(parsed)
   } catch {
     return null
   }

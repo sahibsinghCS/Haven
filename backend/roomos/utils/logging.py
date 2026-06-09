@@ -18,10 +18,21 @@ _DEFAULT_FMT = "%(asctime)s %(levelname)-7s %(name)s | %(message)s"
 _DEFAULT_DATEFMT = "%H:%M:%S"
 
 
+def _rich_enabled(explicit: Optional[bool]) -> bool:
+    if explicit is not None:
+        return explicit
+    rich_default = "0" if sys.platform == "win32" else "1"
+    return os.environ.get("ROOMOS_LOG_RICH", rich_default).strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
 def setup_logging(
     level: str = "INFO",
     log_file: Optional[Path] = None,
-    use_rich: bool = True,
+    use_rich: Optional[bool] = None,
 ) -> None:
     """Configure root logging once.
 
@@ -36,6 +47,7 @@ def setup_logging(
     root.setLevel(lvl)
 
     handlers: list[logging.Handler] = []
+    use_rich = _rich_enabled(use_rich)
 
     if use_rich:
         try:
@@ -71,7 +83,19 @@ def setup_logging(
         root.addHandler(h)
 
     # Quiet a few chatty libraries we don't want in normal runs.
-    for noisy in ("matplotlib", "PIL", "urllib3", "httpx", "httpcore"):
+    for noisy in (
+        "matplotlib",
+        "PIL",
+        "urllib3",
+        "httpx",
+        "httpcore",
+        "uvicorn",
+        "uvicorn.access",
+        "uvicorn.error",
+        "watchfiles",
+        "multipart",
+        "asyncio",
+    ):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     root._roomos_configured = True  # type: ignore[attr-defined]

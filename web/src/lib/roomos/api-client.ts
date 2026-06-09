@@ -3,8 +3,10 @@ import { parseDeviceSettingsDocument } from "@/lib/roomos/device-settings-schema
 import { parsePreferenceDocument } from "@/lib/roomos/preferences-document-schema"
 import type { DeviceSettingsDocument } from "@/types/device-settings"
 import type {
+  ConnectedDeviceCategory,
   LiveInferenceSnapshot,
   PreferenceDocument,
+  RoomDeviceTargets,
   RoomStateDistribution,
   RoomStateId,
 } from "@/types/roomos"
@@ -153,12 +155,27 @@ function normalizeSnapshot(raw: unknown): LiveInferenceSnapshot {
     typeof s.primaryConfidence === "number" ? s.primaryConfidence : distribution[primary]
 
   const appliedSceneRaw = (s.appliedScene ?? {}) as Record<string, unknown>
-  const appliedScene = {
-    lightColorHex: String(appliedSceneRaw.lightColorHex ?? "#2A2A2A"),
-    brightness: Number(appliedSceneRaw.brightness ?? 0),
-    fanOn: Boolean(appliedSceneRaw.fanOn ?? false),
-    temperatureF: Number(appliedSceneRaw.temperatureF ?? 72),
+  const appliedScene: RoomDeviceTargets = {}
+  if (appliedSceneRaw.lightColorHex != null) {
+    appliedScene.lightColorHex = String(appliedSceneRaw.lightColorHex)
   }
+  if (appliedSceneRaw.brightness != null) {
+    appliedScene.brightness = Number(appliedSceneRaw.brightness)
+  }
+  if (appliedSceneRaw.fanOn != null) {
+    appliedScene.fanOn = Boolean(appliedSceneRaw.fanOn)
+  }
+  if (appliedSceneRaw.temperatureF != null) {
+    appliedScene.temperatureF = Number(appliedSceneRaw.temperatureF)
+  }
+
+  const connectedCategoriesRaw = Array.isArray(s.connectedCategories)
+    ? s.connectedCategories
+    : []
+  const connectedCategories = connectedCategoriesRaw.filter(
+    (c): c is ConnectedDeviceCategory =>
+      c === "smartPlugs" || c === "lights" || c === "thermostats",
+  )
 
   const streamRaw = (s.stream ?? {}) as Record<string, unknown>
 
@@ -201,6 +218,7 @@ function normalizeSnapshot(raw: unknown): LiveInferenceSnapshot {
     modelDistribution,
     rationale: Array.isArray(s.rationale) ? s.rationale.map(String) : [],
     appliedScene,
+    connectedCategories,
     personalization: {
       applied: Boolean(personalizationRaw.applied),
       examples: Number(personalizationRaw.examples ?? personalizationRaw.memory_examples ?? 0),
@@ -877,7 +895,26 @@ async function parseIntegrationError(res: Response, fallback: string): Promise<n
   throw new Error(detail)
 }
 
+export async function fetchSmartPlugStatus(body: {
+  device_id?: string
+  host?: string
+  brand?: string
+}): Promise<{ ok: boolean; state?: "on" | "off"; host?: string; device?: string; brand?: string }> {
+  const params = new URLSearchParams()
+  if (body.device_id) params.set("device_id", body.device_id)
+  const qs = params.toString()
+  const res = await fetch(
+    `${API_BASE}/api/integrations/smart-plug/status${qs ? `?${qs}` : ""}`,
+    { headers: await havenRequestHeaders() },
+  )
+  if (!res.ok) await parseIntegrationError(res, `Plug status failed: ${res.status}`)
+  const data = (await res.json()) as { ok: boolean; state?: string }
+  const state = data.state === "on" || data.state === "off" ? data.state : undefined
+  return { ...data, state }
+}
+
 export async function testSmartPlug(body: {
+  device_id?: string
   host?: string
   brand?: string
   state?: "on" | "off"
@@ -886,6 +923,7 @@ export async function testSmartPlug(body: {
     method: "POST",
     headers: await havenRequestHeaders(),
     body: JSON.stringify({
+      device_id: body.device_id ?? "",
       host: body.host ?? "",
       brand: body.brand ?? "",
       state: body.state ?? "on",
@@ -911,6 +949,7 @@ export async function testKasaPlug(body: {
 }
 
 export async function testThermostat(body: {
+  device_id?: string
   heat_f?: number
   cool_f?: number
 }): Promise<{ ok: boolean; current_temperature_f?: number; device?: string }> {
@@ -924,6 +963,7 @@ export async function testThermostat(body: {
 }
 
 export async function testLights(body?: {
+  device_id?: string
   brightness?: number
   light_color_hex?: string
 }): Promise<{ ok: boolean; executed?: boolean; brand?: string }> {
@@ -937,6 +977,43 @@ export async function testLights(body?: {
   })
   if (!res.ok) await parseIntegrationError(res, `Lights test failed: ${res.status}`)
   return (await res.json()) as { ok: boolean; executed?: boolean; brand?: string }
+}
+
+export type DiscoveredDevice = {
+  category: "smart_plug" | "lights"
+  brand: string
+  host: string
+  model?: string | null
+  name?: string | null
+  protocol?: string
+}
+
+/** Run the Home-Assistant-style LAN scan and return found devices. */
+export async function discoverDevices(opts?: {
+  timeout?: number
+  signal?: AbortSignal
+}): Promise<DiscoveredDevice[]> {
+  const res = await fetch(`${API_BASE}/api/integrations/discover`, {
+    method: "POST",
+    headers: await havenRequestHeaders(),
+    body: JSON.stringify({ timeout: opts?.timeout ?? 8 }),
+    signal: opts?.signal,
+  })
+  if (!res.ok) await parseIntegrationError(res, `Network scan failed: ${res.status}`)
+  const raw = (await res.json()) as { ok?: boolean; devices?: unknown }
+  const list = Array.isArray(raw.devices) ? raw.devices : []
+  return list.map((d) => {
+    const r = d as Record<string, unknown>
+    const category = r.category === "lights" ? "lights" : "smart_plug"
+    return {
+      category,
+      brand: String(r.brand ?? ""),
+      host: String(r.host ?? ""),
+      model: r.model != null ? String(r.model) : null,
+      name: r.name != null ? String(r.name) : null,
+      protocol: r.protocol != null ? String(r.protocol) : undefined,
+    } as DiscoveredDevice
+  })
 }
 
 export { normalizeSnapshot }

@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo } from "react"
+import Link from "next/link"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
@@ -14,8 +15,18 @@ import { StatePreferenceCard } from "@/components/roomos/preferences/state-prefe
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
 import { Button } from "@/components/ui/button"
 import { Form } from "@/components/ui/form"
-import { fetchPreferenceDocument, savePreferenceDocument } from "@/lib/roomos/api-client"
-import { buildPreferenceDocument } from "@/lib/roomos/preferences-document-schema"
+import { fetchDeviceSettingsDocument, fetchPreferenceDocument, savePreferenceDocument } from "@/lib/roomos/api-client"
+import {
+  defaultDeviceSettingsDocument,
+  parseDeviceSettingsDocument,
+} from "@/lib/roomos/device-settings-schema"
+import { loadDeviceSettingsLocal } from "@/lib/roomos/device-settings-persistence"
+import { buildPreferenceDocument, parsePreferenceDocument } from "@/lib/roomos/preferences-document-schema"
+import {
+  listConnectedDevices,
+  mergeDevicesIntoMatrix,
+  migratePreferenceMatrix,
+} from "@/lib/roomos/preferences-device-helpers"
 import {
   defaultPreferenceDocument,
   EMPTY_PREFERENCE_MATRIX,
@@ -27,29 +38,54 @@ import { loadRoomOsPreferences } from "@/lib/roomos/preferences-persistence"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
 import { useRoomOsPreferencesStore } from "@/stores/roomos-store"
-import { ROOM_STATE_ORDER, type PreferencePreset } from "@/types/roomos"
+import { PREFERENCE_MOOD_ORDER, type ConnectedDeviceRef, type PreferencePreset } from "@/types/roomos"
 
 import { cn } from "@/lib/utils"
 
 const BASIC_PRESET_ID = "preset_basic"
 const CUSTOM_PRESET_ID = "preset_custom"
 
-function summarizePreset(preset: PreferencePreset) {
-  const values = ROOM_STATE_ORDER.map((stateId) => preset.preferences[stateId])
-  const averageBrightness = Math.round(values.reduce((sum, pref) => sum + pref.brightness, 0) / values.length)
-  const fanCount = values.filter((pref) => pref.fanOn).length
-  const temperatures = values.map((pref) => pref.temperatureF)
+function summarizePreset(preset: PreferencePreset, connected: ConnectedDeviceRef[]) {
+  const brightnessValues: number[] = []
+  let fanCount = 0
+  const temperatures: number[] = []
+
+  for (const stateId of PREFERENCE_MOOD_ORDER) {
+    const scene = preset.preferences[stateId]
+    for (const device of connected) {
+      const target = scene.devices[device.id]
+      if (!target) continue
+      if (device.category === "lights" && target.brightness != null) {
+        brightnessValues.push(target.brightness)
+      }
+      if (device.category === "smart_plug" && target.fanOn) {
+        fanCount += 1
+      }
+      if (device.category === "thermostat" && target.temperatureF != null) {
+        temperatures.push(target.temperatureF)
+      }
+    }
+  }
 
   return {
-    averageBrightness,
+    averageBrightness:
+      brightnessValues.length > 0
+        ? Math.round(brightnessValues.reduce((a, b) => a + b, 0) / brightnessValues.length)
+        : 0,
     fanCount,
-    minTemp: Math.min(...temperatures),
-    maxTemp: Math.max(...temperatures),
+    minTemp: temperatures.length > 0 ? Math.min(...temperatures) : 72,
+    maxTemp: temperatures.length > 0 ? Math.max(...temperatures) : 72,
   }
 }
 
-function presetToFormValues(preset: PreferencePreset): PreferenceMatrixFormValues {
-  return preset.preferences
+function presetToFormValues(
+  preset: PreferencePreset,
+  integrationsDoc = defaultDeviceSettingsDocument(),
+): PreferenceMatrixFormValues {
+  return mergeDevicesIntoMatrix(
+    migratePreferenceMatrix(preset.preferences as Record<string, unknown>, integrationsDoc),
+    listConnectedDevices(integrationsDoc),
+  )
 }
 
 export function PreferencesPageClient() {
@@ -69,21 +105,48 @@ export function PreferencesPageClient() {
       } catch {
         const disk = loadRoomOsPreferences()
         if (disk) {
-          return {
-            doc: {
-              schemaVersion: 1 as const,
+          const parsed =
+            parsePreferenceDocument({
+              schemaVersion: 2,
               updatedAt: new Date().toISOString(),
               presets: disk.presets,
               activePresetId: disk.activePresetId,
-            },
-            apiOnline: false as const,
-          }
+            }) ?? defaultPreferenceDocument()
+          return { doc: parsed, apiOnline: false as const }
         }
         return { doc: defaultPreferenceDocument(), apiOnline: false as const }
       }
     },
     staleTime: 60_000,
   })
+
+  const integrationsQuery = useQuery({
+    queryKey: ["roomos", "integrations", user?.id ?? "local"],
+    queryFn: async () => {
+      try {
+        const doc = await fetchDeviceSettingsDocument()
+        return { doc, apiOnline: true as const }
+      } catch {
+        return {
+          doc: loadDeviceSettingsLocal() ?? defaultDeviceSettingsDocument(),
+          apiOnline: false as const,
+        }
+      }
+    },
+    staleTime: 30_000,
+  })
+
+  const integrationsDoc = useMemo(() => {
+    const raw = integrationsQuery.data
+    if (!raw) return defaultDeviceSettingsDocument()
+    const doc = "doc" in raw && raw.doc ? raw.doc : raw
+    return parseDeviceSettingsDocument(doc)
+  }, [integrationsQuery.data])
+
+  const connectedDevices = useMemo(
+    () => listConnectedDevices(integrationsDoc),
+    [integrationsDoc],
+  )
 
   useEffect(() => {
     if (docQuery.data) hydrate(docQuery.data.doc)
@@ -117,13 +180,13 @@ export function PreferencesPageClient() {
   const { isDirty, isSubmitting } = form.formState
 
   useEffect(() => {
-    if (!activePresetId) return
+    if (!activePresetId || integrationsQuery.isPending) return
     const preset = useRoomOsPreferencesStore
       .getState()
       .presets?.find((p) => p.id === activePresetId)
     if (!preset) return
-    form.reset(presetToFormValues(preset))
-  }, [activePresetId, form])
+    form.reset(presetToFormValues(preset, integrationsDoc))
+  }, [activePresetId, form, integrationsDoc, integrationsQuery.isPending])
 
   if (docQuery.isPending || !presets) {
     return <PreferencesSkeleton />
@@ -150,7 +213,8 @@ export function PreferencesPageClient() {
   }
 
   const isBasic = activePreset.id === basicId
-  const presetSummary = summarizePreset(activePreset)
+  const presetSummary = summarizePreset(activePreset, connectedDevices)
+  const hasConnectedDevices = connectedDevices.length > 0
 
   const apiOnline = docQuery.data?.apiOnline ?? true
 
@@ -276,8 +340,12 @@ export function PreferencesPageClient() {
               </div>
 
               <ul className="mt-5 space-y-2" aria-label={`${activePreset.name} mood summary`}>
-                {ROOM_STATE_ORDER.map((stateId) => {
+                {PREFERENCE_MOOD_ORDER.map((stateId) => {
                   const pref = activePreset.preferences[stateId]
+                  const firstLights = connectedDevices.find((d) => d.category === "lights")
+                  const lightsTarget = firstLights ? pref.devices[firstLights.id] : undefined
+                  const hex = lightsTarget?.lightColorHex ?? "#71717a"
+                  const brightness = lightsTarget?.brightness ?? 0
                   return (
                     <li
                       key={stateId}
@@ -285,14 +353,14 @@ export function PreferencesPageClient() {
                     >
                       <span
                         className="size-3 rounded-full shadow-[0_0_18px_rgba(255,255,255,0.18)] ring-1 ring-white/25"
-                        style={{ backgroundColor: pref.lightColorHex }}
+                        style={{ backgroundColor: hex }}
                         aria-hidden
                       />
                       <span className="truncate text-[12.5px] font-medium text-stone-200">
                         {ROOM_STATE_LABEL[stateId]}
                       </span>
                       <span className="font-mono text-[11px] font-semibold tabular-nums text-stone-400">
-                        {pref.brightness}%
+                        {hasConnectedDevices ? `${brightness}%` : "—"}
                       </span>
                     </li>
                   )
@@ -331,7 +399,9 @@ export function PreferencesPageClient() {
             onValueChange={(id) => {
               selectPreset(id)
               const next = presets.find((p) => p.id === id)
-              if (next) form.reset(presetToFormValues(next))
+              if (next) {
+                form.reset(presetToFormValues(next, integrationsDoc))
+              }
             }}
           />
         </div>
@@ -345,9 +415,26 @@ export function PreferencesPageClient() {
         </p>
       </section>
 
+      {!hasConnectedDevices ? (
+        <section className="rounded-[1.75rem] border border-dashed border-[color:var(--haven-line-strong)] bg-white/50 p-8 text-center">
+          <h2 className="haven-display text-[1.35rem] font-semibold text-[color:var(--haven-ink)]">
+            Connect devices first
+          </h2>
+          <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-[color:var(--haven-muted)]">
+            Preferences only appear for devices you have connected. Add a smart plug, lights, or thermostat on the Connections page.
+          </p>
+          <Link
+            href="/connections"
+            className={cn("mt-5 inline-flex rounded-full px-5 py-2.5 text-[13px] font-semibold", roomosUi.havenPrimaryBtn)}
+          >
+            Go to Connections
+          </Link>
+        </section>
+      ) : null}
+
       <Form {...form}>
         <form
-          className="flex flex-col gap-10"
+          className={cn("flex flex-col gap-10", !hasConnectedDevices && "hidden")}
           onSubmit={form.handleSubmit(async (values) => {
             const updated: PreferencePreset = {
               ...activePreset,
@@ -392,8 +479,12 @@ export function PreferencesPageClient() {
               </p>
             </div>
             <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
-              {ROOM_STATE_ORDER.map((stateId) => (
-                <StatePreferenceCard key={stateId} stateId={stateId} />
+              {PREFERENCE_MOOD_ORDER.map((stateId) => (
+                <StatePreferenceCard
+                  key={stateId}
+                  stateId={stateId}
+                  connectedDevices={connectedDevices}
+                />
               ))}
             </div>
           </section>
@@ -446,7 +537,7 @@ export function PreferencesPageClient() {
                   roomosUi.focusRingLight,
                 )}
                 disabled={!isDirty || isSubmitting}
-                onClick={() => form.reset(presetToFormValues(activePreset))}
+                onClick={() => form.reset(presetToFormValues(activePreset, integrationsDoc))}
               >
                 <RotateCcw className="size-3.5" aria-hidden />
                 Reset

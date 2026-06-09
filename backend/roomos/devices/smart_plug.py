@@ -100,8 +100,6 @@ def _apply_shelly(config: Dict[str, Any], state: str) -> Dict[str, Any]:
 
 
 def _apply_tuya(config: Dict[str, Any], state: str) -> Dict[str, Any]:
-    import tinytuya
-
     host = _host(config)
     dev_id = str(config.get("tuyaDeviceId") or config.get("tuya_device_id") or "").strip()
     local_key = str(config.get("tuyaLocalKey") or config.get("tuya_local_key") or "").strip()
@@ -118,6 +116,13 @@ def _apply_tuya(config: Dict[str, Any], state: str) -> Dict[str, Any]:
         )
     if not host:
         host = "Auto"
+
+    try:
+        import tinytuya
+    except ImportError as e:
+        raise ValueError(
+            "Tuya support is not installed. From the backend folder: pip install tinytuya"
+        ) from e
 
     device = tinytuya.OutletDevice(dev_id, host, local_key, version=version)
     if state == "on":
@@ -226,6 +231,161 @@ def _resolve_driver(brand: str, config: Dict[str, Any]) -> str:
             "Try TP-Link Kasa, Shelly, Tuya/Smart Life, or Meross."
         )
     raise ValueError(f"Unsupported plug brand: {brand}")
+
+
+async def _read_tapo(config: Dict[str, Any]) -> Dict[str, Any]:
+    from ..actions.tapo_plug import resolve_tapo_credentials
+    from ..actions.tapo_manager import get_tapo_manager
+
+    host = _host(config)
+    if not host:
+        raise ValueError("Plug IP address is required for TP-Link Tapo.")
+    email, password = resolve_tapo_credentials(config)
+    timeout = float(config.get("timeout_sec", 12.0))
+    label = str(config.get("label") or "").strip()
+    device_id = str(config.get("deviceId") or config.get("device_id") or "").strip()
+    result = await asyncio.to_thread(
+        get_tapo_manager().read_state,
+        host,
+        email=email,
+        password=password,
+        timeout_sec=timeout,
+        label=label,
+        device_id=device_id,
+    )
+    state = str(result.get("state") or ("on" if result.get("is_on") else "off"))
+    return {"driver": "tapo", "brand": "tapo", "state": state, **result}
+
+
+async def _read_kasa_family(config: Dict[str, Any]) -> Dict[str, Any]:
+    from kasa import Credentials, Discover
+
+    from ..actions.kasa import resolve_kasa_credentials
+
+    host = _host(config)
+    if not host:
+        raise ValueError("Plug IP address is required for TP-Link Kasa.")
+    username, password = resolve_kasa_credentials(config)
+    timeout = float(config.get("timeout_sec", 12.0))
+    credentials = Credentials(username, password) if username and password else None
+    device = await asyncio.wait_for(
+        Discover.discover_single(host, credentials=credentials),
+        timeout=timeout,
+    )
+    await device.update()
+    is_on = bool(getattr(device, "is_on", False))
+    state = "on" if is_on else "off"
+    return {
+        "driver": "kasa",
+        "brand": _brand(config),
+        "host": host,
+        "state": state,
+        "is_on": is_on,
+        "device": getattr(device, "alias", None) or host,
+    }
+
+
+def _read_shelly(config: Dict[str, Any]) -> Dict[str, Any]:
+    import httpx
+
+    host = _host(config)
+    if not host:
+        raise ValueError("Plug IP address is required for Shelly.")
+    gen = str(config.get("shellyGen") or config.get("shelly_gen") or "1").strip()
+    timeout = float(config.get("timeout_sec", 10.0))
+
+    if gen == "2" or gen.startswith("2"):
+        url = f"http://{host}/rpc/Switch.GetStatus"
+        with httpx.Client(timeout=timeout) as client:
+            r = client.post(url, json={"id": 0})
+            r.raise_for_status()
+            data = r.json()
+        output = (data.get("result") or {}).get("output")
+        is_on = bool(output)
+    else:
+        url = f"http://{host}/relay/0"
+        with httpx.Client(timeout=timeout) as client:
+            r = client.get(url)
+            r.raise_for_status()
+            data = r.json()
+        is_on = bool(data.get("ison"))
+    state = "on" if is_on else "off"
+    return {"driver": "shelly", "brand": "shelly", "host": host, "state": state, "is_on": is_on}
+
+
+def _read_tuya(config: Dict[str, Any]) -> Dict[str, Any]:
+    host = _host(config)
+    dev_id = str(config.get("tuyaDeviceId") or config.get("tuya_device_id") or "").strip()
+    local_key = str(config.get("tuyaLocalKey") or config.get("tuya_local_key") or "").strip()
+    version_raw = config.get("tuyaVersion") or config.get("tuya_version") or "3.3"
+    try:
+        version = float(version_raw)
+    except (TypeError, ValueError):
+        version = 3.3
+    if not dev_id or not local_key:
+        raise ValueError("Tuya plugs need Device ID and Local Key.")
+    if not host:
+        host = "Auto"
+    import tinytuya
+
+    device = tinytuya.OutletDevice(dev_id, host, local_key, version=version)
+    payload = device.status()
+    dps = payload.get("dps") if isinstance(payload, dict) else {}
+    is_on = False
+    if isinstance(dps, dict):
+        is_on = bool(dps.get("1") or dps.get("20") or dps.get("switch"))
+    state = "on" if is_on else "off"
+    return {
+        "driver": "tuya",
+        "brand": _brand(config),
+        "host": host,
+        "state": state,
+        "is_on": is_on,
+        "device": dev_id,
+    }
+
+
+def _read_wemo(config: Dict[str, Any]) -> Dict[str, Any]:
+    import pywemo
+
+    host = _host(config)
+    if not host:
+        raise ValueError("Plug IP address is required for Wemo.")
+    url = pywemo.setup_url(host)
+    device = pywemo.discovery.device_from_url(url)
+    is_on = bool(device.get_state())
+    state = "on" if is_on else "off"
+    return {
+        "driver": "wemo",
+        "brand": "wemo",
+        "host": host,
+        "state": state,
+        "is_on": is_on,
+        "device": getattr(device, "name", host),
+    }
+
+
+async def read_smart_plug_state(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Query current on/off without changing the plug."""
+    cfg = _plug_config(config)
+    brand = _brand(cfg)
+    driver = _resolve_driver(brand, cfg)
+
+    if driver == "tapo":
+        return await _read_tapo(cfg)
+    if driver == "kasa":
+        return await _read_kasa_family(cfg)
+    if driver == "shelly":
+        return await asyncio.to_thread(_read_shelly, cfg)
+    if driver == "tuya":
+        return await asyncio.to_thread(_read_tuya, cfg)
+    if driver == "wemo":
+        return await asyncio.to_thread(_read_wemo, cfg)
+    if driver == "kasa_probe":
+        return await _read_kasa_family({**cfg, "brand": "tplink_kasa"})
+    if driver == "meross":
+        raise ValueError("Live Meross state read is not supported yet.")
+    raise ValueError(f"No driver for brand {brand!r}")
 
 
 async def apply_smart_plug_state(config: Dict[str, Any], state: str) -> Dict[str, Any]:

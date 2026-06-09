@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
-import { ChevronDown, Loader2, Unplug, Zap } from "lucide-react"
+import { ChevronDown, Loader2, Power, PowerOff, Trash2, Unplug, Zap } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -17,9 +17,16 @@ export function ConnectionDeviceRow({
   expanded,
   onToggleSetup,
   onDisconnect,
+  onRemove,
+  removing,
   disconnecting,
   onTest,
+  onTestOn,
+  onTestOff,
+  powerState,
+  readingPower,
   testing,
+  testingAction,
   testLabel = "Test",
   children,
 }: {
@@ -31,9 +38,17 @@ export function ConnectionDeviceRow({
   expanded: boolean
   onToggleSetup: () => void
   onDisconnect?: () => void
+  onRemove?: () => void
+  removing?: boolean
   disconnecting?: boolean
   onTest?: () => void
+  onTestOn?: () => void
+  onTestOff?: () => void
+  /** Live relay state from the plug (not just which button was last clicked). */
+  powerState?: "on" | "off" | null
+  readingPower?: boolean
   testing?: boolean
+  testingAction?: "on" | "off" | null
   testLabel?: string
   children?: ReactNode
 }) {
@@ -115,7 +130,52 @@ export function ConnectionDeviceRow({
             {connected ? "Connected" : "Not connected"}
           </span>
 
-          {connected && onTest ? (
+          {connected && onTestOn && onTestOff ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant={powerState === "on" ? "default" : "outline"}
+                disabled={testing || disconnecting || readingPower}
+                onClick={onTestOn}
+                className={cn(
+                  "gap-1.5 px-3.5",
+                  powerState === "on" ? roomosUi.havenPrimaryBtn : roomosUi.havenOutlineBtn,
+                )}
+                aria-pressed={powerState === "on"}
+              >
+                {testing && testingAction === "on" ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : readingPower && powerState === null ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Power className="size-3.5" aria-hidden />
+                )}
+                On
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={powerState === "off" ? "default" : "outline"}
+                disabled={testing || disconnecting || readingPower}
+                onClick={onTestOff}
+                className={cn(
+                  "gap-1.5 px-3.5",
+                  powerState === "off" ? roomosUi.havenPrimaryBtn : roomosUi.havenOutlineBtn,
+                )}
+                aria-pressed={powerState === "off"}
+              >
+                {testing && testingAction === "off" ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : readingPower && powerState === null ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <PowerOff className="size-3.5" aria-hidden />
+                )}
+                Off
+              </Button>
+            </>
+          ) : connected && onTest ? (
             <Button
               type="button"
               size="sm"
@@ -177,6 +237,24 @@ export function ConnectionDeviceRow({
               className="text-stone-600 hover:bg-stone-900/5 hover:text-stone-900"
             >
               {expanded ? "Close" : "Settings"}
+            </Button>
+          ) : null}
+
+          {onRemove ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={removing || disconnecting || testing}
+              onClick={onRemove}
+              className="text-stone-500 hover:bg-rose-50 hover:text-rose-800"
+            >
+              {removing ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Trash2 className="size-3.5" aria-hidden />
+              )}
+              <span className="sr-only">Remove device</span>
             </Button>
           ) : null}
         </div>

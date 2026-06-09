@@ -13,7 +13,7 @@ const preferencePresetSchema = z.object({
 
 export const preferenceDocumentSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
     updatedAt: z.string(),
     presets: z.array(preferencePresetSchema).min(1),
     activePresetId: z.string().min(1).optional(),
@@ -28,7 +28,24 @@ export const preferenceDocumentSchema = z
       ctx.addIssue({ code: "custom", message: "No active preset could be resolved" })
       return z.NEVER
     }
-    return { ...doc, activePresetId: active } satisfies PreferenceDocument
+    const presets = doc.presets.map((preset) => {
+      const preferences = { ...preset.preferences }
+      for (const stateId of Object.keys(preferences) as Array<keyof typeof preferences>) {
+        const scene = preferences[stateId] as Record<string, unknown>
+        if (!scene.devices) {
+          preferences[stateId] = {
+            devices: {},
+          }
+        }
+      }
+      return { ...preset, preferences }
+    })
+    return {
+      ...doc,
+      schemaVersion: 2 as const,
+      presets,
+      activePresetId: active,
+    } satisfies PreferenceDocument
   })
 
 export function parsePreferenceDocument(raw: unknown): PreferenceDocument | null {
@@ -41,7 +58,7 @@ export function buildPreferenceDocument(
   activePresetId: string,
 ): PreferenceDocument {
   const parsed = preferenceDocumentSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: new Date().toISOString(),
     presets,
     activePresetId,

@@ -25,7 +25,9 @@ video:
   # Strip black bars from virtual webcams before preview + ML (DroidCam, OBS, etc.)
   frame_preprocess:
     enabled: true
-    strip_letterbox: true
+    strip_letterbox: false         # can crop the top on phone streams — leave full frame
+    flip_horizontal: true          # mirror selfie-style preview
+    strip_droidcam_watermark: false
     # aspect_ratio: "16:9"   # optional center crop to match phone preview
   preview:
     max_fps: 20           # UI preview update rate from camera

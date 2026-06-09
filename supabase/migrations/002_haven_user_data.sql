@@ -14,6 +14,8 @@ create index if not exists haven_user_data_updated_at_idx
 
 alter table public.haven_user_data enable row level security;
 
+grant all on table public.haven_user_data to anon, authenticated, service_role;
+
 -- Users can read/write only their own rows when using the anon key + JWT from the client.
 create policy "haven_user_data_select_own"
   on public.haven_user_data for select

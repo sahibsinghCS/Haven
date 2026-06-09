@@ -6,9 +6,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
-from .document import PreferenceValidationError, resolve_active_preset_id
+from .document import PreferenceValidationError, _connected_device_ids_by_category, resolve_active_preset_id
 
-_UI_STATES = ("sleep", "gaming", "work", "relaxing", "away")
+_UI_STATES = ("sleep", "work", "relaxing", "away")
 
 _NAMED_COLORS: dict[str, str] = {
     "red": "#EF4444",
@@ -158,32 +158,107 @@ def _resolve_fan(current: bool, fan: Optional[str]) -> tuple[bool, str]:
     return current, ""
 
 
+def _ensure_scene_devices(scene: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    devices_in = scene.get("devices")
+    if isinstance(devices_in, dict):
+        return devices_in
+    scene["devices"] = {}
+    return scene["devices"]
+
+
+def _first_device_ids(ids_by_cat: dict[str, list[str]]) -> dict[str, Optional[str]]:
+    return {
+        "plug": ids_by_cat.get("smartPlugs", [None])[0] if ids_by_cat.get("smartPlugs") else None,
+        "lights": ids_by_cat.get("lights", [None])[0] if ids_by_cat.get("lights") else None,
+        "thermo": ids_by_cat.get("thermostats", [None])[0] if ids_by_cat.get("thermostats") else None,
+    }
+
+
 def _apply_to_scene(scene: dict[str, Any], spec: PreferenceChangeSpec) -> List[str]:
     lines: List[str] = []
-    out = dict(scene)
+    ids_by_cat = _connected_device_ids_by_category()
+    first_ids = _first_device_ids(ids_by_cat)
+    devices = _ensure_scene_devices(scene)
 
-    fan_val, fan_line = _resolve_fan(bool(out.get("fanOn", False)), spec.fan)
-    if fan_line:
-        out["fanOn"] = fan_val
-        lines.append(fan_line)
+    if spec.fan:
+        plug_ids = ids_by_cat.get("smartPlugs", [])
+        for plug_id in plug_ids:
+            target = dict(devices.get(plug_id) or {})
+            fan_val, fan_line = _resolve_fan(bool(target.get("fanOn", False)), spec.fan)
+            if fan_line:
+                target["fanOn"] = fan_val
+                devices[plug_id] = target
+                lines.append(fan_line)
+                break
 
-    bright_val, bright_line = _resolve_brightness(int(out.get("brightness", 30)), spec.brightness)
-    if bright_line:
-        out["brightness"] = bright_val
-        lines.append(bright_line)
+    if spec.brightness or spec.light_color:
+        lights_ids = ids_by_cat.get("lights", [])
+        for lights_id in lights_ids:
+            target = dict(devices.get(lights_id) or {})
+            changed = False
+            bright_val, bright_line = _resolve_brightness(int(target.get("brightness", 30)), spec.brightness)
+            if bright_line:
+                target["brightness"] = bright_val
+                lines.append(bright_line)
+                changed = True
+            color_val, color_line = _resolve_light_color(
+                str(target.get("lightColorHex", "#2A2A2A")),
+                spec.light_color,
+            )
+            if color_line:
+                target["lightColorHex"] = color_val
+                lines.append(color_line)
+                changed = True
+            if changed:
+                devices[lights_id] = target
+                break
 
-    color_val, color_line = _resolve_light_color(str(out.get("lightColorHex", "#2A2A2A")), spec.light_color)
-    if color_line:
-        out["lightColorHex"] = color_val
-        lines.append(color_line)
+    if spec.temperature_f:
+        thermo_ids = ids_by_cat.get("thermostats", [])
+        for thermo_id in thermo_ids:
+            target = dict(devices.get(thermo_id) or {})
+            temp_val, temp_line = _resolve_temperature(int(target.get("temperatureF", 72)), spec.temperature_f)
+            if temp_line:
+                target["temperatureF"] = temp_val
+                devices[thermo_id] = target
+                lines.append(temp_line)
+                break
 
-    temp_val, temp_line = _resolve_temperature(int(out.get("temperatureF", 72)), spec.temperature_f)
-    if temp_line:
-        out["temperatureF"] = temp_val
-        lines.append(temp_line)
+    if not lines and not devices:
+        # Legacy flat fallback when no connected devices
+        legacy = {
+            "lightColorHex": str(scene.get("lightColorHex", "#2A2A2A")),
+            "brightness": int(scene.get("brightness", 30)),
+            "fanOn": bool(scene.get("fanOn", False)),
+            "temperatureF": int(scene.get("temperatureF", 72)),
+        }
+        fan_val, fan_line = _resolve_fan(legacy["fanOn"], spec.fan)
+        if fan_line:
+            legacy["fanOn"] = fan_val
+            lines.append(fan_line)
+        bright_val, bright_line = _resolve_brightness(legacy["brightness"], spec.brightness)
+        if bright_line:
+            legacy["brightness"] = bright_val
+            lines.append(bright_line)
+        color_val, color_line = _resolve_light_color(legacy["lightColorHex"], spec.light_color)
+        if color_line:
+            legacy["lightColorHex"] = color_val
+            lines.append(color_line)
+        temp_val, temp_line = _resolve_temperature(legacy["temperatureF"], spec.temperature_f)
+        if temp_line:
+            legacy["temperatureF"] = temp_val
+            lines.append(temp_line)
+        if first_ids["plug"] and legacy.get("fanOn") is not None:
+            devices[str(first_ids["plug"])] = {"fanOn": legacy["fanOn"]}
+        if first_ids["lights"]:
+            devices[str(first_ids["lights"])] = {
+                "brightness": legacy["brightness"],
+                "lightColorHex": legacy["lightColorHex"],
+            }
+        if first_ids["thermo"]:
+            devices[str(first_ids["thermo"])] = {"temperatureF": legacy["temperatureF"]}
 
-    scene.clear()
-    scene.update(out)
+    scene["devices"] = devices
     return lines
 
 
@@ -218,12 +293,7 @@ def apply_preference_changes(
     for state in states:
         scene = prefs.get(state)
         if not isinstance(scene, dict):
-            scene = {
-                "lightColorHex": "#2A2A2A",
-                "brightness": 30,
-                "fanOn": False,
-                "temperatureF": 72,
-            }
+            scene = {"devices": {}}
             prefs[state] = scene
         lines = _apply_to_scene(scene, spec)
         for line in lines:
