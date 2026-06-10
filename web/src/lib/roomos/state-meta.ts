@@ -1,6 +1,6 @@
-import type { RoomStateId } from "@/types/roomos"
+import type { KnownRoomStateId } from "@/types/roomos"
 
-export const ROOM_STATE_LABEL: Record<RoomStateId, string> = {
+export const ROOM_STATE_LABEL: Record<KnownRoomStateId, string> = {
   sleep: "Sleep",
   gaming: "Gaming",
   work: "Work / Studying",
@@ -8,9 +8,30 @@ export const ROOM_STATE_LABEL: Record<RoomStateId, string> = {
   away: "Away",
 }
 
+/** Display names for custom moods, registered when /api/moods loads. */
+const CUSTOM_MOOD_LABELS = new Map<string, string>()
+
+export function registerMoodLabels(moods: Array<{ id: string; displayName: string }>): void {
+  for (const m of moods) {
+    CUSTOM_MOOD_LABELS.set(m.id, m.displayName)
+  }
+}
+
+/** Label for any mood id — builtin metadata, registered custom name, or title-cased id. */
+export function roomStateLabel(stateId: string): string {
+  if (stateId in ROOM_STATE_LABEL) {
+    return ROOM_STATE_LABEL[stateId as KnownRoomStateId]
+  }
+  const custom = CUSTOM_MOOD_LABELS.get(stateId)
+  if (custom) return custom
+  return stateId
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 /** Tailwind-friendly accent tokens for UI glow + charts (not device hex). */
 export const ROOM_STATE_ACCENT: Record<
-  RoomStateId,
+  KnownRoomStateId,
   {
     /** Top wash for dashboard backdrop: kept mostly neutral; state tint is subtle */
     glow: string
@@ -52,9 +73,25 @@ export const ROOM_STATE_ACCENT: Record<
   },
 }
 
+/** Generic accent for user-created moods (amber: warm, distinct from builtins). */
+const CUSTOM_MOOD_ACCENT = {
+  glow: "from-zinc-800/38 via-zinc-950/30 to-transparent",
+  heroMesh: "from-zinc-900 via-amber-950/35 to-zinc-950",
+  bar: "bg-amber-400/60",
+  ring: "ring-amber-400/32",
+}
+
+/** Accent tokens for any mood id, with a generic fallback for custom moods. */
+export function roomStateAccent(stateId: string) {
+  if (stateId in ROOM_STATE_ACCENT) {
+    return ROOM_STATE_ACCENT[stateId as KnownRoomStateId]
+  }
+  return CUSTOM_MOOD_ACCENT
+}
+
 /** Marketing (light): distinctive washes + accents for landing state tiles */
 export const ROOM_STATE_LANDING_SKIN: Record<
-  RoomStateId,
+  KnownRoomStateId,
   {
     wash: string
     bar: string
@@ -94,9 +131,23 @@ export const ROOM_STATE_LANDING_SKIN: Record<
   },
 }
 
+const CUSTOM_MOOD_LANDING_SKIN = {
+  wash: "from-amber-50 via-orange-50/60 to-[#f6f3ec]",
+  bar: "bg-amber-600/62",
+  tag: "bg-amber-500/[0.12] text-amber-950 ring-amber-500/15",
+  glow: "bg-amber-400/20",
+}
+
+export function roomStateLandingSkin(stateId: string) {
+  if (stateId in ROOM_STATE_LANDING_SKIN) {
+    return ROOM_STATE_LANDING_SKIN[stateId as KnownRoomStateId]
+  }
+  return CUSTOM_MOOD_LANDING_SKIN
+}
+
 /** Landing: how each state feels in the environment (light / air / thermal). */
 export const ROOM_STATE_LANDING_ATMOSPHERE: Record<
-  RoomStateId,
+  KnownRoomStateId,
   {
     tagline: string
     light: string
@@ -134,4 +185,18 @@ export const ROOM_STATE_LANDING_ATMOSPHERE: Record<
     air: "Light-touch circulation on a sensible schedule.",
     thermal: "Lean targets with comfort waiting when you return.",
   },
+}
+
+const CUSTOM_MOOD_ATMOSPHERE = {
+  tagline: "Your mood, learned from your room.",
+  light: "Tuned to your saved preference.",
+  air: "Tuned to your saved preference.",
+  thermal: "Tuned to your saved preference.",
+}
+
+export function roomStateAtmosphere(stateId: string) {
+  if (stateId in ROOM_STATE_LANDING_ATMOSPHERE) {
+    return ROOM_STATE_LANDING_ATMOSPHERE[stateId as KnownRoomStateId]
+  }
+  return CUSTOM_MOOD_ATMOSPHERE
 }

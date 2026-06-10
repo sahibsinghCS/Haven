@@ -24,10 +24,10 @@ import {
 } from "@/components/landing/landing-primitives"
 import { ROOM_STATE_LABEL, ROOM_STATE_LANDING_SKIN } from "@/lib/roomos/state-meta"
 import { cn } from "@/lib/utils"
-import { ROOM_STATE_ORDER, type RoomStateId } from "@/types/roomos"
+import { ROOM_STATE_ORDER, type KnownRoomStateId } from "@/types/roomos"
 
 const PREVIEW: Record<
-  RoomStateId,
+  KnownRoomStateId,
   { hex: string; brightness: number; temp: number; fan: boolean }
 > = {
   sleep: { hex: "#4f46e5", brightness: 22, temp: 68, fan: false },

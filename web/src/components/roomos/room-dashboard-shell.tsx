@@ -9,7 +9,7 @@ import Link from "next/link"
 import { LiveCameraSelect } from "@/components/roomos/live-camera-select"
 import { LiveSessionBridge } from "@/components/roomos/live-session-bridge"
 import { cn } from "@/lib/utils"
-import { ROOM_STATE_ACCENT } from "@/lib/roomos/state-meta"
+import { roomStateAccent } from "@/lib/roomos/state-meta"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 
@@ -32,7 +32,7 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
     }
   }, [pathname])
 
-  const accent = primaryState ? ROOM_STATE_ACCENT[primaryState] : null
+  const accent = primaryState ? roomStateAccent(primaryState) : null
 
   // Segmented-nav active indicator: measures the active tab and animates
   const navWrapRef = useRef<HTMLDivElement | null>(null)

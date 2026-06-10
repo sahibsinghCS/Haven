@@ -13,13 +13,13 @@ import {
   transitionFrameUrl,
   type StateTransitionItem,
 } from "@/lib/roomos/api-client"
-import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import { roomStateLabel } from "@/lib/roomos/state-meta"
 import { ROOM_STATE_ORDER, type RoomStateId } from "@/types/roomos"
 
 function displayLabel(label: string): string {
   if (label === "unknown") return "Uncertain"
   if ((ROOM_STATE_ORDER as readonly string[]).includes(label)) {
-    return ROOM_STATE_LABEL[label as RoomStateId]
+    return roomStateLabel(label as RoomStateId)
   }
   return label
 }
@@ -89,7 +89,7 @@ export function TransitionReviewPanel({
       toast.success(confirmed ? "Switch marked right" : "Switch marked wrong", {
         description: result.retrainsModel
           ? "Counts toward automatic model retrain."
-          : `Similar scenes will bias toward ${ROOM_STATE_LABEL[to]}.`,
+          : `Similar scenes will bias toward ${roomStateLabel(to)}.`,
         duration: 5000,
       })
       if (result.probabilityPreview?.appliedAfterSave) {
@@ -231,7 +231,7 @@ function TransitionCard({
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2 border-b border-[color:var(--haven-line)] p-3 sm:gap-3 sm:p-4">
         <StateColumn
-          label={fromUi ? ROOM_STATE_LABEL[fromUi] : displayLabel(t.fromLabel)}
+          label={fromUi ? roomStateLabel(fromUi) : displayLabel(t.fromLabel)}
           caption="Before"
           subcaption="What was on screen"
           muted
@@ -243,7 +243,7 @@ function TransitionCard({
           </span>
         </div>
         <StateColumn
-          label={predicted ? ROOM_STATE_LABEL[predicted] : displayLabel(t.toLabel)}
+          label={predicted ? roomStateLabel(predicted) : displayLabel(t.toLabel)}
           caption="Switched to"
           subcaption={`Prediction · ${confidencePct}%`}
           emphasis
@@ -254,7 +254,7 @@ function TransitionCard({
         <p className={cn("text-[10px]", panelMuted)}>
           Burst frames when it switched to{" "}
           <span className={cn("font-medium", panelInk)}>
-            {predicted ? ROOM_STATE_LABEL[predicted] : displayLabel(t.toLabel)}
+            {predicted ? roomStateLabel(predicted) : displayLabel(t.toLabel)}
           </span>
         </p>
         <div className="mt-2 flex gap-1.5 overflow-x-auto">
@@ -279,7 +279,7 @@ function TransitionCard({
           <>
             <p className={cn("text-[12px]", panelMuted)}>
               Was switching to{" "}
-              <span className={cn("font-semibold", panelInk)}>{ROOM_STATE_LABEL[predicted]}</span>{" "}
+              <span className={cn("font-semibold", panelInk)}>{roomStateLabel(predicted)}</span>{" "}
               correct?
             </p>
             <button
@@ -299,7 +299,7 @@ function TransitionCard({
               ) : (
                 <ThumbsUp className="size-3.5" aria-hidden />
               )}
-              Yes — {ROOM_STATE_LABEL[predicted]}
+              Yes — {roomStateLabel(predicted)}
             </button>
             <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--haven-faint)]">
               No — it should have switched to
@@ -321,7 +321,7 @@ function TransitionCard({
                   )}
                 >
                   {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                  {ROOM_STATE_LABEL[state]}
+                  {roomStateLabel(state)}
                 </button>
               ))}
             </div>

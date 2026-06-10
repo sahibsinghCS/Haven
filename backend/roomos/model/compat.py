@@ -111,7 +111,39 @@ def _train_config_from_bundle(bundle: Path) -> tuple[Config, str]:
     return Config(raw=train_raw), "(embedded train_config.json)"
 
 
+def _registry_label_check(bundle_classes: List[str]) -> List[CompatibilityMismatch]:
+    """Dynamic-mood label gate.
+
+    With a mood registry the bundle's class list is allowed to drift from the
+    static config (custom moods added, builtins deleted) — deleted labels are
+    masked at runtime. We only hard-fail when the bundle covers NO active mood,
+    which would leave live inference with nothing valid to predict.
+    """
+    from ..moods.registry import active_mood_ids
+
+    active = set(active_mood_ids())
+    overlap = active & set(bundle_classes)
+    if overlap:
+        return []
+    return [
+        CompatibilityMismatch(
+            category="labels",
+            field="class set",
+            train=str(sorted(bundle_classes)),
+            inference=f"active moods: {sorted(active)}",
+            detail="Model knows none of the active moods. Collect data and retrain from Moods / Preferences.",
+        )
+    ]
+
+
 def _compare_labels(bundle_classes: List[str], infer_classes: List[str]) -> List[CompatibilityMismatch]:
+    try:
+        from ..moods.registry import registry_exists
+
+        if registry_exists():
+            return _registry_label_check(bundle_classes)
+    except Exception:
+        pass
     out: List[CompatibilityMismatch] = []
     if list(bundle_classes) != list(infer_classes):
         out.append(

@@ -7,7 +7,7 @@ import type {
 } from "@/types/roomos"
 import { PREFERENCE_MOOD_ORDER } from "@/types/roomos"
 
-import { LEGACY_MOOD_DEFAULTS } from "@/lib/roomos/preferences-schema"
+import { legacyDefaultsForMood } from "@/lib/roomos/preferences-schema"
 
 export function listConnectedDevices(doc: DeviceSettingsDocument | null | undefined): ConnectedDeviceRef[] {
   const devices = doc?.devices
@@ -51,7 +51,7 @@ export function defaultTargetForDevice(
   stateId: PreferenceMoodId,
   category: ConnectedDeviceRef["category"],
 ): DevicePreferenceTarget {
-  const legacy = LEGACY_MOOD_DEFAULTS[stateId]
+  const legacy = legacyDefaultsForMood(stateId)
   if (category === "smart_plug") {
     return { fanOn: legacy.fanOn }
   }
@@ -61,8 +61,10 @@ export function defaultTargetForDevice(
   return { temperatureF: legacy.temperatureF }
 }
 
-export function emptyPreferenceMatrix(): PreferenceMatrix {
-  return PREFERENCE_MOOD_ORDER.reduce((acc, stateId) => {
+export function emptyPreferenceMatrix(
+  moodIds: readonly string[] = PREFERENCE_MOOD_ORDER,
+): PreferenceMatrix {
+  return moodIds.reduce((acc, stateId) => {
     acc[stateId] = { devices: {} }
     return acc
   }, {} as PreferenceMatrix)
@@ -80,7 +82,7 @@ export function migrateSceneToV2(
   integrations: DeviceSettingsDocument,
   stateId?: PreferenceMoodId,
 ): { devices: Record<string, DevicePreferenceTarget> } {
-  const legacy = stateId ? LEGACY_MOOD_DEFAULTS[stateId] : undefined
+  const legacy = stateId ? legacyDefaultsForMood(stateId) : undefined
   const fanOn = scene.fanOn ?? legacy?.fanOn ?? false
   const brightness = scene.brightness ?? legacy?.brightness ?? 30
   const lightColorHex = scene.lightColorHex ?? legacy?.lightColorHex ?? "#2A2A2A"
@@ -117,8 +119,9 @@ export function mergeDevicesIntoMatrix(
   const next = structuredClone(matrix)
   const connectedIds = new Set(connected.map((d) => d.id))
 
-  for (const stateId of PREFERENCE_MOOD_ORDER) {
+  for (const stateId of Object.keys(next)) {
     const scene = next[stateId]
+    if (!scene) continue
     for (const id of Object.keys(scene.devices)) {
       if (!connectedIds.has(id)) {
         delete scene.devices[id]
@@ -136,9 +139,10 @@ export function mergeDevicesIntoMatrix(
 export function migratePreferenceMatrix(
   matrix: Record<string, unknown>,
   integrations: DeviceSettingsDocument,
+  moodIds: readonly string[] = PREFERENCE_MOOD_ORDER,
 ): PreferenceMatrix {
-  const out = emptyPreferenceMatrix()
-  for (const stateId of PREFERENCE_MOOD_ORDER) {
+  const out = emptyPreferenceMatrix(moodIds)
+  for (const stateId of moodIds) {
     const scene = matrix[stateId]
     if (scene && typeof scene === "object") {
       out[stateId] = migrateSceneToV2(

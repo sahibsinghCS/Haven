@@ -23,40 +23,49 @@ import {
 import type { PreferenceMatrixFormValues } from "@/lib/roomos/preferences-schema"
 import { preferenceCardShell } from "@/lib/roomos/roomos-ui"
 import {
-  ROOM_STATE_LABEL,
-  ROOM_STATE_LANDING_ATMOSPHERE,
-  ROOM_STATE_LANDING_SKIN,
+  roomStateLabel,
+  roomStateAtmosphere,
+  roomStateLandingSkin,
 } from "@/lib/roomos/state-meta"
 import { cn } from "@/lib/utils"
 import type { ConnectedDeviceRef, PreferenceMoodId } from "@/types/roomos"
 import type { LightsBrand, SmartPlugBrand } from "@/types/device-settings"
 
-const STATE_DESCRIPTION: Record<PreferenceMoodId, string> = {
+const BUILTIN_DESCRIPTION: Record<string, string> = {
   sleep: "Rest-first posture: depth without glare.",
   work: "Even field for deep focus.",
   relaxing: "Recovery mode: warm, slow, wide.",
   away: "Absent, but not unmanaged.",
 }
 
-const STATE_NUMBER: Record<PreferenceMoodId, string> = {
-  sleep: "01",
-  work: "02",
-  relaxing: "03",
-  away: "04",
+function moodDescription(stateId: string): string {
+  return BUILTIN_DESCRIPTION[stateId] ?? "Tune devices for this custom mood."
+}
+
+function moodNumber(stateId: string, index: number): string {
+  const builtin: Record<string, string> = {
+    sleep: "01",
+    work: "02",
+    relaxing: "03",
+    away: "04",
+  }
+  return builtin[stateId] ?? String(index + 1).padStart(2, "0")
 }
 
 export function StatePreferenceCard({
   stateId,
   connectedDevices,
+  moodIndex = 0,
 }: {
   stateId: PreferenceMoodId
   connectedDevices: ConnectedDeviceRef[]
+  moodIndex?: number
 }) {
   const { control } = useFormContext<PreferenceMatrixFormValues>()
   const watched = useWatch({ control, name: stateId })
-  const title = ROOM_STATE_LABEL[stateId]
-  const skin = ROOM_STATE_LANDING_SKIN[stateId]
-  const atmosphere = ROOM_STATE_LANDING_ATMOSPHERE[stateId]
+  const title = roomStateLabel(stateId)
+  const skin = roomStateLandingSkin(stateId)
+  const atmosphere = roomStateAtmosphere(stateId)
 
   const plugs = connectedDevices.filter((d) => d.category === "smart_plug")
   const lights = connectedDevices.filter((d) => d.category === "lights")
@@ -86,7 +95,7 @@ export function StatePreferenceCard({
         <div className="min-w-0 space-y-2">
           <div className="flex items-center gap-2.5">
             <span className="font-mono text-[11px] font-semibold tabular-nums text-[color:var(--haven-faint)]">
-              {STATE_NUMBER[stateId]}
+              {moodNumber(stateId, moodIndex)}
             </span>
             <span className="h-3 w-px bg-[color:var(--haven-line-strong)]" aria-hidden />
             <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--haven-muted)]">
@@ -97,7 +106,7 @@ export function StatePreferenceCard({
             {title}
           </h3>
           <p className="max-w-md text-[13px] leading-relaxed text-[color:var(--haven-muted)]">
-            {STATE_DESCRIPTION[stateId]}
+            {moodDescription(stateId)}
           </p>
           <div className="flex flex-wrap gap-1.5 pt-1">
             <span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ring-1 ring-inset", skin.tag)}>

@@ -19,6 +19,7 @@ from roomos.utils.logging import setup_logging
 from .api import auth as auth_api
 from .api import integrations as integrations_api
 from .api import live as live_api
+from .api import moods as moods_api
 from .api import preferences as preferences_api
 from .api import settings as settings_api
 from .auth_service import auth_configured, verify_access_token
@@ -183,3 +184,5 @@ app.include_router(auth_api.router)
 app.include_router(preferences_api.router)
 app.include_router(integrations_api.router)
 app.include_router(settings_api.router)
+app.include_router(moods_api.router)
+app.include_router(moods_api.training_router)

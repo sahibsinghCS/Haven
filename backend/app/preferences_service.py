@@ -63,7 +63,13 @@ def sync_preferences_to_devices(*, room_state: Optional[str] = None) -> Optional
         snap = state.hub.latest
         if snap is not None:
             mood = str(snap.primary_state or "").strip()
-    if mood not in ROOM_STATE_ORDER:
+    try:
+        from roomos.moods.registry import active_mood_ids
+
+        valid_moods = set(active_mood_ids())
+    except Exception:
+        valid_moods = set(ROOM_STATE_ORDER)
+    if mood not in valid_moods:
         return None
 
     actions_dry_run = True

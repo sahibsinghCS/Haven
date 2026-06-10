@@ -4,7 +4,7 @@ import { Brain } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
-import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import { roomStateLabel } from "@/lib/roomos/state-meta"
 import type { LiveInferenceSnapshot, RoomStateId } from "@/types/roomos"
 
 /** Shown when model distribution differs from displayed (memory-adjusted) distribution. */
@@ -33,9 +33,9 @@ export function PersonalizationHint({ snapshot }: { snapshot: LiveInferenceSnaps
       <Brain className="mt-0.5 size-3.5 shrink-0 text-violet-300" aria-hidden />
       <p className="text-[11px] leading-snug text-violet-100/95">
         <span className="font-semibold text-violet-50">Room memory</span> nudged this read: raw model{" "}
-        {ROOM_STATE_LABEL[primary]} {modelPct}% → shown {shownPct}%
+        {roomStateLabel(primary)} {modelPct}% → shown {shownPct}%
         {boosted && boosted !== primary
-          ? ` (memory favors ${ROOM_STATE_LABEL[boosted]})`
+          ? ` (memory favors ${roomStateLabel(boosted)})`
           : null}
         . Not a retrain.
       </p>

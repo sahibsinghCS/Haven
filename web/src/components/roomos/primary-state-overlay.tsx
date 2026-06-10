@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion"
 import { Activity } from "lucide-react"
 
 import { roomosUi } from "@/lib/roomos/roomos-ui"
-import { ROOM_STATE_ACCENT, ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import { roomStateAccent, roomStateLabel } from "@/lib/roomos/state-meta"
 import type { RoomStateId } from "@/types/roomos"
 
 import { cn } from "@/lib/utils"
@@ -26,8 +26,8 @@ export function PrimaryStateOverlay({
 }) {
   const reduceMotion = useReducedMotion()
   const pct = Math.round(confidence * 100)
-  const pctLabel = `${pct} percent confidence in ${ROOM_STATE_LABEL[state]}`
-  const accent = ROOM_STATE_ACCENT[state]
+  const pctLabel = `${pct} percent confidence in ${roomStateLabel(state)}`
+  const accent = roomStateAccent(state)
 
   return (
     <div className="pointer-events-none flex w-full min-w-0 max-w-lg flex-col lg:max-w-2xl 2xl:max-w-3xl">
@@ -83,7 +83,7 @@ export function PrimaryStateOverlay({
           </p>
           <div className="mt-5 flex flex-wrap items-end gap-x-6 gap-y-3">
             <h3 className="haven-display text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.04em] text-zinc-50 sm:text-5xl lg:text-[3.75rem] xl:text-[4.25rem] 2xl:text-[4.75rem]">
-              {ROOM_STATE_LABEL[state]}
+              {roomStateLabel(state)}
             </h3>
             <p
               id="roomos-primary-confidence"

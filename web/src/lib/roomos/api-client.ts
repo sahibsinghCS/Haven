@@ -129,27 +129,19 @@ function normalizeSnapshot(raw: unknown): LiveInferenceSnapshot {
   }
   const s = raw as Record<string, unknown>
 
-  const distribution = normalizeDistribution({
-    sleep: clampProb((s.distribution as Record<string, unknown> | undefined)?.sleep),
-    gaming: clampProb((s.distribution as Record<string, unknown> | undefined)?.gaming),
-    work: clampProb((s.distribution as Record<string, unknown> | undefined)?.work),
-    relaxing: clampProb((s.distribution as Record<string, unknown> | undefined)?.relaxing),
-    away: clampProb((s.distribution as Record<string, unknown> | undefined)?.away),
-  })
+  // Mood ids are dynamic — pass every state key through, not just the builtins.
+  const distribution = normalizeDistribution(
+    clampDistribution(s.distribution as Record<string, unknown> | undefined),
+  )
 
   const modelRaw = (s.modelDistribution ?? s.distribution ?? {}) as Record<string, unknown>
-  const modelDistribution = normalizeDistribution({
-    sleep: clampProb(modelRaw.sleep),
-    gaming: clampProb(modelRaw.gaming),
-    work: clampProb(modelRaw.work),
-    relaxing: clampProb(modelRaw.relaxing),
-    away: clampProb(modelRaw.away),
-  })
+  const modelDistribution = normalizeDistribution(clampDistribution(modelRaw))
 
   const primaryRaw = String(s.primaryState ?? "unknown")
-  const primary: RoomStateId = (ROOM_STATE_ORDER as readonly string[]).includes(primaryRaw)
-    ? (primaryRaw as RoomStateId)
-    : argmaxState(distribution)
+  const primary: RoomStateId =
+    primaryRaw !== "unknown" && primaryRaw in distribution
+      ? primaryRaw
+      : argmaxState(distribution)
 
   const primaryConfidence =
     typeof s.primaryConfidence === "number" ? s.primaryConfidence : distribution[primary]
@@ -184,14 +176,11 @@ function normalizeSnapshot(raw: unknown): LiveInferenceSnapshot {
     .map((h) => {
       const r = h as Record<string, unknown>
       const t = typeof r.t === "string" ? r.t : new Date().toISOString()
-      return {
-        t,
-        sleep: clampProb(r.sleep),
-        gaming: clampProb(r.gaming),
-        work: clampProb(r.work),
-        relaxing: clampProb(r.relaxing),
-        away: clampProb(r.away),
+      const entry: { t: string; [stateId: string]: number | string } = { t }
+      for (const [key, value] of Object.entries(r)) {
+        if (key !== "t") entry[key] = clampProb(value)
       }
+      return entry
     })
     .slice(-120)
 
@@ -257,17 +246,29 @@ function normalizeSnapshot(raw: unknown): LiveInferenceSnapshot {
   }
 }
 
-export function normalizeDistribution(d: RoomStateDistribution): RoomStateDistribution {
-  const sum = ROOM_STATE_ORDER.reduce((acc, k) => acc + d[k], 0)
-  if (sum <= 1e-9) {
-    const uniform = 1 / ROOM_STATE_ORDER.length
-    return Object.fromEntries(
-      ROOM_STATE_ORDER.map((k) => [k, uniform]),
-    ) as RoomStateDistribution
+function clampDistribution(raw: Record<string, unknown> | undefined): RoomStateDistribution {
+  const out: RoomStateDistribution = {}
+  if (raw && typeof raw === "object") {
+    for (const [key, value] of Object.entries(raw)) {
+      out[key] = clampProb(value)
+    }
   }
-  const out = { ...d }
-  ROOM_STATE_ORDER.forEach((k) => {
-    out[k] = out[k] / sum
+  if (Object.keys(out).length === 0) {
+    for (const k of ROOM_STATE_ORDER) out[k] = 0
+  }
+  return out
+}
+
+export function normalizeDistribution(d: RoomStateDistribution): RoomStateDistribution {
+  const keys = Object.keys(d).length ? Object.keys(d) : [...ROOM_STATE_ORDER]
+  const sum = keys.reduce((acc, k) => acc + (d[k] ?? 0), 0)
+  if (sum <= 1e-9) {
+    const uniform = 1 / keys.length
+    return Object.fromEntries(keys.map((k) => [k, uniform])) as RoomStateDistribution
+  }
+  const out: RoomStateDistribution = {}
+  keys.forEach((k) => {
+    out[k] = (d[k] ?? 0) / sum
   })
   return out
 }
@@ -281,9 +282,10 @@ function clampProb(v: unknown): number {
 function argmaxState(d: RoomStateDistribution): RoomStateId {
   let best: RoomStateId = "relaxing"
   let bestVal = -1
-  for (const k of ROOM_STATE_ORDER) {
-    if (d[k] > bestVal) {
-      bestVal = d[k]
+  for (const k of Object.keys(d)) {
+    const v = d[k] ?? 0
+    if (v > bestVal) {
+      bestVal = v
       best = k
     }
   }
@@ -455,13 +457,11 @@ export type FeedbackProbabilityPreview = {
 
 function normalizeFeedbackProbs(raw: unknown): RoomStateDistribution {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
-  return {
-    sleep: Number(r.sleep ?? 0),
-    gaming: Number(r.gaming ?? 0),
-    work: Number(r.work ?? 0),
-    relaxing: Number(r.relaxing ?? 0),
-    away: Number(r.away ?? 0),
+  const out: RoomStateDistribution = {}
+  for (const [key, value] of Object.entries(r)) {
+    out[key] = Number(value ?? 0)
   }
+  return out
 }
 
 export type FeedbackEffects = {
@@ -1014,6 +1014,188 @@ export async function discoverDevices(opts?: {
       protocol: r.protocol != null ? String(r.protocol) : undefined,
     } as DiscoveredDevice
   })
+}
+
+// --- mood registry + on-device training ------------------------------------
+
+import type {
+  MoodBurstSummary,
+  MoodCollectionSession,
+  MoodDatasetCounts,
+  MoodsResponse,
+  TrainingJob,
+} from "@/types/roomos"
+
+async function moodsError(res: Response, fallback: string): Promise<never> {
+  let detail = fallback
+  try {
+    const body = (await res.json()) as { detail?: string }
+    if (body.detail) detail = body.detail
+  } catch {
+    /* ignore */
+  }
+  throw new Error(detail)
+}
+
+export type MoodCollectionStatusResponse = {
+  session: MoodCollectionSession | null
+  dataset: MoodDatasetCounts
+  minimums: { bursts: number; frames: number }
+  readyToTrain: boolean
+}
+
+export async function fetchMoods(signal?: AbortSignal): Promise<MoodsResponse> {
+  const res = await fetch(`${API_BASE}/api/moods`, { signal, cache: "no-store" })
+  if (!res.ok) await moodsError(res, `moods fetch failed: ${res.status}`)
+  return (await res.json()) as MoodsResponse
+}
+
+export async function createMood(input: {
+  name?: string
+  builtinKey?: string
+}): Promise<MoodsResponse["moods"][number]> {
+  const res = await fetch(`${API_BASE}/api/moods`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) await moodsError(res, `mood create failed: ${res.status}`)
+  const body = (await res.json()) as { mood: MoodsResponse["moods"][number] }
+  return body.mood
+}
+
+export async function deleteMood(
+  moodId: string,
+  opts?: { deleteData?: boolean },
+): Promise<{ deleted: string; dataDeleted: boolean }> {
+  const qs = opts?.deleteData ? "?deleteData=true" : ""
+  const res = await fetch(`${API_BASE}/api/moods/${encodeURIComponent(moodId)}${qs}`, {
+    method: "DELETE",
+  })
+  if (!res.ok) await moodsError(res, `mood delete failed: ${res.status}`)
+  return (await res.json()) as { deleted: string; dataDeleted: boolean }
+}
+
+export async function startMoodCollection(
+  moodId: string,
+  durationSec: number,
+): Promise<MoodCollectionStatusResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/moods/${encodeURIComponent(moodId)}/collection/start`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ durationSec }),
+    },
+  )
+  if (!res.ok) await moodsError(res, `collection start failed: ${res.status}`)
+  return (await res.json()) as MoodCollectionStatusResponse
+}
+
+export async function stopMoodCollection(
+  moodId: string,
+): Promise<MoodCollectionStatusResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/moods/${encodeURIComponent(moodId)}/collection/stop`,
+    { method: "POST" },
+  )
+  if (!res.ok) await moodsError(res, `collection stop failed: ${res.status}`)
+  return (await res.json()) as MoodCollectionStatusResponse
+}
+
+export async function fetchMoodCollectionStatus(
+  moodId: string,
+  signal?: AbortSignal,
+): Promise<MoodCollectionStatusResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/moods/${encodeURIComponent(moodId)}/collection/status`,
+    { signal, cache: "no-store" },
+  )
+  if (!res.ok) await moodsError(res, `collection status failed: ${res.status}`)
+  return (await res.json()) as MoodCollectionStatusResponse
+}
+
+export async function fetchMoodBursts(
+  moodId: string,
+  signal?: AbortSignal,
+): Promise<{ bursts: MoodBurstSummary[] } & MoodCollectionStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/moods/${encodeURIComponent(moodId)}/bursts`, {
+    signal,
+    cache: "no-store",
+  })
+  if (!res.ok) await moodsError(res, `bursts fetch failed: ${res.status}`)
+  return (await res.json()) as { bursts: MoodBurstSummary[] } & MoodCollectionStatusResponse
+}
+
+export function moodBurstFrameUrl(
+  moodId: string,
+  burstId: string,
+  frameName: string,
+): string {
+  return `${API_BASE}/api/moods/${encodeURIComponent(moodId)}/bursts/${encodeURIComponent(burstId)}/frames/${encodeURIComponent(frameName)}`
+}
+
+export async function deleteMoodBurst(
+  moodId: string,
+  burstId: string,
+): Promise<MoodCollectionStatusResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/moods/${encodeURIComponent(moodId)}/bursts/${encodeURIComponent(burstId)}`,
+    { method: "DELETE" },
+  )
+  if (!res.ok) await moodsError(res, `burst delete failed: ${res.status}`)
+  return (await res.json()) as MoodCollectionStatusResponse
+}
+
+export async function deleteMoodFrame(
+  moodId: string,
+  burstId: string,
+  frameName: string,
+): Promise<MoodCollectionStatusResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/moods/${encodeURIComponent(moodId)}/bursts/${encodeURIComponent(burstId)}/frames/${encodeURIComponent(frameName)}`,
+    { method: "DELETE" },
+  )
+  if (!res.ok) await moodsError(res, `frame delete failed: ${res.status}`)
+  return (await res.json()) as MoodCollectionStatusResponse
+}
+
+export async function startMoodTraining(moodId: string): Promise<TrainingJob> {
+  const res = await fetch(`${API_BASE}/api/moods/${encodeURIComponent(moodId)}/train`, {
+    method: "POST",
+  })
+  if (!res.ok) await moodsError(res, `training start failed: ${res.status}`)
+  const body = (await res.json()) as { job: TrainingJob }
+  return body.job
+}
+
+export async function fetchTrainingJob(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<TrainingJob> {
+  const res = await fetch(`${API_BASE}/api/training/jobs/${encodeURIComponent(jobId)}`, {
+    signal,
+    cache: "no-store",
+  })
+  if (!res.ok) await moodsError(res, `training job fetch failed: ${res.status}`)
+  const body = (await res.json()) as { job: TrainingJob }
+  return body.job
+}
+
+export async function recordTrainingConsent(accepted: boolean): Promise<{
+  consent: { accepted: boolean; acceptedAt?: string | null }
+  datasetFolder: string
+}> {
+  const res = await fetch(`${API_BASE}/api/training/consent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accepted }),
+  })
+  if (!res.ok) await moodsError(res, `consent save failed: ${res.status}`)
+  return (await res.json()) as {
+    consent: { accepted: boolean; acceptedAt?: string | null }
+    datasetFolder: string
+  }
 }
 
 export { normalizeSnapshot }

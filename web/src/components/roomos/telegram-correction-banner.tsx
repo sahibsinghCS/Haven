@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { MessageCircle, X } from "lucide-react"
 
-import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import { roomStateLabel } from "@/lib/roomos/state-meta"
 import { cn } from "@/lib/utils"
 import type { LiveFeedbackEvent } from "@/types/feedback-event"
 import type { RoomStateId } from "@/types/roomos"
@@ -36,7 +36,7 @@ export function TelegramCorrectionBanner({
 
   const corrected = event.correctedLabel as RoomStateId
   const predicted = event.predictedLabel as RoomStateId
-  const label = (id: RoomStateId) => ROOM_STATE_LABEL[id] ?? id
+  const label = (id: RoomStateId) => roomStateLabel(id) ?? id
 
   const isTelegram = event.source === "telegram"
 

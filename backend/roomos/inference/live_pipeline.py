@@ -39,9 +39,43 @@ from .smoothing import PredictionSmoother, SmoothedPrediction, smoothing_confirm
 log = get_logger("roomos.inference.live")
 
 
-# Frontend taxonomy (must match web/src/types/roomos.ts ROOM_STATE_ORDER).
+# Historic fixed taxonomy — fallback only. The live order now comes from the
+# dynamic mood registry (data/moods.json) via _dynamic_ui_state_order().
 _UI_STATE_ORDER: tuple[str, ...] = ("sleep", "gaming", "work", "relaxing", "away")
 _ACTIVITY_LABELS: tuple[str, ...] = ("work", "gaming", "sleep", "relaxing")
+
+
+def _dynamic_ui_state_order() -> tuple[str, ...]:
+    try:
+        from ..moods.registry import ui_state_order
+
+        order = ui_state_order()
+        if order:
+            return order
+    except Exception:
+        pass
+    return _UI_STATE_ORDER
+
+
+def _allowed_live_label_set() -> set[str]:
+    """Labels the engine may surface (active moods + legacy + unknown)."""
+    try:
+        from ..moods.registry import allowed_live_labels
+
+        return allowed_live_labels()
+    except Exception:
+        return set(_UI_STATE_ORDER) | {"unknown"}
+
+
+def _mask_inactive_labels(
+    probs: Dict[str, float], allowed: set[str]
+) -> Dict[str, float]:
+    """Zero out deleted-mood classes and renormalize over allowed labels."""
+    masked = {k: (float(v) if k in allowed else 0.0) for k, v in probs.items()}
+    total = sum(masked.values())
+    if total <= 1e-9:
+        return dict(probs)
+    return {k: v / total for k, v in masked.items()}
 
 
 @dataclass
@@ -144,14 +178,18 @@ def _bootstrap_live_fixup(
     return _normalize_ui_distribution(adjusted)
 
 
-def _normalize_ui_distribution(raw: Dict[str, float]) -> Dict[str, float]:
-    """Ensure all five UI states exist and probabilities sum to ~1."""
-    vals = {k: max(0.0, float(raw.get(k, 0.0))) for k in _UI_STATE_ORDER}
+def _normalize_ui_distribution(
+    raw: Dict[str, float],
+    order: Optional[tuple[str, ...]] = None,
+) -> Dict[str, float]:
+    """Ensure all active UI states exist and probabilities sum to ~1."""
+    keys = order or _dynamic_ui_state_order()
+    vals = {k: max(0.0, float(raw.get(k, 0.0))) for k in keys}
     total = sum(vals.values())
     if total <= 1e-9:
-        uniform = 1.0 / len(_UI_STATE_ORDER)
-        return {k: uniform for k in _UI_STATE_ORDER}
-    return {k: vals[k] / total for k in _UI_STATE_ORDER}
+        uniform = 1.0 / max(1, len(keys))
+        return {k: uniform for k in keys}
+    return {k: vals[k] / total for k in keys}
 
 
 SnapshotCallback = Callable[[LiveSnapshot], None]
@@ -240,7 +278,8 @@ class LiveInferenceEngine:
 
         history_len = int(infer_cfg.get("snapshot_history", 60))
         self._history: Deque[Dict[str, object]] = deque(maxlen=history_len)
-        self._ui_classes = list(_UI_STATE_ORDER)
+        self._ui_classes = list(_dynamic_ui_state_order())
+        self._allowed_labels = _allowed_live_label_set()
         prefs_path = infer_cfg.get("preferences_path", "data/preferences.json")
         self._preferences_path = (
             Path(prefs_path)
@@ -446,6 +485,14 @@ class LiveInferenceEngine:
 
             def _process_burst(burst) -> None:
                 fused = pipe.fusion.fuse(burst)
+                # Active mood-collection session? Persist this burst (frames +
+                # features) to the on-device dataset without blocking inference.
+                try:
+                    from ..training.collection import mood_collection
+
+                    mood_collection.handle_burst(burst, fused)
+                except Exception as e:
+                    log.debug("Mood collection hook failed: %s", e)
                 feats = fused.as_dict()
                 probs = predict_proba_row(self._model, feats)
                 if self._live_presence_fixup_enabled:
@@ -461,6 +508,8 @@ class LiveInferenceEngine:
                 if not occupancy.empty:
                     probs = self._activity_hints.apply(probs, feats)
                 probs, personalization = self._personalize_probs(feats, probs)
+                # Deleted moods must never be surfaced — mask + renormalize.
+                probs = _mask_inactive_labels(probs, self._allowed_labels)
                 pred = self._smoother.update(probs)
                 ml_state["last_pred"] = pred
                 self._after_burst(
@@ -491,8 +540,14 @@ class LiveInferenceEngine:
                             timestamp=sf.timestamp,
                             source=sid,
                         )
+                        from ..training.collection import mood_collection
+
+                        if mood_collection.is_active():
+                            # Collection needs decent-resolution review frames.
+                            rec.image_bgr = sf.image.copy()
                         if self._feedback_model is not None:
-                            rec.image_bgr = _feedback_screenshot(sf.image)
+                            if rec.image_bgr is None:
+                                rec.image_bgr = _feedback_screenshot(sf.image)
                             with self._evidence_lock:
                                 self._recent_screenshots.append(rec.image_bgr)
                         with self._frame_lock:
@@ -941,6 +996,8 @@ class LiveInferenceEngine:
     def reload_model_bundle(self) -> None:
         """Hot-reload XGBoost after background auto-retrain."""
         self._model = load_model_bundle(self._model_dir)
+        self._ui_classes = list(_dynamic_ui_state_order())
+        self._allowed_labels = _allowed_live_label_set()
         smooth_cfg = self.config.smoothing
         unknown_label = str(self.config.labels.get("unknown_class", "unknown"))
         self._smoother = PredictionSmoother(

@@ -171,7 +171,13 @@ def resolve_apply_scene_for_mood(room_state: str) -> Dict[str, Any]:
     scenes = active_preset_preferences(load_preferences())
     if room_state in scenes:
         return scenes[room_state]
-    if room_state in ROOM_STATE_ORDER:
+    try:
+        from ..moods.registry import active_mood_ids
+
+        valid_moods = set(active_mood_ids())
+    except Exception:
+        valid_moods = set(ROOM_STATE_ORDER)
+    if room_state in valid_moods:
         legacy = _LEGACY_MOOD_DEFAULTS.get(room_state, _LEGACY_MOOD_DEFAULTS["work"])
         return _migrate_scene_to_v2(
             legacy,

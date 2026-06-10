@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Settings2, X } from "lucide-react"
 
-import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import { roomStateLabel } from "@/lib/roomos/state-meta"
 import { cn } from "@/lib/utils"
 import type { LivePreferencesEvent } from "@/types/preferences-event"
 import type { RoomStateId } from "@/types/roomos"
@@ -36,7 +36,7 @@ export function PreferencesTelegramBanner({
 
   const isTelegram = event.source === "telegram"
   const moodLabels = event.targetStates
-    .map((s) => ROOM_STATE_LABEL[s as RoomStateId] ?? s)
+    .map((s) => roomStateLabel(s as RoomStateId) ?? s)
     .join(", ")
 
   return (

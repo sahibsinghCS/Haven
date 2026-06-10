@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
-import { ROOM_STATE_ACCENT, ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import { roomStateAccent, roomStateLabel } from "@/lib/roomos/state-meta"
 import type { RoomStateDistribution, RoomStateId } from "@/types/roomos"
 import { ROOM_STATE_ORDER } from "@/types/roomos"
 
@@ -66,8 +66,8 @@ export function SecondaryStateConfidence({
           {ROOM_STATE_ORDER.map((id) => {
             const value = distribution[id]
             const active = id === primary
-            const accent = ROOM_STATE_ACCENT[id]
-            const label = ROOM_STATE_LABEL[id]
+            const accent = roomStateAccent(id)
+            const label = roomStateLabel(id)
             const pct = formatPct(value, finePercent)
             return (
               <div
@@ -125,7 +125,7 @@ export function SecondaryStateConfidence({
       {ROOM_STATE_ORDER.map((id) => {
         const value = distribution[id]
         const active = id === primary
-        const accent = ROOM_STATE_ACCENT[id]
+        const accent = roomStateAccent(id)
         return (
           <div
             key={id}
@@ -141,7 +141,7 @@ export function SecondaryStateConfidence({
                   active ? "text-zinc-100" : "text-zinc-500",
                 )}
               >
-                {ROOM_STATE_LABEL[id]}
+                {roomStateLabel(id)}
               </p>
               <span className="text-sm font-medium tabular-nums text-zinc-400">
                 {formatPct(value)}

@@ -25,7 +25,7 @@ import {
   ROOM_STATE_LANDING_SKIN,
 } from "@/lib/roomos/state-meta"
 import { cn } from "@/lib/utils"
-import { ROOM_STATE_ORDER, type RoomStateId } from "@/types/roomos"
+import { ROOM_STATE_ORDER, type KnownRoomStateId } from "@/types/roomos"
 
 function AtmosphereRow({ label, value }: { label: string; value: string }) {
   return (
@@ -36,7 +36,7 @@ function AtmosphereRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function StateInner({ id }: { id: RoomStateId }) {
+function StateInner({ id }: { id: KnownRoomStateId }) {
   const skin = ROOM_STATE_LANDING_SKIN[id]
   const atm = ROOM_STATE_LANDING_ATMOSPHERE[id]
   const reduceMotion = useReducedMotion()
@@ -212,7 +212,7 @@ function StateInner({ id }: { id: RoomStateId }) {
   )
 }
 
-const shells: Record<RoomStateId, string> = {
+const shells: Record<KnownRoomStateId, string> = {
   sleep:
     "rounded-[1.75rem] border border-indigo-200/55 bg-[color-mix(in_oklab,var(--landing-surface)_52%,transparent)] p-6 shadow-[var(--landing-shadow-float)] ring-1 ring-[color:var(--landing-edge-light)] backdrop-blur-md sm:p-8 lg:p-10",
   gaming:
@@ -225,7 +225,7 @@ const shells: Record<RoomStateId, string> = {
     "rounded-[1.15rem] border border-stone-300/55 bg-[color-mix(in_oklab,var(--landing-canvas-mist)_65%,transparent)] p-6 shadow-[var(--landing-shadow-card)] ring-1 ring-[color:var(--landing-edge-light)] backdrop-blur-sm sm:p-7",
 }
 
-const placement: Record<RoomStateId, string> = {
+const placement: Record<KnownRoomStateId, string> = {
   sleep: "lg:col-span-7 lg:row-span-2 lg:row-start-1 lg:col-start-1",
   gaming: "lg:col-span-5 lg:row-start-1 lg:col-start-8",
   work: "lg:col-span-5 lg:row-start-2 lg:col-start-8",

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import type { RoomStateId } from "@/types/roomos"
+import type { KnownRoomStateId, RoomStateId } from "@/types/roomos"
 
 /**
  * Shared Haven surface recipes (hybrid system).
@@ -43,7 +43,7 @@ export const roomosUi = {
 } as const
 
 /** Left accent: visible on light preference cards */
-const PREFERENCE_ACCENT_LEFT: Record<RoomStateId, string> = {
+const PREFERENCE_ACCENT_LEFT: Record<KnownRoomStateId, string> = {
   sleep: "before:bg-[linear-gradient(180deg,rgba(99,102,241,0.85)_0%,rgba(99,102,241,0.18)_100%)]",
   gaming:
     "before:bg-[linear-gradient(180deg,rgba(139,92,246,0.85)_0%,rgba(139,92,246,0.18)_100%)]",
@@ -53,14 +53,22 @@ const PREFERENCE_ACCENT_LEFT: Record<RoomStateId, string> = {
   away: "before:bg-[linear-gradient(180deg,rgba(120,113,108,0.7)_0%,rgba(120,113,108,0.16)_100%)]",
 }
 
+/** Generic warm accent for user-created moods. */
+const PREFERENCE_ACCENT_LEFT_CUSTOM =
+  "before:bg-[linear-gradient(180deg,rgba(217,119,6,0.8)_0%,rgba(217,119,6,0.16)_100%)]"
+
 export function preferenceCardShell(stateId: RoomStateId) {
+  const accent =
+    stateId in PREFERENCE_ACCENT_LEFT
+      ? PREFERENCE_ACCENT_LEFT[stateId as KnownRoomStateId]
+      : PREFERENCE_ACCENT_LEFT_CUSTOM
   return cn(
     "relative isolate rounded-[1.55rem] border border-[color:var(--haven-line-strong)] bg-[linear-gradient(168deg,rgba(255,254,251,1)_0%,rgba(252,249,243,0.96)_58%,rgba(245,239,228,0.92)_100%)]",
     "px-5 py-5 sm:px-6 sm:py-6",
     "shadow-[var(--haven-shadow-card)]",
     "ring-1 ring-[color:var(--haven-edge-light)]",
     "before:pointer-events-none before:absolute before:left-0 before:top-5 before:bottom-5 before:w-[3px] before:rounded-full",
-    PREFERENCE_ACCENT_LEFT[stateId],
+    accent,
     "focus-within:ring-2 focus-within:ring-teal-700/30 focus-within:ring-offset-2 focus-within:ring-offset-[color:var(--haven-canvas,#f7f4ee)]",
     "transition-shadow duration-300 ease-out hover:shadow-[var(--haven-shadow-float)]",
   )

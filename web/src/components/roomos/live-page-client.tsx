@@ -1,19 +1,28 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Camera, Loader2, Radio } from "lucide-react"
 
 import { LiveCameraPowerButton } from "@/components/roomos/live-camera-power"
+import { MoodBurstReviewPanel } from "@/components/roomos/moods/mood-burst-review-panel"
+import { MoodCollectionOverlay } from "@/components/roomos/moods/mood-collection-overlay"
+import { MoodTrainingProgress } from "@/components/roomos/moods/mood-training-progress"
 import { LiveStageSkeleton } from "@/components/roomos/roomos-loading-states"
 import { LiveVideoStage } from "@/components/roomos/live-video-stage"
 import type { LiveInferenceStatus } from "@/hooks/use-live-inference"
+import { useMoodMutations, useMoods } from "@/hooks/use-moods"
 import type { BootPhase, ModelKind } from "@/lib/roomos/api-client"
+import {
+  moodCollectFromSearch,
+  stripCollectQueryFromUrl,
+} from "@/lib/roomos/mood-collect-start"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import {
   consumeLiveStartIntent,
   hasLiveStartQuery,
 } from "@/lib/roomos/live-session-start"
 import { useLiveSessionStore } from "@/stores/live-session-store"
+import { useMoodSessionStore } from "@/stores/mood-session-store"
 import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 import { cn } from "@/lib/utils"
 
@@ -41,16 +50,68 @@ export function LivePageClient() {
   const engineWasRunning = useLiveSessionStore((s) => s.engineWasRunning)
   const setCameraEnabled = useLiveSessionStore((s) => s.setCameraEnabled)
 
+  const pendingCollectMoodId = useMoodSessionStore((s) => s.pendingCollectMoodId)
+  const pendingCollectDurationSec = useMoodSessionStore((s) => s.pendingCollectDurationSec)
+  const clearPendingCollect = useMoodSessionStore((s) => s.clearPendingCollect)
+  const { data: moodsData } = useMoods()
+  const { startCollection } = useMoodMutations()
+
+  const [collectMoodId, setCollectMoodId] = useState<string | null>(null)
+  const [collectDurationSec, setCollectDurationSec] = useState(300)
+  const collectionStartedRef = useRef(false)
+
   useEffect(() => {
     const shouldStart =
       hasLiveStartQuery(window.location.search) || consumeLiveStartIntent()
-    if (shouldStart) {
+    const { moodId, durationSec } = moodCollectFromSearch(window.location.search)
+    if (moodId) {
+      setCollectMoodId(moodId)
+      setCollectDurationSec(durationSec)
       setCameraEnabled(true)
-      if (hasLiveStartQuery(window.location.search)) {
-        window.history.replaceState({}, "", "/live")
+    } else if (pendingCollectMoodId) {
+      setCollectMoodId(pendingCollectMoodId)
+      setCollectDurationSec(pendingCollectDurationSec)
+    }
+    if (shouldStart || moodId) {
+      setCameraEnabled(true)
+      if (hasLiveStartQuery(window.location.search) || moodId) {
+        stripCollectQueryFromUrl()
       }
     }
-  }, [setCameraEnabled])
+  }, [setCameraEnabled, pendingCollectMoodId, pendingCollectDurationSec])
+
+  useEffect(() => {
+    if (!collectMoodId || collectionStartedRef.current) return
+    if (engineStatus !== "running" || liveStatus !== "live") return
+    if (startCollection.isPending) return
+
+    collectionStartedRef.current = true
+    void startCollection
+      .mutateAsync({ moodId: collectMoodId, durationSec: collectDurationSec })
+      .then(() => {
+        clearPendingCollect()
+      })
+      .catch(() => {
+        collectionStartedRef.current = false
+      })
+  }, [
+    collectMoodId,
+    collectDurationSec,
+    engineStatus,
+    liveStatus,
+    startCollection,
+    clearPendingCollect,
+  ])
+
+  const activeCollection =
+    moodsData?.collection?.active && moodsData.collection.moodId
+      ? moodsData.collection.moodId
+      : collectMoodId
+
+  const handleCollectionEnded = useCallback(() => {
+    if (!collectMoodId) return
+    // Keep overlay visible via moods poll; user can review or train from overlay.
+  }, [collectMoodId])
 
   useEffect(() => {
     document.documentElement.classList.add("live-immersive")
@@ -72,7 +133,6 @@ export function LivePageClient() {
     if (!cameraEnabled) return false
     if (engineStatus === "error" || liveStatus === "error") return false
     if (snapshot && bootPhase === "streaming") return false
-    // After power-on restart: engine warms up before the first snapshot arrives.
     if (!snapshot) {
       return (
         engineStatus === "starting" ||
@@ -147,6 +207,13 @@ export function LivePageClient() {
       <div className="absolute left-3 top-3 z-30 sm:left-4 sm:top-4">
         <LiveCameraPowerButton />
       </div>
+      {activeCollection ? (
+        <MoodCollectionOverlay
+          moodId={activeCollection}
+          previewDark={previewDark}
+          onCollectionEnded={handleCollectionEnded}
+        />
+      ) : null}
       <LiveVideoStage
         snapshot={snapshot}
         engineStatus={engineStatus}
@@ -160,6 +227,8 @@ export function LivePageClient() {
         preferencesEvent={lastPreferencesEvent}
         onDismissPreferencesEvent={dismissPreferencesEvent}
       />
+      <MoodBurstReviewPanel />
+      <MoodTrainingProgress />
     </div>
   )
 }

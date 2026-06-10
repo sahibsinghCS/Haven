@@ -4,9 +4,23 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-# Must match web/src/types/roomos.ts PREFERENCE_MOOD_ORDER
+# Historic fixed taxonomy (kept as fallback). The live order now comes from the
+# dynamic mood registry (data/moods.json) via _preference_mood_order().
 _UI_STATE_ORDER = ("sleep", "work", "relaxing", "away")
 ROOM_STATE_ORDER: tuple[str, ...] = _UI_STATE_ORDER
+
+
+def _preference_mood_order() -> tuple[str, ...]:
+    """Active mood ids from the registry; falls back to the fixed builtins."""
+    try:
+        from ..moods.registry import active_mood_ids
+
+        ids = tuple(active_mood_ids())
+        if ids:
+            return ids
+    except Exception:
+        pass
+    return _UI_STATE_ORDER
 
 _LEGACY_MOOD_DEFAULTS: dict[str, dict[str, Any]] = {
     "sleep": {"lightColorHex": "#1E2A4A", "brightness": 8, "fanOn": True, "temperatureF": 68},
@@ -117,7 +131,7 @@ def _migrate_scene_to_v2(
 def _normalize_preferences_matrix(prefs: dict[str, Any]) -> dict[str, Any]:
     ids_by_cat = _connected_device_ids_by_category()
     out: dict[str, Any] = {}
-    for state in _UI_STATE_ORDER:
+    for state in _preference_mood_order():
         scene = prefs.get(state)
         if isinstance(scene, dict):
             out[state] = _migrate_scene_to_v2(scene, ids_by_cat, state=state)
@@ -170,7 +184,7 @@ def active_preset_preferences(doc: dict[str, Any]) -> dict[str, dict[str, object
 
     ids_by_cat = _connected_device_ids_by_category()
     out: dict[str, dict[str, object]] = {}
-    for state in _UI_STATE_ORDER:
+    for state in _preference_mood_order():
         scene = prefs.get(state)
         if not isinstance(scene, dict):
             continue

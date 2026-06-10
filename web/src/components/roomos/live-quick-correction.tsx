@@ -14,7 +14,7 @@ import {
   type FeedbackResponse,
   type FeedbackStatus,
 } from "@/lib/roomos/api-client"
-import { ROOM_STATE_ACCENT, ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
+import { roomStateAccent, roomStateLabel } from "@/lib/roomos/state-meta"
 import {
   ROOM_STATE_ORDER,
   type LiveInferenceSnapshot,
@@ -52,7 +52,7 @@ export function LiveQuickCorrection({
 
   const primary = snapshot.primaryState
   const alternatives = ROOM_STATE_ORDER.filter((s) => s !== primary)
-  const primaryAccent = ROOM_STATE_ACCENT[primary]
+  const primaryAccent = roomStateAccent(primary)
   const evidence = memoryStatus?.evidence
   const frameCount = evidence?.available ? (evidence.frameCount ?? 0) : 0
   const evidenceCacheKey = `${snapshot.sequence}-${evidence?.capturedAt ?? ""}`
@@ -247,7 +247,7 @@ export function LiveQuickCorrection({
           <ThumbsUp className="size-4" aria-hidden />
         )}
         <span className={cn("size-2 rounded-full shrink-0", primaryAccent.bar)} aria-hidden />
-        Yes — {ROOM_STATE_LABEL[primary]}
+        Yes — {roomStateLabel(primary)}
       </button>
 
       <p className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
@@ -257,7 +257,7 @@ export function LiveQuickCorrection({
 
       <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Wrong activity">
         {alternatives.map((state) => {
-          const accent = ROOM_STATE_ACCENT[state]
+          const accent = roomStateAccent(state)
           const isPending = pending === state
           const isSaved = lastSaved === state
           return (
@@ -282,7 +282,7 @@ export function LiveQuickCorrection({
               ) : (
                 <span className={cn("size-2 rounded-full", accent.bar)} aria-hidden />
               )}
-              {ROOM_STATE_LABEL[state]}
+              {roomStateLabel(state)}
             </button>
           )
         })}
@@ -314,11 +314,11 @@ function MismatchConfirm({
     >
       <p id="mismatch-title" className="flex items-start gap-2 text-[12px] font-semibold text-amber-50">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-        These frames look like {ROOM_STATE_LABEL[primary]} now
+        These frames look like {roomStateLabel(primary)} now
       </p>
       <p className="text-[11px] leading-relaxed text-amber-100/90">
-        Saving as <strong>{ROOM_STATE_LABEL[target]}</strong> teaches the model that this
-        video frame means {ROOM_STATE_LABEL[target]}. For an earlier moment, use{" "}
+        Saving as <strong>{roomStateLabel(target)}</strong> teaches the model that this
+        video frame means {roomStateLabel(target)}. For an earlier moment, use{" "}
         <Link href="/review" className="font-semibold text-amber-50 underline">
           Review past switches
         </Link>{" "}
@@ -339,7 +339,7 @@ function MismatchConfirm({
           onClick={onConfirm}
           className="rounded-lg border border-amber-400/40 bg-amber-500/25 px-3 py-1.5 text-[12px] font-semibold text-amber-50 hover:bg-amber-500/35"
         >
-          {busy ? "Saving…" : `Save as ${ROOM_STATE_LABEL[target]} anyway`}
+          {busy ? "Saving…" : `Save as ${roomStateLabel(target)} anyway`}
         </button>
       </div>
     </div>
@@ -369,7 +369,7 @@ function LearningSummary({ result }: { result: FeedbackResponse }) {
           <span className="text-zinc-500">Total answers:</span> {result.memoryExamples}
         </li>
         <li>
-          <span className="text-zinc-500">Label:</span> {ROOM_STATE_LABEL[corrected]}
+          <span className="text-zinc-500">Label:</span> {roomStateLabel(corrected)}
           {wasConfirm ? " (you confirmed)" : ""}
         </li>
         <li className="text-zinc-500">{result.effects.notIncluded}</li>
@@ -417,7 +417,7 @@ function ProbabilityShift({
                   isHighlight ? "font-semibold text-teal-100" : "text-zinc-500",
                 )}
               >
-                {ROOM_STATE_LABEL[id]}
+                {roomStateLabel(id)}
               </span>
               <span className="w-8 tabular-nums text-zinc-500">{b}%</span>
               <span className="text-zinc-600">→</span>

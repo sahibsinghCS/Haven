@@ -18,12 +18,8 @@ export const statePreferenceSchema = z.object({
   devices: z.record(z.string(), devicePreferenceTargetSchema),
 })
 
-export const preferenceMatrixSchema = z.object({
-  sleep: statePreferenceSchema,
-  work: statePreferenceSchema,
-  relaxing: statePreferenceSchema,
-  away: statePreferenceSchema,
-})
+/** Dynamic: any registered mood id maps to a device scene. */
+export const preferenceMatrixSchema = z.record(z.string(), statePreferenceSchema)
 
 export type PreferenceMatrixFormValues = z.infer<typeof preferenceMatrixSchema>
 
@@ -54,6 +50,19 @@ export const LEGACY_MOOD_DEFAULTS = {
     temperatureF: 76,
   },
 } as const
+
+/** Defaults for a mood id — builtin values, or work-like neutrals for custom moods. */
+export function legacyDefaultsForMood(stateId: string): {
+  lightColorHex: string
+  brightness: number
+  fanOn: boolean
+  temperatureF: number
+} {
+  if (stateId in LEGACY_MOOD_DEFAULTS) {
+    return LEGACY_MOOD_DEFAULTS[stateId as keyof typeof LEGACY_MOOD_DEFAULTS]
+  }
+  return { lightColorHex: "#F5E6C8", brightness: 55, fanOn: false, temperatureF: 72 }
+}
 
 /** Stable defaults before API/local hydration (matches backend shape). */
 export const EMPTY_PREFERENCE_MATRIX: PreferenceMatrixFormValues = PREFERENCE_MOOD_ORDER.reduce(

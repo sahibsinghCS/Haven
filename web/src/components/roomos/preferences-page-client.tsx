@@ -9,8 +9,11 @@ import { toast } from "sonner"
 import { Check, RotateCcw } from "lucide-react"
 
 import { useHavenAuth } from "@/components/auth/haven-auth-provider"
-import { StatePreferenceCard } from "@/components/roomos/preferences/state-preference-card"
+import { AddMoodWizard } from "@/components/roomos/moods/add-mood-wizard"
+import { MoodBurstReviewPanel } from "@/components/roomos/moods/mood-burst-review-panel"
+import { MoodPreferenceCard } from "@/components/roomos/moods/mood-preference-card"
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
+import { useMoods } from "@/hooks/use-moods"
 import { Button } from "@/components/ui/button"
 import { Form } from "@/components/ui/form"
 import { fetchDeviceSettingsDocument, fetchPreferenceDocument, savePreferenceDocument } from "@/lib/roomos/api-client"
@@ -35,18 +38,33 @@ import { usePreferencesWsRefresh } from "@/hooks/use-preferences-ws-refresh"
 import { loadRoomOsPreferences } from "@/lib/roomos/preferences-persistence"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { useRoomOsPreferencesStore } from "@/stores/roomos-store"
-import { PREFERENCE_MOOD_ORDER, type PreferencePreset } from "@/types/roomos"
+import type { MoodDefinition, PreferencePreset } from "@/types/roomos"
 
 import { cn } from "@/lib/utils"
 
 function presetToFormValues(
   preset: PreferencePreset,
   integrationsDoc = defaultDeviceSettingsDocument(),
+  moodIds: readonly string[],
 ): PreferenceMatrixFormValues {
   return mergeDevicesIntoMatrix(
-    migratePreferenceMatrix(preset.preferences as Record<string, unknown>, integrationsDoc),
+    migratePreferenceMatrix(
+      preset.preferences as Record<string, unknown>,
+      integrationsDoc,
+      moodIds,
+    ),
     listConnectedDevices(integrationsDoc),
   )
+}
+
+function ensureMoodInForm(
+  values: PreferenceMatrixFormValues,
+  moodId: string,
+  connected: ReturnType<typeof listConnectedDevices>,
+): PreferenceMatrixFormValues {
+  if (values[moodId]) return values
+  const next = { ...values, [moodId]: { devices: {} } }
+  return mergeDevicesIntoMatrix(next, connected)
 }
 
 export function PreferencesPageClient() {
@@ -55,6 +73,12 @@ export function PreferencesPageClient() {
   const activePresetId = useRoomOsPreferencesStore((s) => s.activePresetId)
   const hydrate = useRoomOsPreferencesStore((s) => s.hydrate)
   const replacePreset = useRoomOsPreferencesStore((s) => s.replacePreset)
+
+  const moodsQuery = useMoods()
+  const moodIds = useMemo(
+    () => moodsQuery.data?.moods.map((m) => m.id) ?? [],
+    [moodsQuery.data?.moods],
+  )
 
   const docQuery = useQuery({
     queryKey: ["roomos", "preferences", user?.id ?? "local"],
@@ -132,15 +156,25 @@ export function PreferencesPageClient() {
   const { isDirty, isSubmitting } = form.formState
 
   useEffect(() => {
-    if (!activePresetId || integrationsQuery.isPending) return
+    if (!activePresetId || integrationsQuery.isPending || moodIds.length === 0) return
     const preset = useRoomOsPreferencesStore
       .getState()
       .presets?.find((p) => p.id === activePresetId)
     if (!preset) return
-    form.reset(presetToFormValues(preset, integrationsDoc))
-  }, [activePresetId, form, integrationsDoc, integrationsQuery.isPending])
+    form.reset(presetToFormValues(preset, integrationsDoc, moodIds))
+  }, [activePresetId, form, integrationsDoc, integrationsQuery.isPending, moodIds])
 
-  if (docQuery.isPending || !presets) {
+  const handleMoodCreated = useCallback(
+    (mood: MoodDefinition) => {
+      const connected = listConnectedDevices(integrationsDoc)
+      const current = form.getValues()
+      const next = ensureMoodInForm(current, mood.id, connected)
+      form.reset(next)
+    },
+    [form, integrationsDoc],
+  )
+
+  if (docQuery.isPending || moodsQuery.isPending || !presets) {
     return <PreferencesSkeleton />
   }
 
@@ -243,15 +277,19 @@ export function PreferencesPageClient() {
               </p>
             </div>
             <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
-              {PREFERENCE_MOOD_ORDER.map((stateId) => (
-                <StatePreferenceCard
-                  key={stateId}
-                  stateId={stateId}
+              {moodsQuery.data?.moods.map((mood) => (
+                <MoodPreferenceCard
+                  key={mood.id}
+                  mood={mood}
                   connectedDevices={connectedDevices}
+                  canDelete={(moodsQuery.data?.moods.length ?? 0) > 1}
                 />
               ))}
+              <AddMoodWizard onMoodCreated={handleMoodCreated} />
             </div>
           </section>
+
+          <MoodBurstReviewPanel />
 
           <div
             className={cn(
@@ -301,7 +339,9 @@ export function PreferencesPageClient() {
                   roomosUi.focusRingLight,
                 )}
                 disabled={!isDirty || isSubmitting}
-                onClick={() => form.reset(presetToFormValues(activePreset, integrationsDoc))}
+                onClick={() =>
+                  form.reset(presetToFormValues(activePreset, integrationsDoc, moodIds))
+                }
               >
                 <RotateCcw className="size-3.5" aria-hidden />
                 Reset
