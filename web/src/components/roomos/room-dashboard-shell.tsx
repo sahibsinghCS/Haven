@@ -16,7 +16,7 @@ import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 const nav = [
   { href: "/live", label: "Live" },
   { href: "/review", label: "Review" },
-  { href: "/preferences", label: "Preferences" },
+  { href: "/preferences", label: "Moods / Preferences" },
   { href: "/connections", label: "Connections" },
 ] as const
 
@@ -227,7 +227,7 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
                   }}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "relative z-[1] rounded-full px-3 py-1.5 text-[13px] font-semibold tracking-tight transition-colors duration-200 sm:px-4",
+                    "relative z-[1] whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-semibold tracking-tight transition-colors duration-200 sm:px-4",
                     isLive ? roomosUi.focusRingDark : roomosUi.focusRingLight,
                     isLive
                       ? active

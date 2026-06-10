@@ -6,11 +6,9 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Check, Fan, Lightbulb, RotateCcw, ShieldCheck, Sparkles, Thermometer } from "lucide-react"
+import { Check, RotateCcw } from "lucide-react"
 
 import { useHavenAuth } from "@/components/auth/haven-auth-provider"
-import { HavenAccountBar } from "@/components/roomos/haven-account-bar"
-import { PreferencesPresetToggle } from "@/components/roomos/preferences/preferences-preset-toggle"
 import { StatePreferenceCard } from "@/components/roomos/preferences/state-preference-card"
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
 import { Button } from "@/components/ui/button"
@@ -36,47 +34,10 @@ import {
 import { usePreferencesWsRefresh } from "@/hooks/use-preferences-ws-refresh"
 import { loadRoomOsPreferences } from "@/lib/roomos/preferences-persistence"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
-import { ROOM_STATE_LABEL } from "@/lib/roomos/state-meta"
 import { useRoomOsPreferencesStore } from "@/stores/roomos-store"
-import { PREFERENCE_MOOD_ORDER, type ConnectedDeviceRef, type PreferencePreset } from "@/types/roomos"
+import { PREFERENCE_MOOD_ORDER, type PreferencePreset } from "@/types/roomos"
 
 import { cn } from "@/lib/utils"
-
-const BASIC_PRESET_ID = "preset_basic"
-const CUSTOM_PRESET_ID = "preset_custom"
-
-function summarizePreset(preset: PreferencePreset, connected: ConnectedDeviceRef[]) {
-  const brightnessValues: number[] = []
-  let fanCount = 0
-  const temperatures: number[] = []
-
-  for (const stateId of PREFERENCE_MOOD_ORDER) {
-    const scene = preset.preferences[stateId]
-    for (const device of connected) {
-      const target = scene.devices[device.id]
-      if (!target) continue
-      if (device.category === "lights" && target.brightness != null) {
-        brightnessValues.push(target.brightness)
-      }
-      if (device.category === "smart_plug" && target.fanOn) {
-        fanCount += 1
-      }
-      if (device.category === "thermostat" && target.temperatureF != null) {
-        temperatures.push(target.temperatureF)
-      }
-    }
-  }
-
-  return {
-    averageBrightness:
-      brightnessValues.length > 0
-        ? Math.round(brightnessValues.reduce((a, b) => a + b, 0) / brightnessValues.length)
-        : 0,
-    fanCount,
-    minTemp: temperatures.length > 0 ? Math.min(...temperatures) : 72,
-    maxTemp: temperatures.length > 0 ? Math.max(...temperatures) : 72,
-  }
-}
 
 function presetToFormValues(
   preset: PreferencePreset,
@@ -93,7 +54,6 @@ export function PreferencesPageClient() {
   const presets = useRoomOsPreferencesStore((s) => s.presets)
   const activePresetId = useRoomOsPreferencesStore((s) => s.activePresetId)
   const hydrate = useRoomOsPreferencesStore((s) => s.hydrate)
-  const selectPreset = useRoomOsPreferencesStore((s) => s.selectPreset)
   const replacePreset = useRoomOsPreferencesStore((s) => s.replacePreset)
 
   const docQuery = useQuery({
@@ -163,14 +123,6 @@ export function PreferencesPageClient() {
     return presets.find((p) => p.id === activePresetId) ?? null
   }, [presets, activePresetId])
 
-  const basicId = useMemo(() => {
-    return presets?.find((p) => p.id === BASIC_PRESET_ID)?.id ?? presets?.[0]?.id ?? BASIC_PRESET_ID
-  }, [presets])
-
-  const customId = useMemo(() => {
-    return presets?.find((p) => p.id === CUSTOM_PRESET_ID)?.id ?? presets?.[1]?.id ?? CUSTOM_PRESET_ID
-  }, [presets])
-
   const form = useForm<PreferenceMatrixFormValues>({
     resolver: zodResolver(preferenceMatrixSchema),
     defaultValues: EMPTY_PREFERENCE_MATRIX,
@@ -212,8 +164,6 @@ export function PreferencesPageClient() {
     return null
   }
 
-  const isBasic = activePreset.id === basicId
-  const presetSummary = summarizePreset(activePreset, connectedDevices)
   const hasConnectedDevices = connectedDevices.length > 0
 
   const apiOnline = docQuery.data?.apiOnline ?? true
@@ -233,187 +183,6 @@ export function PreferencesPageClient() {
           repo root) to sync preferences to disk on this machine.
         </p>
       ) : null}
-
-      <HavenAccountBar />
-
-      <header className="relative overflow-hidden rounded-[2.15rem] border border-[color:var(--haven-line-strong)] bg-[linear-gradient(165deg,rgba(255,254,251,0.995)_0%,rgba(251,246,238,0.97)_44%,rgba(236,228,218,0.94)_100%)] p-6 shadow-[var(--haven-shadow-float)] ring-1 ring-[color:var(--haven-edge-light)] sm:p-8 lg:p-10">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -left-20 -top-16 size-64 rounded-full bg-[radial-gradient(circle_at_30%_28%,rgba(15,118,110,0.2),transparent_70%)] blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-12 top-6 size-56 rounded-full bg-[radial-gradient(circle_at_70%_30%,rgba(253,230,138,0.28),transparent_72%)] blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.055]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)",
-            backgroundSize: "64px 64px",
-            maskImage: "radial-gradient(ellipse 72% 70% at 50% 18%, black 0%, transparent 72%)",
-          }}
-        />
-
-        <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)] lg:items-end">
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-[12px] font-semibold tabular-nums text-[color:var(--haven-faint)]">
-                02
-              </span>
-              <span className="h-3 w-px bg-[color:var(--haven-line-strong)]" aria-hidden />
-              <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--haven-muted)]">
-                Preferences
-              </span>
-            </div>
-            <h1 className="haven-display text-balance text-[clamp(2.45rem,5.8vw,4.35rem)] font-semibold leading-[0.98] tracking-[-0.045em] text-[color:var(--haven-ink)]">
-              Author the room.
-              <span className="block bg-gradient-to-br from-[#1a1816] via-[#1a3c39] to-[#0f766e] bg-clip-text text-transparent">
-                Let Haven carry it.
-              </span>
-            </h1>
-            <p className="max-w-[40rem] text-pretty text-[15px] leading-[1.72] text-[color:var(--haven-muted)] sm:text-[16.5px]">
-              Set how each mood should feel: light, airflow, and temperature moving as one
-              composed scene. Saves go to the local RoomOS API on this machine (and your browser).
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_92%,transparent)] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[color:var(--haven-muted)] shadow-[var(--haven-shadow-card)]">
-                <ShieldCheck className="size-3 text-teal-700" aria-hidden />
-                On device
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_92%,transparent)] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[color:var(--haven-muted)] shadow-[var(--haven-shadow-card)]">
-                <Sparkles className="size-3 text-amber-700" aria-hidden />
-                Five authored envelopes
-              </span>
-            </div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-[1.65rem] border border-white/[0.11] bg-[linear-gradient(152deg,#242220_0%,#141312_46%,#0b0a09_100%)] p-4 text-stone-100 shadow-[var(--haven-shadow-primary)] ring-1 ring-black/10 sm:p-5">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_58%_at_16%_0%,rgba(20,184,166,0.2),transparent_62%),radial-gradient(ellipse_70%_60%_at_100%_15%,rgba(245,158,11,0.13),transparent_60%)]"
-            />
-            <div className="relative">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-teal-50/58">
-                    Active envelope
-                  </p>
-                  <h2 className="haven-display mt-2 text-[1.55rem] font-semibold tracking-[-0.035em] text-stone-50">
-                    {activePreset.name}
-                  </h2>
-                </div>
-                <span className="rounded-full border border-white/[0.1] bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-300">
-                  Local
-                </span>
-              </div>
-
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.055] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  <Lightbulb className="size-3.5 text-amber-200/90" aria-hidden />
-                  <p className="mt-3 font-mono text-[1.15rem] font-semibold tabular-nums text-stone-50">
-                    {presetSummary.averageBrightness}%
-                  </p>
-                  <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-stone-500">
-                    Avg light
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.055] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  <Fan className="size-3.5 text-sky-200/90" aria-hidden />
-                  <p className="mt-3 font-mono text-[1.15rem] font-semibold tabular-nums text-stone-50">
-                    {presetSummary.fanCount}/5
-                  </p>
-                  <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-stone-500">
-                    Air lanes
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.055] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  <Thermometer className="size-3.5 text-teal-200/90" aria-hidden />
-                  <p className="mt-3 font-mono text-[1.15rem] font-semibold tabular-nums text-stone-50">
-                    {presetSummary.minTemp}-{presetSummary.maxTemp}
-                  </p>
-                  <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-stone-500">
-                    Temp span
-                  </p>
-                </div>
-              </div>
-
-              <ul className="mt-5 space-y-2" aria-label={`${activePreset.name} mood summary`}>
-                {PREFERENCE_MOOD_ORDER.map((stateId) => {
-                  const pref = activePreset.preferences[stateId]
-                  const firstLights = connectedDevices.find((d) => d.category === "lights")
-                  const lightsTarget = firstLights ? pref.devices[firstLights.id] : undefined
-                  const hex = lightsTarget?.lightColorHex ?? "#71717a"
-                  const brightness = lightsTarget?.brightness ?? 0
-                  return (
-                    <li
-                      key={stateId}
-                      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.035] px-3 py-2"
-                    >
-                      <span
-                        className="size-3 rounded-full shadow-[0_0_18px_rgba(255,255,255,0.18)] ring-1 ring-white/25"
-                        style={{ backgroundColor: hex }}
-                        aria-hidden
-                      />
-                      <span className="truncate text-[12.5px] font-medium text-stone-200">
-                        {ROOM_STATE_LABEL[stateId]}
-                      </span>
-                      <span className="font-mono text-[11px] font-semibold tabular-nums text-stone-400">
-                        {hasConnectedDevices ? `${brightness}%` : "—"}
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <section
-        aria-labelledby="preset-heading"
-        className="relative overflow-hidden rounded-[1.75rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_74%,transparent)] p-5 shadow-[var(--haven-shadow-card)] ring-1 ring-[color:var(--haven-edge-light)] sm:p-6"
-      >
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.24em] text-[color:var(--haven-faint)]">
-              Step 01
-            </p>
-            <h2
-              id="preset-heading"
-              className="haven-display mt-1.5 text-[1.5rem] font-semibold tracking-[-0.024em] text-[color:var(--haven-ink)]"
-            >
-              Pick a starting posture
-            </h2>
-          </div>
-          <p className="max-w-[18rem] text-right text-[12.5px] leading-relaxed text-[color:var(--haven-muted)]">
-            Either is a save away. Switching never overwrites the other.
-          </p>
-        </div>
-        <div className="mt-6">
-          <PreferencesPresetToggle
-            value={activePresetId}
-            basicPresetId={basicId}
-            customPresetId={customId}
-            onValueChange={(id) => {
-              selectPreset(id)
-              const next = presets.find((p) => p.id === id)
-              if (next) {
-                form.reset(presetToFormValues(next, integrationsDoc))
-              }
-            }}
-          />
-        </div>
-        <p
-          className={cn(roomosUi.prefsCallout, "mt-4 px-4 py-3.5 text-[13px] leading-relaxed")}
-          role="note"
-        >
-          {isBasic
-            ? "Basic Preference is the profile we recommend starting with: calm, familiar, and ready for real homes."
-            : "Custom is for when you know exactly how you like the room. Adjust any mood, then save. Switching presets updates the live engine immediately."}
-        </p>
-      </section>
 
       {!hasConnectedDevices ? (
         <section className="rounded-[1.75rem] border border-dashed border-[color:var(--haven-line-strong)] bg-white/50 p-8 text-center">
@@ -463,19 +232,14 @@ export function PreferencesPageClient() {
         >
           <section aria-labelledby="moods-heading" className="flex flex-col gap-6">
             <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-[10.5px] font-semibold uppercase tracking-[0.24em] text-[color:var(--haven-faint)]">
-                  Step 02
-                </p>
-                <h2
-                  id="moods-heading"
-                  className="haven-display mt-1.5 text-[1.5rem] font-semibold tracking-[-0.024em] text-[color:var(--haven-ink)]"
-                >
-                  Author each mood
-                </h2>
-              </div>
+              <h1
+                id="moods-heading"
+                className="haven-display text-[1.75rem] font-semibold tracking-[-0.024em] text-[color:var(--haven-ink)] sm:text-[2rem]"
+              >
+                Moods / Preferences
+              </h1>
               <p className="max-w-[20rem] text-right text-[12.5px] leading-relaxed text-[color:var(--haven-muted)]">
-                Same controls on every card so you can compare at a glance.
+                Tune light, airflow, and temperature for each mood.
               </p>
             </div>
             <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
