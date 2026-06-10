@@ -7,6 +7,7 @@ import { motion, useReducedMotion } from "framer-motion"
 import Link from "next/link"
 
 import { LiveCameraSelect } from "@/components/roomos/live-camera-select"
+import { LiveSessionBridge } from "@/components/roomos/live-session-bridge"
 import { cn } from "@/lib/utils"
 import { ROOM_STATE_ACCENT } from "@/lib/roomos/state-meta"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
@@ -246,6 +247,8 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
           </div>
         </div>
       </header>
+
+      <LiveSessionBridge />
 
       <main
         className={cn(

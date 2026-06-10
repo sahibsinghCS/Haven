@@ -51,7 +51,16 @@ export function useLiveEngineAutostart(enabled = true) {
   const refreshStatus = useCallback(() => setRefreshKey((k) => k + 1), [])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      setStatus("idle")
+      setMessage(null)
+      setBootPhase("off")
+      setLiveMode("off")
+      setPreviewAvailable(false)
+      setPreviewMeanLuma(null)
+      setPreviewDark(false)
+      return
+    }
     let cancelled = false
     let pollTimer: ReturnType<typeof setInterval> | null = null
 

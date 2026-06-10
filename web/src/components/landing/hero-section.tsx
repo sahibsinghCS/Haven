@@ -43,6 +43,7 @@ import {
 } from "@/components/landing/landing-primitives"
 import { AmbientCursor } from "@/components/landing/ambient-cursor"
 import { Magnetic, SplitText } from "@/components/landing/landing-text"
+import { markLiveStartIntent } from "@/lib/roomos/live-session-start"
 import { cn } from "@/lib/utils"
 
 const moodStrip = [
@@ -225,7 +226,8 @@ export function HeroSection() {
             >
               <Magnetic strength={0.28} radius={140}>
                 <Link
-                  href="/live"
+                  href="/live?start=1"
+                  onClick={() => markLiveStartIntent()}
                   data-cursor="hover"
                   className={cn(
                     landingBtnPrimaryHero,

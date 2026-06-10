@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     roomos_config: str = "configs/inference.yaml"
     roomos_actions_config: str = "configs/actions.yaml"
-    roomos_autostart: bool = True  # auto-start live engine on app startup (override via .env)
+    roomos_autostart: bool = False  # start live engine only via POST /api/live/start (override via .env)
     roomos_log_level: str = "INFO"
 
     # Demo replay: off | replay | demo | demo-replay (see docs/DEMO-REPLAY.md)

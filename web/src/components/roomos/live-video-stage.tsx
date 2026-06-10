@@ -26,6 +26,7 @@ export function LiveVideoStage({
   engineStatus = "running",
   previewDark = false,
   previewFit = "contain",
+  previewResumeLive = false,
   modelKind = "unknown",
   feedbackEvent = null,
   onDismissFeedbackEvent,
@@ -37,6 +38,7 @@ export function LiveVideoStage({
   previewDark?: boolean
   previewMeanLuma?: number | null
   previewFit?: "cover" | "contain"
+  previewResumeLive?: boolean
   modelKind?: ModelKind
   feedbackEvent?: LiveFeedbackEvent | null
   onDismissFeedbackEvent?: () => void
@@ -49,7 +51,9 @@ export function LiveVideoStage({
   const liveConfidence =
     liveDistribution[primaryState] ?? snapshot.primaryConfidence
   const previewEnabled = engineStatus === "running" || snapshot.dataSource === "roomos-ml"
-  const preview = useInferenceCameraPreview(previewEnabled)
+  const preview = useInferenceCameraPreview(previewEnabled, {
+    resumeLive: previewResumeLive,
+  })
   const feedLive = preview.status === "live"
   const showBootstrapBanner = modelKind === "bootstrap"
   const showDarkWarning = previewDark && feedLive

@@ -64,8 +64,10 @@ export async function updateSession(request: NextRequest) {
   if (isAuthPage(pathname) && !isAuthCallback(pathname) && user) {
     const next = request.nextUrl.searchParams.get("next") || "/live"
     const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = next.startsWith("/") ? next : "/live"
-    redirectUrl.search = ""
+    const safeNext = next.startsWith("/") ? next : "/live"
+    const q = safeNext.indexOf("?")
+    redirectUrl.pathname = q >= 0 ? safeNext.slice(0, q) : safeNext
+    redirectUrl.search = q >= 0 ? safeNext.slice(q) : ""
     return NextResponse.redirect(redirectUrl)
   }
 

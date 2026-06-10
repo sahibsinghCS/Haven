@@ -3,27 +3,59 @@
 import { useEffect, useMemo } from "react"
 import { Camera, Loader2, Radio } from "lucide-react"
 
+import { LiveCameraPowerButton } from "@/components/roomos/live-camera-power"
 import { LiveStageSkeleton } from "@/components/roomos/roomos-loading-states"
 import { LiveVideoStage } from "@/components/roomos/live-video-stage"
-import { useLiveEngineAutostart } from "@/hooks/use-live-engine"
-import { useLiveInference, type LiveInferenceStatus } from "@/hooks/use-live-inference"
+import type { LiveInferenceStatus } from "@/hooks/use-live-inference"
 import type { BootPhase, ModelKind } from "@/lib/roomos/api-client"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
+import {
+  consumeLiveStartIntent,
+  hasLiveStartQuery,
+} from "@/lib/roomos/live-session-start"
+import { useLiveSessionStore } from "@/stores/live-session-store"
 import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 import { cn } from "@/lib/utils"
 
 /** Live view: FastAPI snapshots + backend camera preview only. */
 export function LivePageClient() {
   const setPrimaryState = useRoomOsAmbientStore((s) => s.setPrimaryState)
-  const engine = useLiveEngineAutostart(true)
-  const live = useLiveInference()
+  const cameraEnabled = useLiveSessionStore((s) => s.cameraEnabled)
+  const snapshot = useLiveSessionStore((s) => s.snapshot)
+  const liveStatus = useLiveSessionStore((s) => s.liveStatus)
+  const liveMessage = useLiveSessionStore((s) => s.liveMessage)
+  const lastFeedbackEvent = useLiveSessionStore((s) => s.lastFeedbackEvent)
+  const lastPreferencesEvent = useLiveSessionStore((s) => s.lastPreferencesEvent)
+  const dismissFeedbackEvent = useLiveSessionStore((s) => s.dismissFeedbackEvent)
+  const dismissPreferencesEvent = useLiveSessionStore((s) => s.dismissPreferencesEvent)
+  const engineStatus = useLiveSessionStore((s) => s.engineStatus)
+  const engineMessage = useLiveSessionStore((s) => s.engineMessage)
+  const inferenceSource = useLiveSessionStore((s) => s.inferenceSource)
+  const previewMeanLuma = useLiveSessionStore((s) => s.previewMeanLuma)
+  const previewDark = useLiveSessionStore((s) => s.previewDark)
+  const previewFit = useLiveSessionStore((s) => s.previewFit)
+  const previewStreamLive = useLiveSessionStore((s) => s.previewStreamLive)
+  const bootPhase = useLiveSessionStore((s) => s.bootPhase)
+  const modelKind = useLiveSessionStore((s) => s.modelKind)
+  const compatReport = useLiveSessionStore((s) => s.compatReport)
+  const engineWasRunning = useLiveSessionStore((s) => s.engineWasRunning)
+  const setCameraEnabled = useLiveSessionStore((s) => s.setCameraEnabled)
+
+  useEffect(() => {
+    const shouldStart =
+      hasLiveStartQuery(window.location.search) || consumeLiveStartIntent()
+    if (shouldStart) {
+      setCameraEnabled(true)
+      if (hasLiveStartQuery(window.location.search)) {
+        window.history.replaceState({}, "", "/live")
+      }
+    }
+  }, [setCameraEnabled])
 
   useEffect(() => {
     document.documentElement.classList.add("live-immersive")
     return () => document.documentElement.classList.remove("live-immersive")
   }, [])
-
-  const snapshot = live.snapshot
 
   useEffect(() => {
     if (!snapshot) return
@@ -34,26 +66,65 @@ export function LivePageClient() {
     return () => setPrimaryState(null)
   }, [setPrimaryState])
 
+  const coldStart = !engineWasRunning && !snapshot
+
   const booting = useMemo(() => {
-    if (snapshot) return false
-    if (engine.status === "error") return false
-    if (live.status === "error") return false
+    if (!cameraEnabled) return false
+    if (engineStatus === "error" || liveStatus === "error") return false
+    if (snapshot && bootPhase === "streaming") return false
+    // After power-on restart: engine warms up before the first snapshot arrives.
+    if (!snapshot) {
+      return (
+        engineStatus === "starting" ||
+        engineStatus === "running" ||
+        liveStatus === "connecting"
+      )
+    }
+    if (!coldStart && engineStatus === "running" && bootPhase === "streaming") {
+      return false
+    }
     return (
-      engine.status === "starting" ||
-      live.status === "connecting" ||
-      (engine.status === "running" && live.status !== "no-data")
+      engineStatus === "starting" ||
+      (coldStart && liveStatus === "connecting") ||
+      (coldStart && engineStatus === "running" && liveStatus !== "no-data")
     )
-  }, [snapshot, engine.status, live.status])
+  }, [cameraEnabled, snapshot, engineStatus, liveStatus, coldStart, bootPhase])
+
+  if (!cameraEnabled) {
+    return (
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <LiveStageSkeleton />
+        <div className="absolute left-3 top-3 z-30 sm:left-4 sm:top-4">
+          <LiveCameraPowerButton />
+        </div>
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-6">
+          <div
+            className={cn(
+              roomosUi.liveOverlayGlass,
+              "max-w-md border-white/10 px-6 py-8 text-center shadow-2xl",
+            )}
+            role="status"
+          >
+            <p className="text-base font-medium text-zinc-50">Live view is off</p>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              Press the power button or choose Get Started from the home page to connect your
+              camera and start inference.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (booting) {
     return (
       <LiveConnectingPanel
-        engineStatus={engine.status}
-        liveStatus={live.status}
-        inferenceSource={engine.inferenceSource}
-        bootPhase={engine.bootPhase}
-        modelKind={engine.modelKind}
-        previewMeanLuma={engine.previewMeanLuma}
+        engineStatus={engineStatus}
+        liveStatus={liveStatus}
+        inferenceSource={inferenceSource}
+        bootPhase={bootPhase}
+        modelKind={modelKind}
+        previewMeanLuma={previewMeanLuma}
         snapshotPresent={snapshot !== null}
       />
     )
@@ -62,28 +133,32 @@ export function LivePageClient() {
   if (!snapshot) {
     return (
       <UnavailablePanel
-        engineMessage={engine.message}
-        liveMessage={live.message}
-        engineStatus={engine.status}
-        liveStatus={live.status}
-        compatReport={engine.compatReport}
+        engineMessage={engineMessage}
+        liveMessage={liveMessage}
+        engineStatus={engineStatus}
+        liveStatus={liveStatus}
+        compatReport={compatReport}
       />
     )
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="absolute left-3 top-3 z-30 sm:left-4 sm:top-4">
+        <LiveCameraPowerButton />
+      </div>
       <LiveVideoStage
         snapshot={snapshot}
-        engineStatus={engine.status}
-        previewDark={engine.previewDark}
-        previewMeanLuma={engine.previewMeanLuma}
-        previewFit={engine.previewFit}
-        modelKind={engine.modelKind}
-        feedbackEvent={live.lastFeedbackEvent}
-        onDismissFeedbackEvent={live.dismissFeedbackEvent}
-        preferencesEvent={live.lastPreferencesEvent}
-        onDismissPreferencesEvent={live.dismissPreferencesEvent}
+        engineStatus={engineStatus}
+        previewDark={previewDark}
+        previewMeanLuma={previewMeanLuma}
+        previewFit={previewFit}
+        previewResumeLive={previewStreamLive || bootPhase === "streaming"}
+        modelKind={modelKind}
+        feedbackEvent={lastFeedbackEvent}
+        onDismissFeedbackEvent={dismissFeedbackEvent}
+        preferencesEvent={lastPreferencesEvent}
+        onDismissPreferencesEvent={dismissPreferencesEvent}
       />
     </div>
   )
@@ -106,10 +181,6 @@ function LiveConnectingPanel({
   previewMeanLuma: number | null
   snapshotPresent: boolean
 }) {
-  // Prefer the backend's boot_phase when available — it knows the difference
-  // between "OpenCV is still opening the device" and "camera up, waiting for
-  // the first 2.5s burst to complete". Falls back to engine/live status when
-  // the backend hasn't started reporting yet.
   const step =
     bootPhase === "opening_camera"
       ? "Opening camera…"
@@ -133,6 +204,9 @@ function LiveConnectingPanel({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <LiveStageSkeleton />
+      <div className="absolute left-3 top-3 z-30 sm:left-4 sm:top-4">
+        <LiveCameraPowerButton />
+      </div>
       <div className="absolute inset-0 z-20 flex items-center justify-center p-6">
         <div
           className={cn(
@@ -226,7 +300,10 @@ function UnavailablePanel({
       : (liveMessage ?? engineMessage ?? "Run npm run demo from the repo root.")
 
   return (
-    <div className="flex min-h-[50svh] flex-1 items-center justify-center px-4 py-16 2xl:py-24">
+    <div className="relative flex min-h-[50svh] flex-1 items-center justify-center px-4 py-16 2xl:py-24">
+      <div className="absolute left-3 top-3 z-30 sm:left-4 sm:top-4">
+        <LiveCameraPowerButton />
+      </div>
       <div
         className={cn(
           roomosUi.liveOverlayGlass,

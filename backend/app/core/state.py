@@ -21,7 +21,7 @@ from roomos.inference.live_pipeline import LiveInferenceEngine, LiveSnapshot, bu
 from roomos.model.compat import TrainServeCompatibilityError, gate_live_engine_start
 from roomos.model.registry import MODEL_ARTIFACT_FILES
 from roomos.utils.logging import get_logger
-from roomos.video.input import list_available_cameras
+from roomos.video.input import list_available_cameras, set_discovery_persist_hook
 
 from .config import settings
 from .feedback_events import FeedbackEventHub
@@ -183,6 +183,17 @@ class AppState:
         saved_source, saved_backend = _load_camera_prefs()
         self.video_source_override: Optional[VideoSourceLike] = saved_source
         self.video_backend_override: Optional[str] = saved_backend
+        # Persist a DroidCam URL auto-discovered after the phone's IP changed, so
+        # subsequent restarts connect instantly instead of re-scanning the LAN.
+        set_discovery_persist_hook(self._on_droidcam_rediscovered)
+
+    def _on_droidcam_rediscovered(self, url: str) -> None:
+        self.video_source_override = url
+        try:
+            _save_camera_prefs(url, self.video_backend_override or "auto")
+            log.info("Saved rediscovered DroidCam URL to camera selection: %s", url)
+        except OSError as e:
+            log.debug("Could not persist rediscovered camera URL: %s", e)
 
     @property
     def is_running(self) -> bool:
@@ -214,6 +225,20 @@ class AppState:
 
     def list_cameras(self, *, max_index: int = 6) -> dict[str, Any]:
         cameras = list_available_cameras(max_index=max_index)
+        # Always offer DroidCam auto-detect at the top: it scans localhost + the
+        # local Wi-Fi for the phone's MJPEG feed, so a changing DHCP IP just works.
+        cameras.insert(
+            0,
+            {
+                "index": -1,
+                "source": "droidcam:auto",
+                "backend": "auto",
+                "label": "DroidCam (auto-detect)",
+                "available": True,
+                "mean_luma": None,
+                "frame_shape": None,
+            },
+        )
         cfg = load_config(settings.roomos_config)
         cfg = self._apply_video_overrides(cfg)
         current_source, current_backend = self._effective_video_config(cfg)

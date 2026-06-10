@@ -323,7 +323,7 @@ export function validateThermostatConnect(thermo: ThermostatSettings): string | 
 export function resolveSmartPlugBrand(plug: SmartPlugSettings): SmartPlugSettings["brand"] {
   const brand = plug.brand
   // Honor an explicit brand pick (Shelly, Meross, etc.) even if Tapo fields are still filled.
-  if (brand && brand !== "other_plug" && brand !== "none") {
+  if (brand && brand !== "other_plug") {
     return brand
   }
   // Legacy / ambiguous rows: infer Tapo when credentials are present.

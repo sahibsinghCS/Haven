@@ -11,6 +11,7 @@ import {
 } from "@/components/landing/landing-primitives"
 import { Magnetic } from "@/components/landing/landing-text"
 import { LANDING_APP_ENTRY_KEY, getUserHasOpenedApp } from "@/lib/roomos/landing-app-entry"
+import { markLiveStartIntent } from "@/lib/roomos/live-session-start"
 import { cn } from "@/lib/utils"
 
 const navLinkClass = cn(
@@ -125,7 +126,8 @@ export function LandingNav() {
               ) : null}
               <Magnetic strength={0.24} radius={90}>
                 <Link
-                  href="/live"
+                  href="/live?start=1"
+                  onClick={() => markLiveStartIntent()}
                   data-cursor="hover"
                   className={cn(
                     landingBtnPrimaryNav,

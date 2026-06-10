@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 
 import { livePreviewMjpegUrl } from "@/lib/roomos/api-client"
+import { useLiveSessionStore } from "@/stores/live-session-store"
 import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 
 export type InferencePreviewStatus = "idle" | "waiting" | "live" | "error"
@@ -11,10 +12,17 @@ export type InferencePreviewStatus = "idle" | "waiting" | "live" | "error"
  * Displays the backend inference camera via MJPEG (same OpenCV feed as ML).
  * Not the browser getUserMedia path.
  */
-export function useInferenceCameraPreview(enabled: boolean) {
-  const [status, setStatus] = useState<InferencePreviewStatus>("idle")
+export function useInferenceCameraPreview(
+  enabled: boolean,
+  options?: { resumeLive?: boolean },
+) {
+  const resumeLive = Boolean(options?.resumeLive)
+  const [status, setStatus] = useState<InferencePreviewStatus>(
+    enabled && resumeLive ? "live" : "idle",
+  )
   const [message, setMessage] = useState<string | null>(null)
   const cameraRefreshNonce = useRoomOsAmbientStore((s) => s.cameraRefreshNonce)
+  const setPreviewStreamLive = useLiveSessionStore((s) => s.setPreviewStreamLive)
 
   const streamSrc = enabled
     ? `${livePreviewMjpegUrl()}?v=${cameraRefreshNonce}`
@@ -26,6 +34,11 @@ export function useInferenceCameraPreview(enabled: boolean) {
       setMessage(null)
       return
     }
+    if (resumeLive) {
+      setStatus("live")
+      setMessage(null)
+      return
+    }
     setStatus("waiting")
     setMessage("Connecting to inference camera…")
     const t = window.setTimeout(() => {
@@ -33,12 +46,13 @@ export function useInferenceCameraPreview(enabled: boolean) {
       setMessage(null)
     }, 1200)
     return () => window.clearTimeout(t)
-  }, [enabled, streamSrc])
+  }, [enabled, resumeLive, streamSrc])
 
   const onStreamLoad = useCallback(() => {
     setStatus("live")
     setMessage(null)
-  }, [])
+    setPreviewStreamLive(true)
+  }, [setPreviewStreamLive])
 
   const onStreamError = useCallback(() => {
     setStatus("error")

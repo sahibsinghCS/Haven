@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from roomos.preferences.apply import PreferenceApplyResult, PreferenceChangeSpec, apply_preference_changes
-from roomos.preferences.document import PreferenceValidationError, resolve_active_preset_id
-from roomos.preferences.store import read_preferences_document, save_preferences_document
+from roomos.preferences.document import PreferenceValidationError, ROOM_STATE_ORDER, resolve_active_preset_id
+from roomos.preferences.store import save_preferences_document
 from roomos.utils.logging import get_logger
 
 from .persistence import load_json_document, save_json_document
@@ -38,7 +37,64 @@ def load_preferences() -> dict[str, Any]:
     )
 
 
-def save_preferences(doc: dict[str, Any]) -> dict[str, Any]:
+def _active_preset_name(doc: dict[str, Any], active_id: str) -> str:
+    preset = next(
+        (p for p in doc.get("presets", []) if isinstance(p, dict) and str(p.get("id")) == active_id),
+        None,
+    )
+    return str(preset.get("name", active_id)) if isinstance(preset, dict) else active_id
+
+
+def sync_preferences_to_devices(*, room_state: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Push the saved preset for the current mood to connected devices immediately."""
+    from roomos.devices.scene_apply import (
+        apply_preference_scene,
+        has_controllable_devices,
+        preference_sync_dry_run,
+        resolve_apply_scene_for_mood,
+    )
+    from roomos.integrations.device_bridge import merge_runtime_integrations
+
+    if not has_controllable_devices():
+        return None
+
+    mood = str(room_state or "").strip()
+    if not mood:
+        snap = state.hub.latest
+        if snap is not None:
+            mood = str(snap.primary_state or "").strip()
+    if mood not in ROOM_STATE_ORDER:
+        return None
+
+    actions_dry_run = True
+    integrations: dict[str, Any] = {}
+    engine = state.engine
+    actions = getattr(engine, "_actions", None) if engine is not None else None
+    if actions is not None:
+        actions_dry_run = bool(actions.dry_run)
+        integrations = dict(actions.integrations or {})
+    if not integrations:
+        integrations = merge_runtime_integrations({})
+
+    pref_dry_run = preference_sync_dry_run(actions_dry_run)
+    scene = resolve_apply_scene_for_mood(mood)
+    record = apply_preference_scene(
+        scene,
+        dry_run=pref_dry_run,
+        integrations=integrations,
+        room_state=mood,
+    )
+    if engine is not None:
+        engine._preferences_cache = ("", {})
+    log.info(
+        "[preference_sync] applied saved preferences for mood=%s dry_run=%s",
+        mood,
+        pref_dry_run,
+    )
+    return record
+
+
+def save_preferences(doc: dict[str, Any], *, source: str = "web") -> dict[str, Any]:
     def _normalize(raw: dict[str, Any]) -> dict[str, Any]:
         return normalize_preference_document(raw)
 
@@ -56,6 +112,24 @@ def save_preferences(doc: dict[str, Any]) -> dict[str, Any]:
             save_preferences_document(preferences_store_path(), saved)
     except Exception:
         pass
+
+    active_id = resolve_active_preset_id(saved)
+    event = PreferencesEvent(
+        source=source,
+        updated_at=str(saved.get("updatedAt", "")),
+        active_preset_id=active_id,
+        preset_name=_active_preset_name(saved, active_id),
+        target_states=[],
+        changes=["preferences document updated"],
+        notes="",
+    )
+    state.preferences_hub.publish_from_thread(event)
+
+    try:
+        sync_preferences_to_devices()
+    except Exception as e:
+        log.warning("Preference device sync after save failed: %s", e)
+
     return saved
 
 
@@ -75,8 +149,9 @@ def apply_and_save_preferences(
     preset_name = str(preset.get("name", active_id)) if isinstance(preset, dict) else active_id
 
     result = apply_preference_changes(doc, spec, fallback_state=fallback_state)
-    saved = save_preferences(result.doc)
+    saved = save_preferences(result.doc, source=source)
 
+    # save_preferences publishes a generic event; replace with the richer Telegram payload.
     event = PreferencesEvent(
         source=source,
         updated_at=str(saved.get("updatedAt", "")),

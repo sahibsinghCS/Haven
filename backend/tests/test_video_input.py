@@ -30,8 +30,8 @@ def test_mjpeg_connect_error_message() -> None:
     assert "127.0.0.1:4747" in str(err)
 
 
-def test_should_fallback_only_for_droidcam_auto() -> None:
-    assert _should_fallback_to_webcam("droidcam:auto") is True
+def test_should_not_fallback_to_webcam_for_remote_sources() -> None:
+    assert _should_fallback_to_webcam("droidcam:auto") is False
     assert _should_fallback_to_webcam("http://192.168.1.18:4747/video") is False
     assert _should_fallback_to_webcam(0) is False
     assert _should_fallback_to_webcam("1") is False

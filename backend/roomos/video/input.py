@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -191,30 +192,205 @@ def _mjpeg_not_stream_error(url: str, content_type: str) -> RuntimeError:
 
 
 def _should_fallback_to_webcam(source: VideoSourceLike) -> bool:
-    """Only auto-fallback for droidcam:auto — not explicit Wi-Fi URLs saved in Settings."""
-    if isinstance(source, int):
-        return False
-    s = str(source).strip()
-    if s.isdigit():
-        return False
-    if s == "droidcam:auto":
-        return True
-    if "://" in s:
-        return False
+    """Never silently fall back to a local webcam for network/DroidCam sources.
+
+    Falling back to a dark integrated webcam looks like a broken flash-then-black
+    feed. Surface the DroidCam error instead so the user can free the stream.
+    """
     return False
 
 
-def _probe_droidcam() -> Optional[str]:
-    """Return the first DroidCam URL OpenCV can actually decode, or None."""
+def _local_ipv4s() -> List[str]:
+    """Best-effort list of this machine's IPv4 addresses across all NICs."""
+    import socket
+
+    ips: set[str] = set()
+    try:
+        host = socket.gethostname()
+        for info in socket.getaddrinfo(host, None, socket.AF_INET):
+            ips.add(info[4][0])
+    except OSError:
+        pass
+    # The hostname trick can miss the active interface; ask the OS which local
+    # address it would use to reach a few common gateways/the internet.
+    for dest in ("192.168.1.1", "8.8.8.8", "1.1.1.1"):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect((dest, 80))
+            ips.add(s.getsockname()[0])
+        except OSError:
+            pass
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+    return [ip for ip in ips if ip and not ip.startswith("127.")]
+
+
+def _lan_subnets(preferred_prefix: Optional[str] = None) -> List[str]:
+    """Unique ``a.b.c.`` /24 prefixes for every local IPv4 interface.
+
+    If ``preferred_prefix`` is given (e.g. the subnet of a previously-working
+    DroidCam URL) it is scanned first so the common "phone got a new DHCP lease
+    on the same Wi-Fi" case resolves almost instantly.
+    """
+    prefixes: List[str] = []
+    seen: set[str] = set()
+    for ip in _local_ipv4s():
+        parts = ip.split(".")
+        if len(parts) != 4:
+            continue
+        prefix = ".".join(parts[:3]) + "."
+        if prefix not in seen:
+            seen.add(prefix)
+            prefixes.append(prefix)
+    if preferred_prefix and preferred_prefix in prefixes:
+        prefixes.remove(preferred_prefix)
+        prefixes.insert(0, preferred_prefix)
+    elif preferred_prefix and preferred_prefix not in seen:
+        prefixes.insert(0, preferred_prefix)
+    return prefixes
+
+
+def _looks_like_droidcam_http(host: str, port: int, timeout: float = 1.2) -> bool:
+    """Quick check that ``host:port`` serves a DroidCam-style MJPEG stream."""
+    import urllib.request
+
+    url = f"http://{host}:{port}/video"
+    try:
+        resp = urllib.request.urlopen(url, timeout=timeout)
+    except Exception:
+        return False
+    try:
+        ct = str(resp.headers.get("Content-Type") or "").lower()
+        if "multipart" in ct or "image" in ct:
+            return True
+        if "text/html" in ct:
+            return False
+        peek = resp.read(3)
+        return peek[:2] == b"\xff\xd8"
+    except Exception:
+        return False
+    finally:
+        try:
+            resp.close()
+        except Exception:
+            pass
+
+
+def discover_droidcam_url(
+    *,
+    preferred_port: Optional[int] = None,
+    preferred_prefix: Optional[str] = None,
+    connect_timeout: float = 0.3,
+    max_workers: int = 200,
+) -> Optional[str]:
+    """Scan localhost + the local network(s) for a live DroidCam MJPEG feed.
+
+    Returns the first ``http://host:port/video`` that actually serves frames, or
+    ``None``. Used by ``droidcam:auto`` and to auto-heal a saved DroidCam URL
+    after the phone's IP changes.
+    """
+    import concurrent.futures
+
+    ports: List[int] = []
+    for p in (preferred_port, *_DROIDCAM_DEFAULT_PORTS):
+        if p and int(p) not in ports:
+            ports.append(int(p))
+
+    # 1) Localhost first (USB / DroidCam client) — fast and avoids a LAN scan.
+    # Do not open /video here: DroidCam allows only one HTTP client and a probe
+    # would race with the real capture open immediately after discovery.
     for host in _DROIDCAM_DEFAULT_HOSTS:
-        for port in _DROIDCAM_DEFAULT_PORTS:
-            if not _droidcam_port_open(host, port):
-                continue
-            url = f"http://{host}:{port}/video"
-            if _opencv_can_read_url(url):
-                log.info("droidcam:auto verified stream at %s", url)
+        for port in ports:
+            if _droidcam_port_open(host, port):
+                url = f"http://{host}:{port}/video"
+                log.info("DroidCam found at %s (localhost, port %d open)", url, port)
                 return url
+
+    # 2) Sweep each local /24 for open DroidCam ports, then verify the stream.
+    subnets = _lan_subnets(preferred_prefix=preferred_prefix)
+    if not subnets:
+        return None
+
+    tasks: List[Tuple[str, int]] = []
+    for prefix in subnets:
+        for octet in range(1, 255):
+            host = f"{prefix}{octet}"
+            for port in ports:
+                tasks.append((host, port))
+
+    def _probe(hp: Tuple[str, int]) -> Optional[Tuple[str, int]]:
+        host, port = hp
+        return hp if _droidcam_port_open(host, port, timeout_sec=connect_timeout) else None
+
+    open_hosts: List[Tuple[str, int]] = []
+    log.info(
+        "Scanning %d host(s) across %d subnet(s) for DroidCam on ports %s…",
+        len(tasks),
+        len(subnets),
+        ports,
+    )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        for res in pool.map(_probe, tasks):
+            if res is not None:
+                open_hosts.append(res)
+
+    for host, port in open_hosts:
+        url = f"http://{host}:{port}/video"
+        log.info("DroidCam discovered at %s (LAN scan, port %d open)", url, port)
+        return url
     return None
+
+
+def _probe_droidcam() -> Optional[str]:
+    """Return a working DroidCam URL (localhost then LAN), or None."""
+    return discover_droidcam_url()
+
+
+def _is_droidcam_url(value: str) -> bool:
+    """True for ``http(s)://host:4747/video`` style DroidCam URLs."""
+    import urllib.parse
+
+    try:
+        parsed = urllib.parse.urlparse(value)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if parsed.port in _DROIDCAM_DEFAULT_PORTS:
+        return True
+    return parsed.path.rstrip("/").endswith("/video")
+
+
+def _url_host_port(value: str) -> Tuple[Optional[str], Optional[int]]:
+    import urllib.parse
+
+    try:
+        parsed = urllib.parse.urlparse(value)
+        return parsed.hostname, parsed.port
+    except ValueError:
+        return None, None
+
+
+# Optional persistence hook so a successful rediscovery can be saved by the app
+# layer (set via set_discovery_persist_hook) without coupling video<-app.
+_discovery_persist_hook: Optional[Callable[[str], None]] = None
+
+
+def set_discovery_persist_hook(fn: Optional[Callable[[str], None]]) -> None:
+    global _discovery_persist_hook
+    _discovery_persist_hook = fn
+
+
+def _persist_discovered(url: str) -> None:
+    if _discovery_persist_hook is None:
+        return
+    try:
+        _discovery_persist_hook(url)
+    except Exception as e:  # noqa: BLE001
+        log.debug("discovery persist hook failed: %s", e)
 
 
 # --- backend resolution ----------------------------------------------------
@@ -435,40 +611,80 @@ class _MjpegHttpCapture:
 
         soi = b"\xff\xd8"
         eoi = b"\xff\xd9"
-        while len(self._buffer) < 2_000_000:
-            start = self._buffer.find(soi)
-            if start >= 0:
-                end = self._buffer.find(eoi, start + 2)
-                if end >= 0:
-                    jpg = self._buffer[start : end + 2]
-                    self._buffer = self._buffer[end + 2 :]
+        while True:
+            # Always jump to the *most recent* complete JPEG already buffered and
+            # drop everything before it. If the consumer falls behind, frames pile
+            # up in the socket/buffer; serving the oldest one (the previous
+            # behaviour) made latency grow without bound. We decode only the
+            # freshest frame and keep any trailing partial frame for next time.
+            last_eoi = self._buffer.rfind(eoi)
+            if last_eoi >= 0:
+                last_soi = self._buffer.rfind(soi, 0, last_eoi)
+                if last_soi >= 0:
+                    jpg = self._buffer[last_soi : last_eoi + 2]
+                    self._buffer = self._buffer[last_eoi + 2 :]
                     img = cv2.imdecode(
                         np.frombuffer(jpg, dtype=np.uint8),
                         cv2.IMREAD_COLOR,
                     )
                     if img is not None and img.size > 0:
                         return img
+                    # Decode failed — keep pulling more bytes.
+            if len(self._buffer) > 4_000_000:
+                # Corrupt/never-terminated stream: avoid unbounded growth.
+                self._buffer = b""
+                return None
             chunk = self._resp.read(8192)
             if not chunk:
                 return None
             self._buffer += chunk
-        return None
 
 
-def _open_mjpeg_http(url: str) -> _MjpegHttpCapture:
-    """Fallback when OpenCV cannot open DroidCam HTTP URLs on Windows."""
-    cap = _MjpegHttpCapture(url)
-    ok, frame = cap.read()
-    if not ok or frame is None:
-        cap.release()
-        raise RuntimeError(
-            f"Could not read MJPEG frames from {url}. "
-            "If DroidCam Client is open, the HTTP feed is often busy — quit the client "
-            "(File -> Exit) and retry, or use the virtual webcam: npm run probe:cameras "
-            "(on Windows try source=1 backend=msmf for 'DroidCam Video')."
-        )
-    log.info("Opened video source %r via mjpeg-http (OpenCV fallback)", url)
-    return cap
+def _open_mjpeg_http(
+    url: str,
+    *,
+    max_attempts: int = 4,
+    retry_delay_sec: float = 0.75,
+) -> _MjpegHttpCapture:
+    """Open DroidCam-style MJPEG over HTTP (stdlib). Retries when the feed is busy."""
+    last_exc: Optional[BaseException] = None
+    for attempt in range(1, max_attempts + 1):
+        cap: Optional[_MjpegHttpCapture] = None
+        try:
+            cap = _MjpegHttpCapture(url)
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                cap.release()
+                raise RuntimeError(
+                    f"Could not read MJPEG frames from {url}. "
+                    "If DroidCam Client is open, the HTTP feed is often busy — quit the client "
+                    "(File -> Exit) and retry, or use the virtual webcam: npm run probe:cameras "
+                    "(on Windows try source=1 backend=msmf for 'DroidCam Video')."
+                )
+            log.info("Opened video source %r via mjpeg-http", url)
+            return cap
+        except RuntimeError as exc:
+            last_exc = exc
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+            msg = str(exc).lower()
+            if "busy" in msg and attempt < max_attempts:
+                log.warning(
+                    "DroidCam busy at %s (attempt %d/%d) — retrying in %.1fs…",
+                    url,
+                    attempt,
+                    max_attempts,
+                    retry_delay_sec,
+                )
+                time.sleep(retry_delay_sec)
+                continue
+            raise
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"Could not open MJPEG stream at {url}")
 
 
 def _open_video_capture(
@@ -479,8 +695,12 @@ def _open_video_capture(
     capture_height: Optional[int] = None,
     capture_fps: Optional[float] = None,
 ):
-    """Open OpenCV capture, with HTTP MJPEG fallback for DroidCam Wi-Fi URLs."""
+    """Open OpenCV capture, with HTTP MJPEG reader for DroidCam Wi-Fi URLs."""
     if isinstance(source, str) and "://" in source:
+        # OpenCV often fails on DroidCam HTTP and a failed open can mark the feed
+        # busy before our MJPEG reader runs — use the stdlib reader directly.
+        if _is_droidcam_url(source):
+            return _open_mjpeg_http(source), "mjpeg-http"
         try:
             return _open_capture(
                 source,
@@ -516,16 +736,33 @@ def _coerce_source(source: VideoSourceLike) -> Union[int, str]:
         probed = _probe_droidcam()
         if probed is None:
             raise RuntimeError(
-                "No DroidCam HTTP stream found on 127.0.0.1:4747 or :4848. "
-                "Start the DroidCam Windows client, connect your phone, and confirm "
-                "you see live video there. Then set video.source to the exact URL "
-                "from DroidCam (e.g. http://127.0.0.1:4747/video over USB, or "
-                "http://<phone-ip>:4747/video on Wi-Fi). "
+                "No DroidCam HTTP stream found on localhost or the local network. "
+                "Start the DroidCam app on your phone (and the PC client for USB), "
+                "connect to the same Wi-Fi as this PC, and confirm you see live "
+                "video in DroidCam. Then reload /live. "
                 "Or use DroidCam's virtual webcam and set video.source to that "
                 "index (run: npm run probe:cameras)."
             )
         log.info("droidcam:auto -> %s", probed)
         return probed
+    if _is_droidcam_url(s):
+        # The phone's DHCP IP can change between sessions. If the saved URL is no
+        # longer reachable, scan the LAN and auto-heal to wherever DroidCam is now
+        # (so a stale http://<old-ip>:4747/video keeps working on any IP).
+        host, port = _url_host_port(s)
+        port = port or _DROIDCAM_DEFAULT_PORTS[0]
+        if host and not _droidcam_port_open(host, int(port), timeout_sec=0.5):
+            log.warning("DroidCam not reachable at %s — scanning the local network…", s)
+            prefix = ".".join(host.split(".")[:3]) + "." if host.count(".") == 3 else None
+            found = discover_droidcam_url(preferred_port=int(port), preferred_prefix=prefix)
+            if found:
+                log.info("DroidCam rediscovered at %s (was %s)", found, s)
+                _persist_discovered(found)
+                return found
+            log.warning(
+                "DroidCam LAN scan found nothing; trying the saved URL %s anyway.", s
+            )
+        return s
     return s
 
 
@@ -818,6 +1055,17 @@ class FrameSource:
         self._frame_index = 0
         self._active_backend: Optional[str] = None
 
+        # Low-latency grabber: for network streams (DroidCam/HTTP/RTSP) a
+        # background thread continuously drains the capture so we always process
+        # the freshest frame instead of a growing backlog. Set up in open().
+        self._grab_thread: Optional[threading.Thread] = None
+        self._grab_stop: Optional[threading.Event] = None
+        self._grab_cond: Optional[threading.Condition] = None
+        self._latest_grab: Optional[np.ndarray] = None
+        self._grab_frame_id: int = 0
+        self._grab_consumed_id: int = 0
+        self._grab_dead: bool = False
+
     @property
     def last_frame_shape(self) -> Optional[tuple[int, ...]]:
         return self._last_frame_shape
@@ -887,12 +1135,102 @@ class FrameSource:
         self._next_preview_emit_at = 0.0
         self._frame_index = 0
 
-    def close(self) -> None:
-        if self._cap is not None:
+        # Only network streams suffer from buffer-accumulation latency. Local
+        # webcams use CAP_PROP_BUFFERSIZE=1 and are read in lock-step, so leave
+        # them on the simple sequential path.
+        if isinstance(self.coerced_source, str) and "://" in self.coerced_source:
+            self._start_grabber()
+
+    def _start_grabber(self) -> None:
+        """Continuously read the capture in the background, keeping only the
+        latest frame. Drains the network buffer so latency stays bounded even if
+        the ML pipeline / preview encoding can't keep up with the source FPS."""
+        self._grab_stop = threading.Event()
+        self._grab_cond = threading.Condition()
+        self._latest_grab = None
+        self._grab_frame_id = 0
+        self._grab_consumed_id = 0
+        self._grab_dead = False
+        self._grab_thread = threading.Thread(
+            target=self._grab_loop,
+            args=(self._cap,),
+            name="roomos-grab",
+            daemon=True,
+        )
+        self._grab_thread.start()
+
+    def _grab_loop(self, cap) -> None:
+        consecutive_failures = 0
+        assert self._grab_cond is not None and self._grab_stop is not None
+        while not self._grab_stop.is_set():
             try:
-                self._cap.release()
-            except Exception:
-                pass
+                ok, frame = cap.read()
+            except Exception as e:  # noqa: BLE001
+                log.debug("grabber read raised: %s", e)
+                ok, frame = False, None
+            if not ok or frame is None:
+                consecutive_failures += 1
+                # Surface a sustained outage so the iterator's read_timeout fires.
+                if consecutive_failures * 0.02 > self.read_timeout_sec:
+                    with self._grab_cond:
+                        self._grab_dead = True
+                        self._grab_cond.notify_all()
+                    return
+                if self._grab_stop.wait(0.02):
+                    return
+                continue
+            consecutive_failures = 0
+            with self._grab_cond:
+                self._latest_grab = frame
+                self._grab_frame_id += 1
+                self._grab_cond.notify_all()
+
+    def _read_source_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
+        """Return ``(ok, frame)`` from the grabber (network) or directly (file/webcam)."""
+        if self._grab_cond is None:
+            return self._cap.read()
+        deadline = time.monotonic() + self.read_timeout_sec
+        with self._grab_cond:
+            while True:
+                if (
+                    self._grab_frame_id != self._grab_consumed_id
+                    and self._latest_grab is not None
+                ):
+                    self._grab_consumed_id = self._grab_frame_id
+                    return True, self._latest_grab
+                if self._grab_dead:
+                    return False, None
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False, None
+                self._grab_cond.wait(timeout=min(0.1, remaining))
+
+    def close(self) -> None:
+        if self._grab_stop is not None:
+            self._grab_stop.set()
+            if self._grab_cond is not None:
+                with self._grab_cond:
+                    self._grab_cond.notify_all()
+        thread = self._grab_thread
+        thread_alive = False
+        if thread is not None:
+            thread.join(timeout=3.0)
+            thread_alive = thread.is_alive()
+            self._grab_thread = None
+        self._grab_cond = None
+        self._grab_stop = None
+        self._latest_grab = None
+        if self._cap is not None:
+            if thread_alive:
+                # Grabber is still blocked inside cap.read(); releasing now could
+                # crash OpenCV. Drop our reference and let the daemon thread free
+                # the capture when its blocking read returns.
+                log.warning("Grabber thread still running on close; deferring capture release.")
+            else:
+                try:
+                    self._cap.release()
+                except Exception:
+                    pass
             self._cap = None
 
     def is_live(self) -> bool:
@@ -911,7 +1249,7 @@ class FrameSource:
         last_ok = time.monotonic()
         consecutive_failures = 0
         while True:
-            ok, frame = self._cap.read()
+            ok, frame = self._read_source_frame()
             now_rel = time.monotonic() - self._opened_at
 
             if not ok or frame is None:
@@ -929,10 +1267,10 @@ class FrameSource:
             consecutive_failures = 0
             last_ok = time.monotonic()
 
-            # NOTE: We intentionally do NOT drain extra buffered frames here.
-            # Reading one frame per iteration lets the loop run at the source
-            # frame rate (e.g. 50 FPS), so the preview can emit at the full
-            # preview_fps. Latency is kept low via CAP_PROP_BUFFERSIZE=1 on open.
+            # Latency control: local webcams use CAP_PROP_BUFFERSIZE=1; network
+            # streams are drained by the background grabber (see _start_grabber),
+            # which hands us only the freshest frame so a slow ML/preview loop
+            # can't build up a growing backlog of stale frames.
 
             if self.frame_preprocess:
                 frame = preprocess_frame(frame, self.frame_preprocess)

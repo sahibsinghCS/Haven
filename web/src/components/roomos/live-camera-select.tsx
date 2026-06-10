@@ -43,7 +43,7 @@ export function LiveCameraSelect({
   const [scanned, setScanned] = useState(false)
   const [busy, setBusy] = useState(false)
   const [cameras, setCameras] = useState<CameraOption[]>([])
-  const [selected, setSelected] = useState("")
+  const [selected, setSelected] = useState<string | undefined>(undefined)
   const [currentLabel, setCurrentLabel] = useState("Camera")
   const bumpCameraRefresh = useRoomOsAmbientStore((s) => s.bumpCameraRefresh)
 
@@ -130,7 +130,7 @@ export function LiveCameraSelect({
     >
       <Camera className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
       <Select
-        value={selected || undefined}
+        value={selected}
         onValueChange={(v) => void onSelect(v)}
         onOpenChange={onOpenChange}
         disabled={busy || (scanned && noneAvailable)}
@@ -177,11 +177,13 @@ export function LiveCameraSelect({
                 <span className="flex flex-col gap-0.5">
                   <span>{label}</span>
                   <span className="text-[10px] font-normal text-zinc-500">
-                    {!cam.available
-                      ? "Not available to OpenCV"
-                      : dark
-                        ? `Index ${cam.index} · very dark`
-                        : `Index ${cam.index} · ${cam.backend}`}
+                    {typeof cam.source === "string"
+                      ? "Scans Wi-Fi + USB for your phone"
+                      : !cam.available
+                        ? "Not available to OpenCV"
+                        : dark
+                          ? `Index ${cam.index} · very dark`
+                          : `Index ${cam.index} · ${cam.backend}`}
                   </span>
                 </span>
               </SelectItem>

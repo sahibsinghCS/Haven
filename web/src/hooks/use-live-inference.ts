@@ -61,7 +61,7 @@ function applySnapshot(
  * WebSocket for push updates + HTTP poll every 2s so percentages stay fresh
  * even if the WS queue drops or the browser only applied the first message.
  */
-export function useLiveInference(): UseLiveInferenceResult {
+export function useLiveInference(enabled = true): UseLiveInferenceResult {
   const [snapshot, setSnapshot] = useState<LiveInferenceSnapshot | null>(null)
   const [status, setStatus] = useState<LiveInferenceStatus>("connecting")
   const [message, setMessage] = useState<string | null>(null)
@@ -80,6 +80,21 @@ export function useLiveInference(): UseLiveInferenceResult {
   }, [])
 
   useEffect(() => {
+    if (!enabled) {
+      setSnapshot(null)
+      setStatus("connecting")
+      setMessage(null)
+      return
+    }
+
+    // Engine restart resets snapshot sequence — drop stale seq filter + UI state.
+    lastSeqRef.current = 0
+    lastFeedbackIdRef.current = ""
+    lastPreferencesAtRef.current = ""
+    setSnapshot(null)
+    setStatus("connecting")
+    setMessage(null)
+
     let cancelled = false
     const ac = new AbortController()
 
@@ -176,7 +191,7 @@ export function useLiveInference(): UseLiveInferenceResult {
         // ignore
       }
     }
-  }, [])
+  }, [enabled])
 
   return {
     snapshot,
