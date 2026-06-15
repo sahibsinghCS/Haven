@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery } from "@tanstack/react-query"
@@ -11,7 +11,13 @@ import { Check, RotateCcw } from "lucide-react"
 import { useHavenAuth } from "@/components/auth/haven-auth-provider"
 import { AddMoodWizard } from "@/components/roomos/moods/add-mood-wizard"
 import { MoodBurstReviewPanel } from "@/components/roomos/moods/mood-burst-review-panel"
+import { MoodFilterBar } from "@/components/roomos/moods/mood-filter-bar"
+import { moodLifecycleFilter, type MoodFilter } from "@/components/roomos/moods/mood-lifecycle-chip"
 import { MoodPreferenceCard } from "@/components/roomos/moods/mood-preference-card"
+import { PreferencesTrainingInline } from "@/components/roomos/moods/preferences-training-inline"
+import { HavenOfflineBanner } from "@/components/roomos/haven-offline-banner"
+import { HavenSurfaceState } from "@/components/roomos/haven-surface-state"
+import { TeachingLoopSummary } from "@/components/roomos/teaching/teaching-loop-summary"
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
 import { useMoods } from "@/hooks/use-moods"
 import { Button } from "@/components/ui/button"
@@ -68,6 +74,7 @@ function ensureMoodInForm(
 }
 
 export function PreferencesPageClient() {
+  const [moodFilter, setMoodFilter] = useState<MoodFilter>("all")
   const { user } = useHavenAuth()
   const presets = useRoomOsPreferencesStore((s) => s.presets)
   const activePresetId = useRoomOsPreferencesStore((s) => s.activePresetId)
@@ -80,28 +87,36 @@ export function PreferencesPageClient() {
     [moodsQuery.data?.moods],
   )
 
+  const loadPreferencesFallback = useCallback((): {
+    doc: ReturnType<typeof defaultPreferenceDocument>
+    apiOnline: false
+  } => {
+    const disk = loadRoomOsPreferences()
+    if (disk) {
+      const parsed =
+        parsePreferenceDocument({
+          schemaVersion: 2,
+          updatedAt: new Date().toISOString(),
+          presets: disk.presets,
+          activePresetId: disk.activePresetId,
+        }) ?? defaultPreferenceDocument()
+      return { doc: parsed, apiOnline: false as const }
+    }
+    return { doc: defaultPreferenceDocument(), apiOnline: false as const }
+  }, [])
+
   const docQuery = useQuery({
     queryKey: ["roomos", "preferences", user?.id ?? "local"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       try {
-        const doc = await fetchPreferenceDocument()
+        const doc = await fetchPreferenceDocument(signal)
         return { doc, apiOnline: true as const }
       } catch {
-        const disk = loadRoomOsPreferences()
-        if (disk) {
-          const parsed =
-            parsePreferenceDocument({
-              schemaVersion: 2,
-              updatedAt: new Date().toISOString(),
-              presets: disk.presets,
-              activePresetId: disk.activePresetId,
-            }) ?? defaultPreferenceDocument()
-          return { doc: parsed, apiOnline: false as const }
-        }
-        return { doc: defaultPreferenceDocument(), apiOnline: false as const }
+        return loadPreferencesFallback()
       }
     },
     staleTime: 60_000,
+    retry: 1,
   })
 
   const integrationsQuery = useQuery({
@@ -131,6 +146,11 @@ export function PreferencesPageClient() {
     () => listConnectedDevices(integrationsDoc),
     [integrationsDoc],
   )
+
+  useLayoutEffect(() => {
+    if (useRoomOsPreferencesStore.getState().presets) return
+    hydrate(loadPreferencesFallback().doc)
+  }, [hydrate, loadPreferencesFallback])
 
   useEffect(() => {
     if (docQuery.data) hydrate(docQuery.data.doc)
@@ -174,49 +194,59 @@ export function PreferencesPageClient() {
     [form, integrationsDoc],
   )
 
-  if (docQuery.isPending || moodsQuery.isPending || !presets) {
+  const moodsStillLoading = moodsQuery.isPending && moodsQuery.data === undefined
+  const prefsStillLoading = presets === null && docQuery.data === undefined && docQuery.isPending
+
+  if (prefsStillLoading || moodsStillLoading) {
     return <PreferencesSkeleton />
   }
 
-  if (docQuery.isError) {
+  if (!presets?.length || !activePresetId || !activePreset) {
     return (
-      <div
-        className={cn(
-          roomosUi.prefsAlertPanel,
-          "mx-auto my-8 max-w-md p-6 text-sm",
-        )}
-      >
-        <p className="font-medium text-rose-900">Something went wrong</p>
-        <p className="mt-2 text-xs leading-relaxed text-rose-800/90">
-          Preferences could not be loaded. Try again in a moment.
-        </p>
-      </div>
+      <HavenSurfaceState
+        variant="light"
+        tone="error"
+        role="alert"
+        title="Preferences are not set up yet"
+        description="Could not load a preset from this device or the local API. Refresh the page or check that the RoomOS backend is running."
+        className="mx-auto my-8"
+      />
     )
   }
 
-  if (!presets.length || !activePresetId || !activePreset) {
-    return null
+  if (moodsQuery.isError) {
+    return (
+      <HavenSurfaceState
+        variant="light"
+        tone="error"
+        role="alert"
+        title="Moods could not load"
+        description={
+          moodsQuery.error instanceof Error
+            ? moodsQuery.error.message
+            : "The local RoomOS API may be offline. Start the backend and refresh."
+        }
+        className="mx-auto my-8"
+      />
+    )
   }
 
   const hasConnectedDevices = connectedDevices.length > 0
+  const allMoods = moodsQuery.data?.moods ?? []
+  const visibleMoods = allMoods.filter((m) => moodLifecycleFilter(m, moodFilter))
 
   const apiOnline = docQuery.data?.apiOnline ?? true
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 pb-32">
-      {!apiOnline ? (
-        <p
-          className={cn(
-            roomosUi.prefsCallout,
-            "border-amber-500/25 bg-amber-50/90 px-4 py-3 text-[13px] leading-relaxed text-amber-950",
-          )}
-          role="status"
-        >
-          RoomOS API is offline — showing defaults saved in this browser. Start the
-          backend (<span className="font-mono text-[12px]">npm run dev</span> from the
-          repo root) to sync preferences to disk on this machine.
-        </p>
-      ) : null}
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 pb-28">
+      <div className={roomosUi.pageEnterStagger1}>
+        <TeachingLoopSummary />
+      </div>
+
+      <div className={roomosUi.pageEnterStagger2}>
+        <PreferencesTrainingInline />
+      </div>
+      {!apiOnline ? <HavenOfflineBanner context="preferences" /> : null}
 
       {!hasConnectedDevices ? (
         <section className="rounded-[1.75rem] border border-dashed border-[color:var(--haven-line-strong)] bg-white/50 p-8 text-center">
@@ -266,27 +296,41 @@ export function PreferencesPageClient() {
         >
           <section aria-labelledby="moods-heading" className="flex flex-col gap-6">
             <div className="flex flex-wrap items-end justify-between gap-3">
-              <h1
-                id="moods-heading"
-                className="haven-display text-[1.75rem] font-semibold tracking-[-0.024em] text-[color:var(--haven-ink)] sm:text-[2rem]"
-              >
-                Moods / Preferences
-              </h1>
-              <p className="max-w-[20rem] text-right text-[12.5px] leading-relaxed text-[color:var(--haven-muted)]">
-                Tune light, airflow, and temperature for each mood.
-              </p>
+              <div>
+                <p className="haven-eyebrow">Device scenes</p>
+                <h1 id="moods-heading" className="haven-page-title mt-1 text-[color:var(--haven-ink)]">
+                  Moods / Preferences
+                </h1>
+                <p className="haven-lede mt-2 max-w-lg text-[color:var(--haven-muted)]">
+                  Device scenes per mood. Teaching the camera and reviewing switches happen on{" "}
+                  <Link href="/live" className="font-semibold text-teal-800 underline-offset-2 hover:underline">
+                    Live
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/review" className="font-semibold text-teal-800 underline-offset-2 hover:underline">
+                    Review
+                  </Link>
+                  .
+                </p>
+              </div>
             </div>
+            <MoodFilterBar moods={allMoods} value={moodFilter} onChange={setMoodFilter} />
             <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
-              {moodsQuery.data?.moods.map((mood) => (
+              {visibleMoods.map((mood) => (
                 <MoodPreferenceCard
                   key={mood.id}
                   mood={mood}
                   connectedDevices={connectedDevices}
-                  canDelete={(moodsQuery.data?.moods.length ?? 0) > 1}
+                  canDelete={allMoods.length > 1}
                 />
               ))}
-              <AddMoodWizard onMoodCreated={handleMoodCreated} />
+              {moodFilter === "all" ? <AddMoodWizard onMoodCreated={handleMoodCreated} /> : null}
             </div>
+            {visibleMoods.length === 0 ? (
+              <p className="text-center text-[13px] text-[color:var(--haven-muted)]">
+                No moods in this filter — try another tab or teach a mood on Live.
+              </p>
+            ) : null}
           </section>
 
           <MoodBurstReviewPanel />

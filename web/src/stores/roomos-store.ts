@@ -66,8 +66,6 @@ export const useRoomOsPreferencesStore = create<RoomOsPreferencesState>((set, ge
   hasHydrated: false,
 
   hydrate: (doc) => {
-    if (get().hasHydrated) return
-
     const presets = migratePresetsFromStorage(doc.presets)
     const activePresetId = resolveActiveFromDoc({ ...doc, presets })
 
@@ -101,12 +99,19 @@ export function useSelectedPresetId(): string | null {
 
 export const useRoomOsAmbientStore = create<{
   primaryState: RoomStateId | null
+  /** Last mood seen on Live — soft ambient tint on light dashboard pages */
+  lastAmbientMood: RoomStateId | null
   setPrimaryState: (state: RoomStateId | null) => void
   cameraRefreshNonce: number
   bumpCameraRefresh: () => void
 }>((set) => ({
   primaryState: null,
-  setPrimaryState: (primaryState) => set({ primaryState }),
+  lastAmbientMood: null,
+  setPrimaryState: (primaryState) =>
+    set((s) => ({
+      primaryState,
+      lastAmbientMood: primaryState ?? s.lastAmbientMood,
+    })),
   cameraRefreshNonce: 0,
   bumpCameraRefresh: () =>
     set((s) => ({ cameraRefreshNonce: s.cameraRefreshNonce + 1 })),

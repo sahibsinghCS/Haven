@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { useFormContext, useWatch } from "react-hook-form"
 import { Fan, Lightbulb, Plug, Thermometer } from "lucide-react"
 
@@ -56,10 +57,13 @@ export function StatePreferenceCard({
   stateId,
   connectedDevices,
   moodIndex = 0,
+  collapseDevices = false,
 }: {
   stateId: PreferenceMoodId
   connectedDevices: ConnectedDeviceRef[]
   moodIndex?: number
+  /** When many devices, tuck controls behind a disclosure to reduce scroll. */
+  collapseDevices?: boolean
 }) {
   const { control } = useFormContext<PreferenceMatrixFormValues>()
   const watched = useWatch({ control, name: stateId })
@@ -122,7 +126,11 @@ export function StatePreferenceCard({
         ) : null}
       </header>
 
-      <div className="relative grid gap-5 pt-5 sm:gap-6 sm:pt-6">
+      <DeviceControls
+        collapse={collapseDevices}
+        deviceCount={connectedDevices.length}
+        stateTitle={title}
+      >
         {plugs.map((device) => {
           const caps = smartPlugCapabilities(device.brand as SmartPlugBrand)
           if (!caps.powerOnly && !caps.brightness) return null
@@ -312,7 +320,40 @@ export function StatePreferenceCard({
             />
           )
         })}
-      </div>
+      </DeviceControls>
     </fieldset>
+  )
+}
+
+function DeviceControls({
+  collapse,
+  deviceCount,
+  stateTitle,
+  children,
+}: {
+  collapse: boolean
+  deviceCount: number
+  stateTitle: string
+  children: ReactNode
+}) {
+  const inner = <div className="relative grid gap-5 pt-5 sm:gap-6 sm:pt-6">{children}</div>
+
+  if (!collapse) return inner
+
+  return (
+    <details className="group pt-3">
+      <summary className="cursor-pointer list-none rounded-xl border border-[color:var(--haven-line)] bg-white/50 px-4 py-3 text-[13px] font-semibold text-[color:var(--haven-ink)] marker:content-none [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center justify-between gap-2">
+          Device tuning ({deviceCount})
+          <span className="text-[11px] font-normal text-[color:var(--haven-muted)] group-open:hidden">
+            Expand for {stateTitle}
+          </span>
+          <span className="hidden text-[11px] font-normal text-[color:var(--haven-muted)] group-open:inline">
+            Collapse
+          </span>
+        </span>
+      </summary>
+      {inner}
+    </details>
   )
 }

@@ -3,10 +3,6 @@
 Replaces the fixed 4-mood preference taxonomy. Each mood is either one of the
 four restorable builtins (away / sleep / work / relaxing) or a user-defined
 custom mood with its own on-device training dataset.
-
-``gaming`` is intentionally NOT a mood: it remains a legacy inference-only
-label (still allowed in live predictions while the active model bundle knows
-it) but can never be created, restored, or given preferences.
 """
 
 from __future__ import annotations
@@ -31,10 +27,25 @@ BUILTIN_MOODS: Dict[str, str] = {
     "away": "Away",
 }
 
-# Labels the live model may predict that are not user-manageable moods.
-LEGACY_INFERENCE_ONLY: tuple[str, ...] = ("gaming",)
+# Retired labels — excluded from training and live inference (still in old CSV rows).
+DEPRECATED_INFERENCE_LABELS: frozenset[str] = frozenset({"gaming"})
+
+# Legacy inference-only labels (empty — gaming was removed).
+LEGACY_INFERENCE_ONLY: tuple[str, ...] = ()
 
 ML_STATUSES = ("untrained", "collecting", "training", "ready", "error")
+
+# Documented lifecycle states exposed on /api/moods (see docs/MOODS-LIFECYCLE.md).
+LIFECYCLE_STATES = (
+    "builtin_deleted",  # restorable builtin not in registry
+    "collecting",
+    "training",
+    "ready",  # in registry, ML enabled, class in deployed bundle
+    "error",
+    "custom_untrained",  # custom mood not yet in bundle
+    "builtin_untrained",  # builtin restored/active but bundle lacks class
+    "inference_hidden",  # ml.enabled=false — preferences only
+)
 
 SCHEMA_VERSION = 1
 
@@ -113,6 +124,96 @@ def _bundle_classes() -> List[str]:
         return [str(c) for c in data.get("classes", [])]
     except Exception:
         return []
+
+
+def bundle_class_set() -> set[str]:
+    """Deployed model class names (empty when no bundle)."""
+    return set(_bundle_classes())
+
+
+def inference_eligible_labels(
+    path: Optional[Path] = None,
+    *,
+    bundle_classes: Optional[set[str]] = None,
+) -> set[str]:
+    """Labels live inference may surface after masking.
+
+    Active registry moods with ``ml.enabled`` whose id is in the bundle, plus
+    legacy inference-only labels present in the bundle, plus ``unknown``.
+    """
+    bundle = bundle_classes if bundle_classes is not None else bundle_class_set()
+    eligible: set[str] = {"unknown"}
+    for mood in load_registry(path)["moods"]:
+        mid = str(mood["id"])
+        ml = mood.get("ml") if isinstance(mood.get("ml"), dict) else {}
+        if not ml.get("enabled", True):
+            continue
+        if mid in bundle:
+            eligible.add(mid)
+    for legacy in LEGACY_INFERENCE_ONLY:
+        if legacy in bundle:
+            eligible.add(legacy)
+    return eligible
+
+
+def compute_lifecycle(
+    mood: dict,
+    *,
+    bundle_classes: Optional[set[str]] = None,
+    deleted_builtin: bool = False,
+) -> str:
+    """Derive the documented lifecycle state for one mood dict."""
+    if deleted_builtin:
+        return "builtin_deleted"
+
+    bundle = bundle_classes if bundle_classes is not None else bundle_class_set()
+    ml = mood.get("ml") if isinstance(mood.get("ml"), dict) else {}
+    status = str(ml.get("status") or "untrained")
+    if status not in ML_STATUSES:
+        status = "untrained"
+    enabled = bool(ml.get("enabled", True))
+    mid = str(mood.get("id") or "")
+    kind = str(mood.get("kind") or "custom")
+    in_bundle = mid in bundle
+
+    if status == "collecting":
+        return "collecting"
+    if status == "training":
+        return "training"
+    if status == "error":
+        return "error"
+    if not enabled:
+        return "inference_hidden"
+    if in_bundle and status == "ready":
+        return "ready"
+    if in_bundle:
+        # Bundle covers this class (e.g. multi-room base) even if ml.status is untrained.
+        return "ready"
+    if kind == "builtin":
+        return "builtin_untrained"
+    return "custom_untrained"
+
+
+def enrich_mood(
+    mood: dict,
+    *,
+    bundle_classes: Optional[set[str]] = None,
+    deleted_builtin: bool = False,
+) -> dict:
+    """Attach lifecycle + inference flags for API consumers."""
+    bundle = bundle_classes if bundle_classes is not None else bundle_class_set()
+    lifecycle = compute_lifecycle(
+        mood, bundle_classes=bundle, deleted_builtin=deleted_builtin
+    )
+    mid = str(mood.get("id") or "")
+    inference_eligible = mid in inference_eligible_labels(
+        bundle_classes=bundle
+    )
+    out = dict(mood)
+    out["lifecycle"] = lifecycle
+    out["inferenceEligible"] = inference_eligible
+    out["inBundle"] = mid in bundle
+    return out
 
 
 def _migrated_registry() -> dict:
@@ -241,21 +342,29 @@ def active_mood_ids(path: Optional[Path] = None) -> List[str]:
     return [m["id"] for m in load_registry(path)["moods"]]
 
 
-def allowed_live_labels(path: Optional[Path] = None) -> set[str]:
-    """Labels live inference may surface: active moods + legacy-only labels."""
-    return set(active_mood_ids(path)) | set(LEGACY_INFERENCE_ONLY) | {"unknown"}
+def allowed_live_labels(
+    path: Optional[Path] = None,
+    *,
+    bundle_classes: Optional[set[str]] = None,
+) -> set[str]:
+    """Alias for :func:`inference_eligible_labels` (live engine masking set)."""
+    return inference_eligible_labels(path, bundle_classes=bundle_classes)
 
 
-def ui_state_order(path: Optional[Path] = None) -> tuple[str, ...]:
-    """Dynamic UI/state order: registry order with legacy ``gaming`` kept.
+def ui_state_order(
+    path: Optional[Path] = None,
+    *,
+    bundle_classes: Optional[set[str]] = None,
+) -> tuple[str, ...]:
+    """Live HUD distribution order: inference-eligible registry moods.
 
-    Reproduces the historic (sleep, gaming, work, relaxing, away) order when
-    the registry holds exactly the migrated builtins.
+    Inserts legacy inference-only labels (none by default) after sleep when present.
     """
-    ids = active_mood_ids(path)
+    eligible = inference_eligible_labels(path, bundle_classes=bundle_classes)
+    ids = [m["id"] for m in load_registry(path)["moods"] if m["id"] in eligible]
     out = list(ids)
     for legacy in LEGACY_INFERENCE_ONLY:
-        if legacy in out:
+        if legacy not in eligible or legacy in out:
             continue
         if out and out[0] == "sleep":
             out.insert(1, legacy)
@@ -268,6 +377,57 @@ def ml_class_candidates(path: Optional[Path] = None) -> List[str]:
     """Moods eligible for the trained class list (ML enabled, not deleted)."""
     doc = load_registry(path)
     return [m["id"] for m in doc["moods"] if m.get("ml", {}).get("enabled", True)]
+
+
+def resolve_personal_training_classes(
+    *,
+    candidates: List[str],
+    personal_burst_counts: Dict[str, int],
+    base_labels: set[str],
+    min_bursts_to_train: int,
+    trigger_mood_id: str,
+) -> List[str]:
+    """Build the class list for a personal training job.
+
+    Includes registry moods with enough personal data or multi-room base
+    coverage. Deprecated labels (e.g. retired ``gaming``) are never added.
+    """
+    classes: List[str] = []
+    seen: set[str] = set()
+    for mood_id in candidates:
+        if mood_id in DEPRECATED_INFERENCE_LABELS:
+            continue
+        has_personal = int(personal_burst_counts.get(mood_id, 0)) >= min_bursts_to_train
+        has_base = mood_id in base_labels and mood_id not in DEPRECATED_INFERENCE_LABELS
+        if has_personal or has_base:
+            if mood_id not in seen:
+                classes.append(mood_id)
+                seen.add(mood_id)
+    if trigger_mood_id not in classes:
+        raise MoodValidationError(
+            f"Mood '{trigger_mood_id}' has too little data to train."
+        )
+    if len(classes) < 2:
+        raise MoodValidationError(
+            "Need at least two moods with training data. Collect data for "
+            "another mood (or restore a builtin) first."
+        )
+    return classes
+
+
+def builtin_and_legacy_labels() -> set[str]:
+    """Builtin registry ids plus legacy inference-only labels."""
+    return set(BUILTIN_MOODS) | set(LEGACY_INFERENCE_ONLY)
+
+
+def filter_deprecated_training_rows(df):
+    """Drop retired labels from a features dataframe before training."""
+    import pandas as pd
+
+    frame = pd.DataFrame(df)
+    if "label" not in frame.columns or not DEPRECATED_INFERENCE_LABELS:
+        return frame
+    return frame[~frame["label"].astype(str).isin(DEPRECATED_INFERENCE_LABELS)].copy()
 
 
 # --- mutations ---------------------------------------------------------------

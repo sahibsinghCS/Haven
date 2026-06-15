@@ -1,7 +1,6 @@
 /** Built-in room states with bespoke styling (custom moods get fallbacks). */
 export const ROOM_STATE_ORDER = [
   "sleep",
-  "gaming",
   "work",
   "relaxing",
   "away",
@@ -32,6 +31,17 @@ export type RoomStateDistribution = Record<string, number>
 
 export type MoodMlStatus = "untrained" | "collecting" | "training" | "ready" | "error"
 
+/** Documented mood lifecycle — see docs/MOODS-LIFECYCLE.md */
+export type MoodLifecycle =
+  | "builtin_deleted"
+  | "collecting"
+  | "training"
+  | "ready"
+  | "error"
+  | "custom_untrained"
+  | "builtin_untrained"
+  | "inference_hidden"
+
 export interface MoodMlInfo {
   enabled: boolean
   status: MoodMlStatus
@@ -48,6 +58,10 @@ export interface MoodDefinition {
   createdAt: string
   updatedAt: string
   ml: MoodMlInfo
+  /** Derived server state for UI (not persisted) */
+  lifecycle?: MoodLifecycle
+  inferenceEligible?: boolean
+  inBundle?: boolean
 }
 
 export interface MoodCollectionSession {
@@ -76,6 +90,8 @@ export interface MoodBurstSummary {
   capturedAt?: string | null
   meanLuma?: number | null
   blurScore?: number | null
+  roomId?: string | null
+  roomName?: string | null
 }
 
 export type TrainingJobPhase =
@@ -112,7 +128,16 @@ export interface TrainingJob {
 
 export interface MoodsResponse {
   moods: MoodDefinition[]
-  restorableBuiltins: Array<{ builtinKey: string; displayName: string }>
+  restorableBuiltins: Array<{
+    builtinKey: string
+    displayName: string
+    lifecycle?: "builtin_deleted"
+    inferenceEligible?: boolean
+  }>
+  /** Labels the live engine may predict (excludes unknown) */
+  inferenceLabels?: string[]
+  uiStateOrder?: string[]
+  lifecycleStates?: MoodLifecycle[]
   consent: { accepted: boolean; acceptedAt?: string | null }
   datasetFolder: string
   collection: MoodCollectionSession | null
@@ -162,11 +187,39 @@ export interface LastAutomationEvent {
 
 export type AutomationMode = "dry_run" | "live" | "off"
 
+export type OrchestratorMode = "active" | "grace" | "away"
+
+export type RoomStatus = {
+  id: string
+  name: string
+  enabled: boolean
+  camera: { source: number | string; backend: string }
+  deviceIds: string[]
+  isActive: boolean
+  inferenceActive: boolean
+  previewAvailable: boolean
+  previewMeanLuma: number | null
+  lastMood: string | null
+}
+
+export type RoomsStatusResponse = {
+  orchestratorMode: OrchestratorMode
+  activeRoomId: string | null
+  graceDurationSec: number
+  graceStartedAt: string | null
+  graceRemainingSec: number | null
+  lastPrimaryState: string | null
+  rooms: RoomStatus[]
+}
+
 export interface LiveInferenceSnapshot {
   schemaVersion: 1
   /** Monotonic burst counter from the live engine (proves UI is receiving updates). */
   sequence?: number
   capturedAt: string
+  roomId?: string
+  activeRoomId?: string
+  orchestratorMode?: OrchestratorMode
   stream: LiveStreamMeta
   primaryState: RoomStateId
   /** 0–1 confidence in primaryState */
@@ -223,4 +276,19 @@ export type ConnectedDeviceRef = {
   category: "smart_plug" | "lights" | "thermostat"
   label: string
   brand: string
+}
+
+/** Arbiter audit entry — why a device command ran or was blocked. */
+export type DeviceActionDecision = {
+  at: number
+  allowed: boolean
+  reason: string
+  explanation: string
+  source: string
+  deviceId: string
+  fingerprint: string
+  priority: number
+  dryRun?: boolean
+  category?: string
+  context?: Record<string, unknown>
 }

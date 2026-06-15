@@ -63,7 +63,6 @@ labels:
   classes:
     - work
     - sleep
-    - gaming
     - relaxing
     - away
   unknown_class: unknown   # abstain bucket — never trained, only produced at inference

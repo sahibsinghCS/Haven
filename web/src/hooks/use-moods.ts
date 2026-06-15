@@ -43,6 +43,7 @@ export function useMoods() {
       return data
     },
     staleTime: 5_000,
+    retry: 1,
     refetchInterval: (query) => {
       const data = query.state.data
       if (data?.collection?.active || data?.trainingActive) return 1_000
@@ -51,10 +52,14 @@ export function useMoods() {
   })
 }
 
-export function useMoodBursts(moodId: string | null, enabled = true) {
+export function useMoodBursts(
+  moodId: string | null,
+  enabled = true,
+  roomId?: string | null,
+) {
   return useQuery({
-    queryKey: burstsKey(moodId ?? ""),
-    queryFn: ({ signal }) => fetchMoodBursts(moodId!, signal),
+    queryKey: [...burstsKey(moodId ?? ""), roomId ?? "all"],
+    queryFn: ({ signal }) => fetchMoodBursts(moodId!, signal, roomId),
     enabled: Boolean(moodId) && enabled,
     staleTime: 2_000,
     refetchInterval: (query) => {
@@ -119,8 +124,8 @@ export function useMoodMutations() {
   })
 
   const startCollection = useMutation({
-    mutationFn: (args: { moodId: string; durationSec: number }) =>
-      startMoodCollection(args.moodId, args.durationSec),
+    mutationFn: (args: { moodId: string; durationSec: number; roomIds?: string[] }) =>
+      startMoodCollection(args.moodId, args.durationSec, args.roomIds),
     onSuccess: (_data, vars) => {
       invalidateMoods()
       void qc.invalidateQueries({ queryKey: collectionKey(vars.moodId) })

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from ..devices.smart_plug import apply_smart_plug_state
+from ..devices.action_arbiter import ActionSource
+from ..devices.command_gateway import gateway_apply_plug
 from ..utils.logging import get_logger
 from .rules import ActionEvent, ActionHandler
 
@@ -52,7 +53,31 @@ class SmartPlugHandler(ActionHandler):
         try:
             import asyncio
 
-            result = asyncio.run(apply_smart_plug_state(self.integration, state))
+            device_id = str(
+                self.integration.get("id")
+                or self.integration.get("deviceId")
+                or self.integration.get("host")
+                or ""
+            )
+            result = asyncio.run(
+                gateway_apply_plug(
+                    self.integration,
+                    state,
+                    source=ActionSource.AUTOMATION_RULE,
+                    device_id=device_id,
+                    dry_run=False,
+                    context={"rule": event.rule_name, "activity": event.activity},
+                )
+            )
+            if result.get("skipped"):
+                return {
+                    "executed": False,
+                    "skipped": True,
+                    "reason": result.get("reason"),
+                    "arbiter": result.get("arbiter"),
+                    "brand": brand,
+                    "state": state,
+                }
             log.info(
                 "[%s] smart_plug -> %s %s",
                 event.rule_name,

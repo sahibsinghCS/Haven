@@ -3,9 +3,9 @@
 import { useState } from "react"
 import { Camera, Images, Trash2 } from "lucide-react"
 
+import { MoodLifecycleChip } from "@/components/roomos/moods/mood-lifecycle-chip"
 import { StatePreferenceCard } from "@/components/roomos/preferences/state-preference-card"
 import { PrivacyConsentModal } from "@/components/roomos/moods/privacy-consent-modal"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,29 +22,6 @@ import { useMoodSessionStore } from "@/stores/mood-session-store"
 import type { ConnectedDeviceRef, MoodDefinition } from "@/types/roomos"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
-
-const ML_BADGE: Record<string, string> = {
-  untrained: "bg-amber-500/10 text-amber-800 ring-amber-500/25",
-  collecting: "bg-sky-500/10 text-sky-800 ring-sky-500/25",
-  training: "bg-violet-500/10 text-violet-800 ring-violet-500/25",
-  ready: "bg-emerald-500/10 text-emerald-800 ring-emerald-500/25",
-  error: "bg-rose-500/10 text-rose-800 ring-rose-500/25",
-}
-
-function mlLabel(status: string): string {
-  switch (status) {
-    case "collecting":
-      return "Collecting"
-    case "training":
-      return "Training"
-    case "ready":
-      return "ML ready"
-    case "error":
-      return "ML error"
-    default:
-      return "Needs training"
-  }
-}
 
 export function MoodPreferenceCard({
   mood,
@@ -66,8 +43,13 @@ export function MoodPreferenceCard({
   const [consentOpen, setConsentOpen] = useState(false)
 
   const status = mood.ml?.status ?? "untrained"
+  const lifecycle = mood.lifecycle
   const burstCount = mood.ml?.burstCount ?? 0
-  const frameCount = mood.ml?.frameCount ?? 0
+  const collapseDevices = connectedDevices.length > 3
+  const canTeach =
+    mood.inferenceEligible !== true &&
+    status !== "training" &&
+    lifecycle !== "inference_hidden"
 
   function goTeachOnLive() {
     if (!moodsData?.consent?.accepted) {
@@ -89,14 +71,9 @@ export function MoodPreferenceCard({
 
   return (
     <div className="relative flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <Badge
-          variant="outline"
-          className={cn("rounded-full text-[10px] font-semibold uppercase tracking-wider ring-1", ML_BADGE[status] ?? ML_BADGE.untrained)}
-        >
-          {mlLabel(status)}
-        </Badge>
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <MoodLifecycleChip mood={mood} />
+        <div className="flex flex-wrap items-center gap-1.5 px-1">
           {(burstCount > 0 || status !== "untrained") && (
             <Button
               type="button"
@@ -109,7 +86,7 @@ export function MoodPreferenceCard({
               Review ({burstCount})
             </Button>
           )}
-          {status !== "ready" && status !== "training" && (
+          {canTeach && (
             <Button
               type="button"
               variant="ghost"
@@ -135,12 +112,11 @@ export function MoodPreferenceCard({
           ) : null}
         </div>
       </div>
-      {frameCount > 0 ? (
-        <p className="px-1 text-[11px] text-[color:var(--haven-faint)]">
-          {frameCount} frames · {burstCount} bursts on this device
-        </p>
-      ) : null}
-      <StatePreferenceCard stateId={mood.id} connectedDevices={connectedDevices} />
+      <StatePreferenceCard
+        stateId={mood.id}
+        connectedDevices={connectedDevices}
+        collapseDevices={collapseDevices}
+      />
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="max-w-md">

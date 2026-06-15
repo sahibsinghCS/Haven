@@ -52,7 +52,7 @@ class LiveModeRequest(BaseModel):
 
 
 class SetCameraRequest(BaseModel):
-    """Webcam index (int) or special source string (e.g. droidcam:auto)."""
+    """Webcam index (int) or network stream URL (http/rtsp)."""
 
     source: int | str
     backend: str | None = Field(
@@ -82,9 +82,17 @@ def set_live_mode(req: LiveModeRequest) -> dict[str, Any]:
 
 
 @router.get("/cameras")
-def list_cameras(max_index: int = 4) -> dict[str, Any]:
-    """Probe local webcams (may take a few seconds on Windows)."""
-    return state.list_cameras(max_index=max(0, min(8, max_index)))
+def list_cameras(
+    max_index: int = 4,
+    excludeRoomId: str | None = None,
+    forNewRoom: bool = False,
+) -> dict[str, Any]:
+    """Probe local webcams + LAN DroidCam phones (may take a few seconds)."""
+    return state.list_cameras(
+        max_index=max(0, min(8, max_index)),
+        exclude_room_id=excludeRoomId,
+        for_new_room=forNewRoom,
+    )
 
 
 @router.post("/camera")
@@ -94,7 +102,6 @@ def set_camera(req: SetCameraRequest) -> dict[str, Any]:
 
 
 _MJPEG_BOUNDARY = "roomosframe"
-_MJPEG_FPS = 30.0
 
 
 @router.get("/preview.jpg")
@@ -119,22 +126,28 @@ def preview_frame() -> Response:
 
 @router.get("/preview.mjpeg")
 async def preview_mjpeg(request: Request) -> StreamingResponse:
-    """Multipart MJPEG of the latest inference camera frame (~30 FPS)."""
-    interval = 1.0 / _MJPEG_FPS
+    """Multipart MJPEG of the latest inference camera frame."""
 
     async def generate():
+        last_gen = -1
         while True:
             if await request.is_disconnected():
                 break
-            jpeg = state.preview.latest_jpeg()
-            if jpeg:
+            jpeg, gen = await asyncio.to_thread(
+                state.preview.wait_for_new_frame,
+                last_gen,
+                timeout=0.05,
+            )
+            if jpeg is not None and gen > last_gen:
                 header = (
                     f"--{_MJPEG_BOUNDARY}\r\n"
                     f"Content-Type: image/jpeg\r\n"
                     f"Content-Length: {len(jpeg)}\r\n\r\n"
                 ).encode("latin-1")
                 yield header + jpeg + b"\r\n"
-            await asyncio.sleep(interval)
+                last_gen = gen
+            else:
+                await asyncio.sleep(0.005)
 
     return StreamingResponse(
         generate(),
@@ -283,12 +296,10 @@ def list_transitions(
     uncorrected_only: bool = False,
 ) -> dict[str, Any]:
     """Recent label switches with frame evidence for the Review UI."""
-    if state.engine is None:
-        return {"enabled": False, "transitions": [], "reason": "engine_off"}
-    journal = getattr(state.engine, "_transition_journal", None)
+    journal = state.transition_journal()
     if journal is None:
         return {"enabled": False, "transitions": [], "reason": "transitions_disabled"}
-    items = state.engine.list_transitions(
+    items = journal.list_transitions(
         limit=max(1, min(100, limit)),
         uncorrected_only=uncorrected_only,
     )
@@ -301,9 +312,10 @@ def list_transitions(
 
 @router.get("/transitions/{transition_id}/frames/{frame_index}.jpg")
 def transition_frame(transition_id: str, frame_index: int) -> Response:
-    if state.engine is None:
-        raise HTTPException(status_code=409, detail="Live inference engine is not running.")
-    path = state.engine.transition_screenshot_path(transition_id, frame_index)
+    journal = state.transition_journal()
+    if journal is None:
+        raise HTTPException(status_code=409, detail="Transition journal is disabled.")
+    path = journal.screenshot_path(transition_id, frame_index)
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Transition frame not found.")
     return FileResponse(
@@ -317,7 +329,10 @@ def transition_frame(transition_id: str, frame_index: int) -> Response:
 def correct_transition(transition_id: str, req: TransitionCorrectRequest) -> dict[str, Any]:
     """Relabel a past switch — saves to room memory and improves similar bursts."""
     if state.engine is None:
-        raise HTTPException(status_code=409, detail="Live inference engine is not running.")
+        raise HTTPException(
+            status_code=409,
+            detail="Start Live camera mode to apply corrections (room memory updates while inference is running).",
+        )
     try:
         result = state.engine.record_transition_correction(
             transition_id=transition_id,

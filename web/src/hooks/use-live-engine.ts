@@ -11,9 +11,15 @@ import {
   type LiveMode,
   type ModelKind,
 } from "@/lib/roomos/api-client"
+import { useLiveSessionStore } from "@/stores/live-session-store"
 import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 
-export type LiveEngineHookStatus = "idle" | "starting" | "running" | "error"
+export type LiveEngineHookStatus =
+  | "idle"
+  | "starting"
+  | "running"
+  | "error"
+  | "camera_setup"
 
 const STATUS_POLL_BOOT_MS = 2000
 const STATUS_POLL_STREAMING_MS = 8000
@@ -45,6 +51,7 @@ export function useLiveEngineAutostart(enabled = true) {
   const [poseEnabled, setPoseEnabled] = useState<boolean | null>(null)
   const [compatReport, setCompatReport] = useState<CompatReport | null>(null)
   const [liveMode, setLiveMode] = useState<LiveMode>("off")
+  const [cameraSetupRequired, setCameraSetupRequired] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const cameraRefreshNonce = useRoomOsAmbientStore((s) => s.cameraRefreshNonce)
 
@@ -56,6 +63,7 @@ export function useLiveEngineAutostart(enabled = true) {
       setMessage(null)
       setBootPhase("off")
       setLiveMode("off")
+      setCameraSetupRequired(false)
       setPreviewAvailable(false)
       setPreviewMeanLuma(null)
       setPreviewDark(false)
@@ -85,6 +93,18 @@ export function useLiveEngineAutostart(enabled = true) {
       )
       setCompatReport(st.compat_report ?? null)
       setLiveMode(st.live_mode ?? "off")
+      setCameraSetupRequired(Boolean(st.camera_setup_required))
+      if (st.rooms) {
+        useLiveSessionStore.getState().setRoomsStatus({
+          orchestratorMode: st.orchestratorMode ?? "away",
+          activeRoomId: st.activeRoomId ?? null,
+          graceDurationSec: st.graceDurationSec ?? 60,
+          graceStartedAt: null,
+          graceRemainingSec: st.graceRemainingSec ?? null,
+          lastPrimaryState: null,
+          rooms: st.rooms,
+        })
+      }
     }
 
     ;(async () => {
@@ -95,15 +115,26 @@ export function useLiveEngineAutostart(enabled = true) {
         if (st.engine_running) {
           setStatus("running")
           setMessage(null)
+        } else if (st.camera_setup_required) {
+          setStatus("camera_setup")
+          setMessage(null)
         } else {
           setStatus("starting")
           const result = (await startEngine()) as {
             status?: string
             error?: string
             inference_source?: string
+            camera_setup_required?: boolean
             compat?: CompatReport
           }
           if (cancelled) return
+          if (result.status === "camera_setup_required" || result.camera_setup_required) {
+            setStatus("camera_setup")
+            setMessage(null)
+            setCameraSetupRequired(true)
+            setBootPhase("camera_setup")
+            return
+          }
           if (result.status === "error") {
             setStatus("error")
             setMessage(result.error ?? "Engine failed to start")
@@ -130,9 +161,28 @@ export function useLiveEngineAutostart(enabled = true) {
             if (next.engine_running) {
               setStatus("running")
               setMessage(null)
+            } else if (next.camera_setup_required) {
+              setStatus("camera_setup")
+              setMessage(null)
+            } else if (next.engine_error) {
+              const lower = next.engine_error.toLowerCase()
+              const cameraRelated =
+                lower.includes("camera") ||
+                lower.includes("webcam") ||
+                lower.includes("video source") ||
+                lower.includes("droidcam") ||
+                lower.includes("mjpeg") ||
+                lower.includes("busy")
+              if (cameraRelated) {
+                setStatus("camera_setup")
+                setMessage(null)
+              } else {
+                setStatus("error")
+                setMessage(next.engine_error)
+              }
             } else {
               setStatus("error")
-              setMessage(next.engine_error ?? "Engine stopped")
+              setMessage("Engine stopped")
             }
           } catch {
             // Transient network errors during polling shouldn't tank the UI;
@@ -167,6 +217,7 @@ export function useLiveEngineAutostart(enabled = true) {
     poseEnabled,
     compatReport,
     liveMode,
+    cameraSetupRequired,
     refreshStatus,
   }
 }

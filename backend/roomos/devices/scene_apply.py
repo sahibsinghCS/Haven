@@ -13,9 +13,12 @@ from ..integrations.device_bridge import (
     thermostat_runtime_config,
 )
 from ..utils.logging import get_logger
-from .lights_control import apply_lights_scene
-from .smart_plug import apply_smart_plug_state
-from .thermostat import apply_thermostat_setpoints
+from .action_arbiter import ActionSource
+from .command_gateway import (
+    gateway_apply_lights,
+    gateway_apply_plug,
+    gateway_apply_thermostat,
+)
 
 log = get_logger("roomos.devices.scene_apply")
 
@@ -68,8 +71,26 @@ def _device_id_categories(ui_devices: Dict[str, Any]) -> Dict[str, str]:
     return out
 
 
+_connected_categories_cache: tuple[str, FrozenSet[str]] = ("", frozenset())
+
+
+def invalidate_connected_device_categories_cache() -> None:
+    global _connected_categories_cache
+    _connected_categories_cache = ("", frozenset())
+
+
 def connected_device_categories() -> FrozenSet[str]:
     """Device categories that are connected + enabled in Settings."""
+    global _connected_categories_cache
+    try:
+        from app.integrations_service import integrations_revision_key
+
+        revision = integrations_revision_key()
+    except Exception:
+        revision = ""
+    if revision and revision == _connected_categories_cache[0]:
+        return _connected_categories_cache[1]
+
     cats: set[str] = set()
     ui_devices = _ui_devices_map()
     for plug in _device_array(ui_devices, "smartPlugs", "smartPlug"):
@@ -88,7 +109,10 @@ def connected_device_categories() -> FrozenSet[str]:
         ):
             cats.add("thermostats")
             break
-    return frozenset(cats)
+    frozen = frozenset(cats)
+    if revision:
+        _connected_categories_cache = (revision, frozen)
+    return frozen
 
 
 def scene_to_display_targets(
@@ -194,6 +218,33 @@ def preference_sync_dry_run(actions_dry_run: bool) -> bool:
     return not has_controllable_devices()
 
 
+def _inherit_category_target(
+    devices_map: Dict[str, Dict[str, Any]],
+    *,
+    category: str,
+) -> Dict[str, Any]:
+    """When a room device id is missing from the preset, reuse any same-category target."""
+    id_to_cat = _device_id_categories(_ui_devices_map())
+    for other_id, target in devices_map.items():
+        if not isinstance(target, dict):
+            continue
+        other_cat = id_to_cat.get(other_id)
+        if other_cat is not None and other_cat != category:
+            continue
+        if category == "smartPlugs" and "fanOn" in target:
+            return {"fanOn": bool(target.get("fanOn"))}
+        if category == "thermostats" and "temperatureF" in target:
+            return {"temperatureF": int(target.get("temperatureF", 72))}
+        if category == "lights" and (
+            "brightness" in target or "lightColorHex" in target
+        ):
+            return {
+                "brightness": int(target.get("brightness", 30)),
+                "lightColorHex": str(target.get("lightColorHex", "#2A2A2A")),
+            }
+    return {}
+
+
 def _target_for_device(
     device_id: str,
     scene: Dict[str, Any],
@@ -203,6 +254,9 @@ def _target_for_device(
     devices_map = _scene_devices_map(scene)
     if device_id in devices_map:
         return devices_map[device_id]
+    inherited = _inherit_category_target(devices_map, category=category)
+    if inherited:
+        return inherited
     fan_on, temp_f, brightness, color = _legacy_scene_values(scene)
     if category == "smartPlugs":
         return {"fanOn": fan_on}
@@ -219,19 +273,27 @@ async def apply_preference_scene_async(
     dry_run: bool = True,
     integrations: Optional[Dict[str, Any]] = None,
     room_state: str = "",
+    action_source: ActionSource = ActionSource.PREFERENCE_SYNC,
+    action_context: Optional[Dict[str, Any]] = None,
+    only_device_ids: Optional[FrozenSet[str]] = None,
 ) -> Dict[str, Any]:
     """Apply per-device fan / temperature / lights from the active preset for ``room_state``."""
     merged = merge_runtime_integrations(dict(integrations or {}))
     ui = load_ui_device_settings()
     ui_devices = ui.get("devices") if isinstance(ui.get("devices"), dict) else {}
+    ctx_base = dict(action_context or {})
+    if room_state:
+        ctx_base.setdefault("roomState", room_state)
 
     record: Dict[str, Any] = {
-        "rule": "preference_sync",
+        "rule": action_source.value,
         "activity": room_state,
-        "action_type": "preference_sync",
+        "action_type": action_source.value,
+        "actionSource": action_source.value,
         "dry_run": dry_run,
         "scene": scene_to_display_targets(scene),
         "results": {},
+        "arbiterDecisions": [],
     }
 
     if dry_run:
@@ -240,6 +302,8 @@ async def apply_preference_scene_async(
             if not _device_ready(plug, category="smartPlugs"):
                 continue
             device_id = str(plug.get("id") or "")
+            if only_device_ids is not None and device_id not in only_device_ids:
+                continue
             target = _target_for_device(device_id, scene, category="smartPlugs")
             key = device_id or plug.get("label") or "smart_plug"
             would[f"smart_plug:{key}"] = "on" if target.get("fanOn") else "off"
@@ -247,6 +311,8 @@ async def apply_preference_scene_async(
             if not _device_ready(lights, category="lights"):
                 continue
             device_id = str(lights.get("id") or "")
+            if only_device_ids is not None and device_id not in only_device_ids:
+                continue
             target = _target_for_device(device_id, scene, category="lights")
             key = device_id or lights.get("label") or "lights"
             would[f"lights:{key}"] = {
@@ -257,6 +323,8 @@ async def apply_preference_scene_async(
             if not _device_ready(thermo, category="thermostats"):
                 continue
             device_id = str(thermo.get("id") or "")
+            if only_device_ids is not None and device_id not in only_device_ids:
+                continue
             target = _target_for_device(device_id, scene, category="thermostats")
             key = device_id or thermo.get("notes") or "thermostat"
             would[f"thermostat:{key}"] = int(target.get("temperatureF", 72))
@@ -274,14 +342,25 @@ async def apply_preference_scene_async(
     for plug in _device_array(ui_devices, "smartPlugs", "smartPlug"):
         if not _device_ready(plug, category="smartPlugs"):
             continue
-        any_enabled = True
         device_id = str(plug.get("id") or "")
+        if only_device_ids is not None and device_id not in only_device_ids:
+            continue
+        any_enabled = True
         cfg = plug_runtime_config(plug)
         target = _target_for_device(device_id, scene, category="smartPlugs")
         fan_on = bool(target.get("fanOn", False))
         result_key = f"smart_plug:{device_id or cfg.get('host', 'plug')}"
         try:
-            results[result_key] = await apply_smart_plug_state(cfg, "on" if fan_on else "off")
+            plug_ctx = {**ctx_base, "resultKey": result_key}
+            results[result_key] = await gateway_apply_plug(
+                cfg,
+                "on" if fan_on else "off",
+                source=action_source,
+                device_id=device_id,
+                dry_run=dry_run,
+                context=plug_ctx,
+            )
+            record["arbiterDecisions"].append(results[result_key].get("arbiter"))
         except Exception as e:
             errors.append(f"{result_key}: {e}")
             results[result_key] = {"executed": False, "error": str(e)}
@@ -289,18 +368,26 @@ async def apply_preference_scene_async(
     for thermo in _device_array(ui_devices, "thermostats", "thermostat"):
         if not _device_ready(thermo, category="thermostats"):
             continue
-        any_enabled = True
         device_id = str(thermo.get("id") or "")
+        if only_device_ids is not None and device_id not in only_device_ids:
+            continue
+        any_enabled = True
         cfg = thermostat_runtime_config(thermo)
         target = _target_for_device(device_id, scene, category="thermostats")
         temp_f = float(target.get("temperatureF", 72))
         result_key = f"thermostat:{device_id or cfg.get('notes', 'thermostat')}"
         try:
-            results[result_key] = await apply_thermostat_setpoints(
+            thermo_ctx = {**ctx_base, "resultKey": result_key}
+            results[result_key] = await gateway_apply_thermostat(
                 cfg,
+                source=action_source,
+                device_id=device_id,
                 heat_f=temp_f,
                 cool_f=temp_f + 2.0,
+                dry_run=dry_run,
+                context=thermo_ctx,
             )
+            record["arbiterDecisions"].append(results[result_key].get("arbiter"))
         except Exception as e:
             errors.append(f"{result_key}: {e}")
             results[result_key] = {"executed": False, "error": str(e)}
@@ -308,8 +395,10 @@ async def apply_preference_scene_async(
     for lights in _device_array(ui_devices, "lights", "lights"):
         if not _device_ready(lights, category="lights"):
             continue
-        any_enabled = True
         device_id = str(lights.get("id") or "")
+        if only_device_ids is not None and device_id not in only_device_ids:
+            continue
+        any_enabled = True
         cfg = lights_runtime_config(lights)
         target = _target_for_device(device_id, scene, category="lights")
         scene_payload = {
@@ -318,13 +407,36 @@ async def apply_preference_scene_async(
         }
         result_key = f"lights:{device_id or cfg.get('label', 'lights')}"
         try:
-            results[result_key] = apply_lights_scene(cfg, scene_payload)
+            lights_ctx = {**ctx_base, "resultKey": result_key}
+            results[result_key] = gateway_apply_lights(
+                cfg,
+                scene_payload,
+                source=action_source,
+                device_id=device_id,
+                dry_run=dry_run,
+                context=lights_ctx,
+            )
+            record["arbiterDecisions"].append(results[result_key].get("arbiter"))
         except Exception as e:
             errors.append(f"{result_key}: {e}")
             results[result_key] = {"executed": False, "error": str(e)}
 
     record["results"] = results
-    record["executed"] = bool(results) and not errors
+    executed_keys = [
+        k
+        for k, v in results.items()
+        if isinstance(v, dict) and v.get("executed") and not v.get("skipped")
+    ]
+    record["executed"] = bool(executed_keys) and not errors
+    suppressed = [
+        k
+        for k, v in results.items()
+        if isinstance(v, dict) and v.get("skipped") and v.get("reason", "").startswith(
+            ("duplicate", "preempted")
+        )
+    ]
+    if suppressed:
+        record["suppressed"] = suppressed
     if errors:
         record["errors"] = errors
     if not any_enabled:
@@ -332,7 +444,13 @@ async def apply_preference_scene_async(
         record["skipped"] = True
         record["reason"] = "no_devices_enabled"
     else:
-        log.info("[preference_sync] state=%s — applied %s", room_state, list(results.keys()))
+        log.info(
+            "[%s] state=%s executed=%s suppressed=%s",
+            action_source.value,
+            room_state,
+            executed_keys,
+            suppressed,
+        )
 
     return record
 
@@ -351,6 +469,102 @@ def apply_preference_scene(
             integrations=integrations,
             room_state=room_state,
         )
+    )
+
+
+def _scene_for_device_subset(
+    scene: Dict[str, Any], device_ids: frozenset[str]
+) -> Dict[str, Any]:
+    """Build a v2 scene applying ``scene`` only to ``device_ids``."""
+    if not device_ids:
+        return {"devices": {}}
+    id_to_cat = _device_id_categories(_ui_devices_map())
+    out: Dict[str, Dict[str, Any]] = {}
+    for device_id in device_ids:
+        category = id_to_cat.get(device_id)
+        if not category:
+            continue
+        target = _target_for_device(device_id, scene, category=category)
+        if target:
+            out[device_id] = target
+    return {"devices": out}
+
+
+async def apply_room_scene_async(
+    scene: Dict[str, Any],
+    *,
+    device_ids: list[str],
+    dry_run: bool = True,
+    integrations: Optional[Dict[str, Any]] = None,
+    room_state: str = "",
+    room_id: str = "",
+    action_source: ActionSource = ActionSource.ORCHESTRATOR_ROOM,
+) -> Dict[str, Any]:
+    """Apply mood scene only to devices assigned to a physical room."""
+    subset = frozenset(str(d) for d in device_ids if d)
+    filtered = _scene_for_device_subset(scene, subset)
+    record = await apply_preference_scene_async(
+        filtered,
+        dry_run=dry_run,
+        integrations=integrations,
+        room_state=room_state,
+        action_source=action_source,
+        action_context={"roomId": room_id} if room_id else None,
+        only_device_ids=subset,
+    )
+    record["roomId"] = room_id
+    return record
+
+
+def _off_scene() -> Dict[str, Any]:
+    return {
+        "fanOn": False,
+        "brightness": 0,
+        "lightColorHex": "#2A2A2A",
+        "temperatureF": 76,
+    }
+
+
+async def apply_all_devices_off_async(
+    device_ids: list[str],
+    *,
+    dry_run: bool = True,
+    integrations: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Turn off all devices in ``device_ids``."""
+    return await apply_room_scene_async(
+        _off_scene(),
+        device_ids=device_ids,
+        dry_run=dry_run,
+        integrations=integrations,
+        room_state="away",
+        room_id="all",
+        action_source=ActionSource.ORCHESTRATOR_AWAY,
+    )
+
+
+async def apply_walkway_lights_async(
+    device_ids: list[str],
+    *,
+    brightness: int = 40,
+    hex_color: str = "#F5F0E8",
+    dry_run: bool = True,
+    integrations: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Grace-period walkway lighting for all assigned devices."""
+    walkway = {
+        "fanOn": False,
+        "brightness": max(1, min(100, int(brightness))),
+        "lightColorHex": hex_color,
+    }
+    return await apply_room_scene_async(
+        walkway,
+        device_ids=device_ids,
+        dry_run=dry_run,
+        integrations=integrations,
+        room_state="grace",
+        room_id="walkway",
+        action_source=ActionSource.ORCHESTRATOR_GRACE,
     )
 
 

@@ -9,7 +9,10 @@ import { useHavenAuth } from "@/components/auth/haven-auth-provider"
 import { ConnectionDeviceRow } from "@/components/roomos/connections/connection-device-row"
 import { ConnectionSetupPanel } from "@/components/roomos/connections/connection-setup-panel"
 import { HavenAccountBar } from "@/components/roomos/haven-account-bar"
+import { HavenOfflineBanner } from "@/components/roomos/haven-offline-banner"
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
+import { HavenSetupWizard } from "@/components/roomos/setup/haven-setup-wizard"
+import { isSetupMarkedComplete } from "@/lib/roomos/setup-session"
 import {
   discoverDevices,
   fetchDeviceSettingsDocument,
@@ -99,6 +102,7 @@ export function ConnectionsPageClient() {
   const [scanned, setScanned] = useState<DiscoveredDevice[] | null>(null)
   const [plugPowerState, setPlugPowerState] = useState<Record<string, "on" | "off">>({})
   const [readingPlugId, setReadingPlugId] = useState<string | null>(null)
+  const [showSetupWizard, setShowSetupWizard] = useState(() => !isSetupMarkedComplete())
   const { user, enabled: authEnabled, session } = useHavenAuth()
 
   const docQuery = useQuery({
@@ -510,9 +514,7 @@ export function ConnectionsPageClient() {
       ) : null}
 
       {!apiOnline && !authRequired ? (
-        <p className={cn(roomosUi.prefsCallout, "border-amber-500/25 bg-amber-50/90 px-4 py-3 text-[13px] text-amber-950")} role="status">
-          HAVEN API offline — run <span className="font-mono text-[12px]">npm run demo</span> to connect devices.
-        </p>
+        <HavenOfflineBanner context="connections" />
       ) : null}
 
       <header className="relative overflow-hidden rounded-[1.5rem] border border-stone-200/80 bg-[linear-gradient(145deg,#fffefb_0%,#f8f4ec_48%,#f0ebe2_100%)] px-6 py-7 shadow-[var(--haven-shadow-card)] sm:px-8 sm:py-9">
@@ -538,6 +540,31 @@ export function ConnectionsPageClient() {
           Add as many plugs, lights, and thermostats as you need. Name each device whatever you like.
         </p>
       </header>
+
+      {showSetupWizard ? (
+        <HavenSetupWizard
+          variant="connections"
+          onDismiss={() => setShowSetupWizard(false)}
+          className="max-w-3xl"
+        />
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200/80 bg-white/70 px-4 py-3">
+          <p className="text-[13px] text-stone-600">
+            New to Haven? Run the guided setup for rooms and cameras.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowSetupWizard(true)}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-[12px] font-semibold",
+              roomosUi.havenPrimaryBtn,
+              "text-white",
+            )}
+          >
+            Open setup wizard
+          </button>
+        </div>
+      )}
 
       <section className="rounded-[1.25rem] border border-stone-200/80 bg-white/70 px-5 py-5 shadow-[var(--haven-shadow-card)] sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">

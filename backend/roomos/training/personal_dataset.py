@@ -107,16 +107,17 @@ def list_bursts(root: Path, mood_id: str) -> List[Dict[str, Any]]:
         if not frames:
             continue
         meta = meta_by_id.get(d.name, {})
-        out.append(
-            {
-                "id": d.name,
-                "frames": frames,
-                "frameCount": len(frames),
-                "capturedAt": meta.get("capturedAt"),
-                "meanLuma": meta.get("meanLuma"),
-                "blurScore": meta.get("blurScore"),
-            }
-        )
+        entry: Dict[str, Any] = {
+            "id": d.name,
+            "frames": frames,
+            "frameCount": len(frames),
+            "capturedAt": meta.get("capturedAt"),
+            "meanLuma": meta.get("meanLuma"),
+            "blurScore": meta.get("blurScore"),
+        }
+        if meta.get("roomId"):
+            entry["roomId"] = meta.get("roomId")
+        out.append(entry)
     return out
 
 

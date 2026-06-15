@@ -101,6 +101,14 @@ def _legacy_fields_for_scene(scene: dict[str, Any], state: str | None) -> dict[s
     return base
 
 
+def _any_device_field(devices: dict[str, dict[str, Any]], field: str) -> Any | None:
+    """Read a scene field from any per-device entry (stale ids still apply to new hardware)."""
+    for target in devices.values():
+        if isinstance(target, dict) and field in target:
+            return target[field]
+    return None
+
+
 def _migrate_scene_to_v2(
     scene: dict[str, Any],
     ids_by_cat: dict[str, list[str]],
@@ -115,16 +123,31 @@ def _migrate_scene_to_v2(
 
     for plug_id in ids_by_cat.get("smartPlugs", []):
         if plug_id not in devices:
-            devices[plug_id] = {"fanOn": bool(legacy.get("fanOn", False))}
+            inherited = _any_device_field(devices, "fanOn")
+            fan_on = bool(inherited) if inherited is not None else bool(legacy.get("fanOn", False))
+            devices[plug_id] = {"fanOn": fan_on}
     for lights_id in ids_by_cat.get("lights", []):
         if lights_id not in devices:
+            inherited_b = _any_device_field(devices, "brightness")
+            inherited_c = _any_device_field(devices, "lightColorHex")
             devices[lights_id] = {
-                "brightness": int(legacy.get("brightness", 30)),
-                "lightColorHex": str(legacy.get("lightColorHex", "#2A2A2A")),
+                "brightness": int(
+                    inherited_b if inherited_b is not None else legacy.get("brightness", 30)
+                ),
+                "lightColorHex": str(
+                    inherited_c
+                    if inherited_c is not None
+                    else legacy.get("lightColorHex", "#2A2A2A")
+                ),
             }
     for thermo_id in ids_by_cat.get("thermostats", []):
         if thermo_id not in devices:
-            devices[thermo_id] = {"temperatureF": int(legacy.get("temperatureF", 72))}
+            inherited_t = _any_device_field(devices, "temperatureF")
+            devices[thermo_id] = {
+                "temperatureF": int(
+                    inherited_t if inherited_t is not None else legacy.get("temperatureF", 72)
+                ),
+            }
     return {"devices": devices}
 
 

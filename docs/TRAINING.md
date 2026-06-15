@@ -204,6 +204,8 @@ Live FastAPI reads `configs/inference.yaml` → `inference.model_dir` (default `
 
 ## Train/serve compatibility (automatic)
 
+Mood lifecycle states (active, deleted, inference-eligible): [`MOODS-LIFECYCLE.md`](MOODS-LIFECYCLE.md).
+
 ### At train time
 
 After every training script, RoomOS checks the same rules and writes `data/models/latest/live_compat.json`.

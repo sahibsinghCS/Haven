@@ -332,6 +332,37 @@ Rebuild/restart Next dev server after changing `.env.local`.
 
 ---
 
+## Multi-room cameras (gallery, grace period, DroidCam)
+
+### Setup
+
+1. Open **Live** → add rooms with **Rooms & cameras** (name + camera per space).
+2. In **Settings** → **Rooms**, assign each light/plug to the physical room it lives in.
+3. Use **Gallery** on Live when you have 2+ rooms; the **active** room runs full inference; others stay preview-only.
+
+### Power saving
+
+- **Turn off** a room's camera in Gallery when nobody uses that space (stops the stream — good for DroidCam phones on battery).
+- **Preview-only** rooms keep a low-FPS stream for the gallery but skip ML until you leave the active room.
+
+### Leaving a room (grace period)
+
+When the active room detects **Away**, all room lights turn on for **2 minutes** (walkway mode) while other cameras scan for motion. If you enter another room, it becomes active. If nobody appears, everything turns off.
+
+### DroidCam limits (including a second phone)
+
+- **One connection per phone URL** — each room needs its own phone or a USB webcam.
+- **Auto-discover works for every room**: pick **Phone camera (auto-discover)** when adding each room. Room 1 gets the first phone on Wi‑Fi, room 2 gets the second, and so on. Open DroidCam on each phone before rescanning.
+- Explicit **DroidCam · IP** entries still appear if you want to pin a specific phone.
+- Running many preview streams increases CPU use; cap at ~4 rooms on a typical laptop or lower preview FPS in code if needed.
+
+### API
+
+- `GET /api/rooms/status` — orchestrator mode, per-room preview state
+- `GET /api/rooms/{id}/preview.mjpeg` — per-room gallery stream
+
+---
+
 ## Empty room shows "Work / Studying" (or another activity)
 
 ### Symptoms

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from ..devices.thermostat import apply_thermostat_setpoints
+from ..devices.action_arbiter import ActionSource
+from ..devices.command_gateway import gateway_apply_thermostat
 from ..utils.logging import get_logger
 from .rules import ActionEvent, ActionHandler
 
@@ -61,9 +62,30 @@ class ThermostatHandler(ActionHandler):
         try:
             import asyncio
 
-            result = asyncio.run(
-                apply_thermostat_setpoints(self.integration, heat_f=heat, cool_f=cool)
+            device_id = str(
+                self.integration.get("id")
+                or self.integration.get("deviceId")
+                or "thermostat"
             )
+            result = asyncio.run(
+                gateway_apply_thermostat(
+                    self.integration,
+                    source=ActionSource.AUTOMATION_RULE,
+                    device_id=device_id,
+                    heat_f=heat,
+                    cool_f=cool,
+                    dry_run=False,
+                    context={"rule": event.rule_name, "activity": event.activity},
+                )
+            )
+            if result.get("skipped"):
+                return {
+                    "executed": False,
+                    "skipped": True,
+                    "reason": result.get("reason"),
+                    "arbiter": result.get("arbiter"),
+                    "brand": brand,
+                }
             return {"executed": True, "dry_run": False, **result}
         except Exception as e:
             log.warning("[%s] thermostat FAILED: %s", event.rule_name, e)

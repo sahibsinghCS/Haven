@@ -6,13 +6,15 @@ type MoodSessionStore = {
   /** Mood id to auto-start collection for on /live mount. */
   pendingCollectMoodId: string | null
   pendingCollectDurationSec: number
+  /** Empty = active room only at collection start. */
+  pendingCollectRoomIds: string[]
   /** Active training job id for full-screen progress overlay. */
   activeTrainingJobId: string | null
   /** Mood id linked to the active training job. */
   activeTrainingMoodId: string | null
   /** Open burst review panel for this mood (preferences or live). */
   reviewMoodId: string | null
-  setPendingCollect: (moodId: string, durationSec?: number) => void
+  setPendingCollect: (moodId: string, durationSec?: number, roomIds?: string[]) => void
   clearPendingCollect: () => void
   setActiveTraining: (jobId: string, moodId: string) => void
   clearActiveTraining: () => void
@@ -23,12 +25,18 @@ type MoodSessionStore = {
 export const useMoodSessionStore = create<MoodSessionStore>((set) => ({
   pendingCollectMoodId: null,
   pendingCollectDurationSec: 300,
+  pendingCollectRoomIds: [],
   activeTrainingJobId: null,
   activeTrainingMoodId: null,
   reviewMoodId: null,
-  setPendingCollect: (moodId, durationSec = 300) =>
-    set({ pendingCollectMoodId: moodId, pendingCollectDurationSec: durationSec }),
-  clearPendingCollect: () => set({ pendingCollectMoodId: null }),
+  setPendingCollect: (moodId, durationSec = 300, roomIds = []) =>
+    set({
+      pendingCollectMoodId: moodId,
+      pendingCollectDurationSec: durationSec,
+      pendingCollectRoomIds: roomIds,
+    }),
+  clearPendingCollect: () =>
+    set({ pendingCollectMoodId: null, pendingCollectRoomIds: [] }),
   setActiveTraining: (jobId, moodId) =>
     set({ activeTrainingJobId: jobId, activeTrainingMoodId: moodId }),
   clearActiveTraining: () =>

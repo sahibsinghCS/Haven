@@ -31,6 +31,7 @@ log = get_logger("roomos.training.personal_trainer")
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 TRAIN_CONFIG_PATH = _BACKEND_DIR / "configs" / "train_personal.yaml"
+BASELINE_TRAIN_CONFIG_PATH = _BACKEND_DIR / "configs" / "train_multi_room.yaml"
 INFERENCE_CONFIG_PATH = _BACKEND_DIR / "configs" / "inference.yaml"
 MODELS_DIR = _BACKEND_DIR / "data" / "models"
 BASE_FEATURES_PATH = _BACKEND_DIR / "data" / "features" / "multi_room_features.csv"
@@ -39,6 +40,8 @@ BASE_FEATURES_PATH = _BACKEND_DIR / "data" / "features" / "multi_room_features.c
 MIN_TEST_ACCURACY = 0.55
 MIN_TEST_SAMPLES_FOR_GATE = 10
 CLASS_IMBALANCE_WARN_RATIO = 10.0
+# Reject a personal promotion when builtin+legacy macro F1 drops vs previous bundle.
+MIN_BUILTIN_MACRO_F1_RETENTION = 0.88
 
 PHASES = (
     "queued",
@@ -54,6 +57,42 @@ PHASES = (
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _macro_f1_for_labels(eval_split: dict, labels: set[str]) -> Optional[float]:
+    per_class = eval_split.get("per_class") or {}
+    if not per_class or not labels:
+        return None
+    scores = [
+        float(stats.get("f1-score", 0.0))
+        for name, stats in per_class.items()
+        if name in labels and isinstance(stats, dict)
+    ]
+    if not scores:
+        return None
+    return sum(scores) / len(scores)
+
+
+def _read_bundle_builtin_macro_f1(bundle_dir: Path) -> Optional[float]:
+    metrics_path = bundle_dir / "metrics.json"
+    if not metrics_path.is_file():
+        return None
+    try:
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    eval_split = metrics.get("test") or metrics.get("val") or {}
+    if not eval_split:
+        return None
+    try:
+        classes = json.loads(
+            (bundle_dir / "label_encoder.json").read_text(encoding="utf-8")
+        ).get("classes", [])
+    except (OSError, json.JSONDecodeError):
+        classes = []
+    builtin = mood_registry.builtin_and_legacy_labels()
+    labels = {str(c) for c in classes if str(c) in builtin}
+    return _macro_f1_for_labels(eval_split, labels)
 
 
 class PersonalTrainingError(RuntimeError):
@@ -135,6 +174,58 @@ class PersonalTrainingJobManager:
                     on_promoted,
                 ),
                 name="roomos-personal-train",
+                daemon=True,
+            )
+            self._thread.start()
+            return dict(job)
+
+    def start_baseline_restore(
+        self,
+        *,
+        on_promoted: Optional[Callable[[], None]] = None,
+        base_features_path: Optional[Path] = None,
+        models_dir: Optional[Path] = None,
+        jobs_root: Optional[Path] = None,
+    ) -> dict:
+        """Retrain ``data/models/latest`` from multi-room features only (no personal rows)."""
+        with self._lock:
+            if self._running_job_id is not None:
+                running = self._jobs.get(self._running_job_id)
+                if running and running.get("phase") not in ("done", "error"):
+                    raise PersonalTrainingError(
+                        "A training job is already running. Wait for it to finish."
+                    )
+            job_id = (
+                f"baseline_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+                f"_{uuid.uuid4().hex[:6]}"
+            )
+            job = {
+                "id": job_id,
+                "moodId": None,
+                "kind": "baseline_restore",
+                "phase": "queued",
+                "progress": 0.0,
+                "startedAt": _now_iso(),
+                "finishedAt": None,
+                "ok": None,
+                "error": None,
+                "warnings": [],
+                "result": None,
+            }
+            self._jobs[job_id] = job
+            self._running_job_id = job_id
+            jroot = Path(jobs_root) if jobs_root else mood_registry.training_jobs_root()
+            self._persist(job, jroot)
+            self._thread = threading.Thread(
+                target=self._run_baseline_guarded,
+                args=(
+                    job_id,
+                    jroot,
+                    Path(base_features_path) if base_features_path else BASE_FEATURES_PATH,
+                    Path(models_dir) if models_dir else MODELS_DIR,
+                    on_promoted,
+                ),
+                name="roomos-baseline-restore",
                 daemon=True,
             )
             self._thread.start()
@@ -244,31 +335,31 @@ class PersonalTrainingJobManager:
         personal_counts = {
             m: pds.dataset_counts(datasets_root, m) for m in candidates
         }
+        personal_burst_counts = {
+            m: int(c.get("burstCount", 0)) for m, c in personal_counts.items()
+        }
         base_df = None
         base_labels: set[str] = set()
         if base_features_path.is_file():
             try:
-                base_df = pd.read_csv(base_features_path)
+                base_df = mood_registry.filter_deprecated_training_rows(
+                    pd.read_csv(base_features_path)
+                )
                 base_labels = set(base_df["label"].astype(str).unique())
             except Exception as e:
                 log.warning("Could not load base features (%s); personal-only.", e)
                 base_df = None
 
-        classes: List[str] = []
-        for mood_id in candidates:
-            has_personal = personal_counts[mood_id]["burstCount"] >= pds.MIN_BURSTS_TO_TRAIN
-            has_base = mood_id in base_labels
-            if has_personal or has_base:
-                classes.append(mood_id)
-        if job["moodId"] not in classes:
-            raise PersonalTrainingError(
-                f"Mood '{job['moodId']}' has too little data to train."
+        try:
+            classes = mood_registry.resolve_personal_training_classes(
+                candidates=candidates,
+                personal_burst_counts=personal_burst_counts,
+                base_labels=base_labels,
+                min_bursts_to_train=pds.MIN_BURSTS_TO_TRAIN,
+                trigger_mood_id=job["moodId"],
             )
-        if len(classes) < 2:
-            raise PersonalTrainingError(
-                "Need at least two moods with training data. Collect data for "
-                "another mood (or restore a builtin) first."
-            )
+        except mood_registry.MoodValidationError as e:
+            raise PersonalTrainingError(str(e)) from e
 
         # 2) Personal rows: cached features, re-extracted only when stale.
         personal_rows = self._personal_rows(cfg, datasets_root, classes, job, jobs_root)
@@ -281,9 +372,10 @@ class PersonalTrainingJobManager:
             hi = max(n_personal_by_class.values())
             if lo > 0 and hi / max(1, lo) >= CLASS_IMBALANCE_WARN_RATIO:
                 warnings.append(
-                    "Class balance: one mood has "
+                    "Collection imbalance: one mood has "
                     f"{hi} bursts vs another's {lo} (>{CLASS_IMBALANCE_WARN_RATIO:.0f}x). "
-                    "Consider collecting more for the smaller mood."
+                    "Training equalizes mood weight automatically; collect more for "
+                    "smaller moods if accuracy is weak."
                 )
 
         frames = []
@@ -338,6 +430,23 @@ class PersonalTrainingJobManager:
         if n_eval < MIN_TEST_SAMPLES_FOR_GATE:
             warnings.append(
                 f"Small held-out set ({n_eval} bursts) — accuracy gate skipped."
+            )
+
+        previous_dir = models_dir / "previous"
+        previous_builtin_f1 = _read_bundle_builtin_macro_f1(previous_dir)
+        builtin_labels = mood_registry.builtin_and_legacy_labels() & set(classes)
+        new_builtin_f1 = _macro_f1_for_labels(eval_split, builtin_labels)
+        if (
+            previous_builtin_f1 is not None
+            and new_builtin_f1 is not None
+            and new_builtin_f1 < previous_builtin_f1 * MIN_BUILTIN_MACRO_F1_RETENTION
+        ):
+            shutil.rmtree(candidate_dir, ignore_errors=True)
+            raise PersonalTrainingError(
+                "Personal model would reduce builtin mood accuracy "
+                f"(macro F1 {new_builtin_f1:.0%} vs previous {previous_builtin_f1:.0%}) "
+                "— not deployed. Use Restore baseline from Training settings, collect "
+                "more varied bursts, then retrain."
             )
 
         # 5) Promote: keep rollback bundle, then swap latest.
@@ -421,6 +530,121 @@ class PersonalTrainingJobManager:
             accuracy,
             n_eval,
         )
+
+    def _run_baseline_guarded(
+        self,
+        job_id: str,
+        jobs_root: Path,
+        base_features_path: Path,
+        models_dir: Path,
+        on_promoted: Optional[Callable[[], None]],
+    ) -> None:
+        job = self._jobs[job_id]
+        try:
+            self._run_baseline(job, jobs_root, base_features_path, models_dir, on_promoted)
+        except Exception as e:
+            log.exception("Baseline restore failed: %s", e)
+            self._update(
+                job,
+                jobs_root,
+                phase="error",
+                ok=False,
+                error=str(e),
+                finishedAt=_now_iso(),
+            )
+        finally:
+            with self._lock:
+                if self._running_job_id == job_id:
+                    self._running_job_id = None
+
+    def _run_baseline(
+        self,
+        job: dict,
+        jobs_root: Path,
+        base_features_path: Path,
+        models_dir: Path,
+        on_promoted: Optional[Callable[[], None]],
+    ) -> None:
+        import pandas as pd
+
+        if not base_features_path.is_file():
+            raise PersonalTrainingError(
+                f"Multi-room features not found at {base_features_path}. "
+                "Run npm run train:multi-room first."
+            )
+        self._update(job, jobs_root, phase="training", progress=0.2)
+        cfg = load_config(BASELINE_TRAIN_CONFIG_PATH)
+        df = mood_registry.filter_deprecated_training_rows(pd.read_csv(base_features_path))
+        classes = sorted(set(df["label"].astype(str).unique()))
+        if len(classes) < 2:
+            raise PersonalTrainingError("Multi-room feature file has too few classes.")
+        cfg.raw.setdefault("labels", {})["classes"] = list(classes)
+        candidate_dir = models_dir / f"candidate_{job['id']}"
+        if candidate_dir.exists():
+            shutil.rmtree(candidate_dir, ignore_errors=True)
+        result = train_model(df, cfg, output_dir=candidate_dir)
+
+        self._update(job, jobs_root, phase="validating", progress=0.8)
+        eval_split = result.metrics.get("test") or result.metrics.get("val") or {}
+        accuracy = float(eval_split.get("accuracy", 0.0))
+        n_eval = int(eval_split.get("n_samples", 0))
+
+        self._update(job, jobs_root, phase="promoting", progress=0.88)
+        latest = models_dir / "latest"
+        previous = models_dir / "previous"
+        if latest.exists():
+            shutil.rmtree(previous, ignore_errors=True)
+            shutil.copytree(latest, previous)
+            shutil.rmtree(latest, ignore_errors=True)
+        shutil.copytree(candidate_dir, latest)
+        shutil.rmtree(candidate_dir, ignore_errors=True)
+
+        try:
+            report = verify_bundle_for_live(latest, inference_config=INFERENCE_CONFIG_PATH)
+            from ..utils.io import write_json
+
+            write_json(
+                latest / "live_compat.json",
+                {
+                    "verified_at_train": True,
+                    "inference_config": str(INFERENCE_CONFIG_PATH),
+                    **report,
+                },
+            )
+        except TrainServeCompatibilityError as e:
+            shutil.rmtree(latest, ignore_errors=True)
+            if previous.exists():
+                shutil.copytree(previous, latest)
+            raise PersonalTrainingError(
+                f"Baseline model failed the live compatibility gate; rolled back. {e}"
+            ) from e
+
+        self._update(job, jobs_root, phase="reloading", progress=0.95)
+        warnings: List[str] = []
+        if on_promoted is not None:
+            try:
+                on_promoted()
+            except Exception as e:
+                warnings.append(f"Model deployed but live reload failed: {e}")
+
+        self._update(
+            job,
+            jobs_root,
+            phase="done",
+            progress=1.0,
+            ok=True,
+            finishedAt=_now_iso(),
+            warnings=warnings,
+            result={
+                "classes": classes,
+                "accuracy": accuracy,
+                "macroF1": float(eval_split.get("macro_f1", 0.0)),
+                "nEvalSamples": n_eval,
+                "bundleDir": str(latest),
+                "restoredBaseline": True,
+            },
+        )
+        log.info("Baseline restore done: classes=%s acc=%.3f", classes, accuracy)
 
     # --- dataset -> rows ---------------------------------------------------
 

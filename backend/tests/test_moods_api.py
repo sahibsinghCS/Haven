@@ -41,6 +41,13 @@ def test_list_moods(moods_client):
     body = res.json()
     assert len(body["moods"]) == 4
     assert "restorableBuiltins" in body
+    assert "inferenceLabels" in body
+    assert "uiStateOrder" in body
+    assert "lifecycleStates" in body
+    for mood in body["moods"]:
+        assert "lifecycle" in mood
+        assert "inferenceEligible" in mood
+        assert "inBundle" in mood
 
 
 def test_create_and_delete_custom_mood(moods_client):

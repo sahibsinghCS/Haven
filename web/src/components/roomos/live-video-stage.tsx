@@ -1,188 +1,385 @@
 "use client"
 
-import { useState } from "react"
-import { ChevronDown, ChevronUp } from "lucide-react"
+
+
+import { useMemo, useState } from "react"
+
+
 
 import { PreferencesTelegramBanner } from "@/components/roomos/preferences-telegram-banner"
+
 import { TelegramCorrectionBanner } from "@/components/roomos/telegram-correction-banner"
-import { LiveQuickCorrection } from "@/components/roomos/live-quick-correction"
+
+import { LiveExplainPanel } from "@/components/roomos/live-explain-panel"
+
+import { LivePresenceRail } from "@/components/roomos/live-presence-rail"
+
 import { PrimaryStateOverlay } from "@/components/roomos/primary-state-overlay"
-import { SecondaryStateConfidence } from "@/components/roomos/secondary-state-confidence"
+
 import { useInferenceCameraPreview } from "@/hooks/use-inference-camera-preview"
+
 import type { LiveEngineHookStatus } from "@/hooks/use-live-engine"
+
 import type { ModelKind } from "@/lib/roomos/api-client"
-import { cn } from "@/lib/utils"
-import { roomosUi } from "@/lib/roomos/roomos-ui"
-import type { LiveFeedbackEvent } from "@/types/feedback-event"
-import type { LivePreferencesEvent } from "@/types/preferences-event"
+
+import {
+
+  findRunnerUp,
+
+  isUncertainRead,
+
+} from "@/lib/roomos/live-confidence-utils"
+
 import { formatAppliedSceneSummary } from "@/lib/roomos/format-applied-scene"
+import { resolveInferenceDisplayMode } from "@/lib/roomos/haven-system-state"
+
+import { roomStateLabel } from "@/lib/roomos/state-meta"
+
+import { useLiveSessionStore } from "@/stores/live-session-store"
+
+import type { LiveFeedbackEvent } from "@/types/feedback-event"
+
+import type { LivePreferencesEvent } from "@/types/preferences-event"
+
 import type { LiveInferenceSnapshot } from "@/types/roomos"
 
+import { cn } from "@/lib/utils"
+
+import { roomosUi } from "@/lib/roomos/roomos-ui"
+
+
+
 /**
- * Immersive live: camera fills the viewport; controls sit in a bottom dock only.
+
+ * Immersive live: camera fills the viewport; status rail + inspectable HUD.
+
  */
+
 export function LiveVideoStage({
+
   snapshot,
+
   engineStatus = "running",
+
   previewDark = false,
+
   previewFit = "contain",
+
   previewResumeLive = false,
+
   modelKind = "unknown",
+
   feedbackEvent = null,
+
   onDismissFeedbackEvent,
+
   preferencesEvent = null,
+
   onDismissPreferencesEvent,
+
+  onFocusRoom,
+
 }: {
+
   snapshot: LiveInferenceSnapshot
+
   engineStatus?: LiveEngineHookStatus
+
   previewDark?: boolean
+
   previewMeanLuma?: number | null
+
   previewFit?: "cover" | "contain"
+
   previewResumeLive?: boolean
+
   modelKind?: ModelKind
+
   feedbackEvent?: LiveFeedbackEvent | null
+
   onDismissFeedbackEvent?: () => void
+
   preferencesEvent?: LivePreferencesEvent | null
+
   onDismissPreferencesEvent?: () => void
+
+  onFocusRoom?: () => void
+
 }) {
-  const [controlsOpen, setControlsOpen] = useState(false)
-  const primaryState = snapshot.primaryState
+
+  const [inspectOpen, setInspectOpen] = useState(false)
+
+  const activeRoomId = useLiveSessionStore((s) => s.activeRoomId)
+
+  const rooms = useLiveSessionStore((s) => s.rooms)
+
+  const activeRoomName =
+
+    rooms.find((r) => r.id === activeRoomId)?.name ??
+
+    (snapshot.roomId ? rooms.find((r) => r.id === snapshot.roomId)?.name : null)
+
+
+
   const liveDistribution = snapshot.modelDistribution ?? snapshot.distribution
+
+  const primaryState = snapshot.primaryState
+
   const liveConfidence =
+
     liveDistribution[primaryState] ?? snapshot.primaryConfidence
+
+  const confidencePct = Math.round(liveConfidence * 100)
+
+  const uncertain = isUncertainRead(liveDistribution, primaryState)
+
+  const runnerUp = findRunnerUp(liveDistribution, primaryState)
+
+
+
+  const uncertaintyNote = useMemo(() => {
+
+    if (!uncertain) return null
+
+    if (runnerUp && runnerUp.value >= liveConfidence - 0.15) {
+
+      const runnerPct = Math.round(runnerUp.value * 100)
+
+      return `Mixed read — ${roomStateLabel(runnerUp.id)} is close at ${runnerPct}%. Tap Why below for the breakdown.`
+
+    }
+
+    if (confidencePct < 55) {
+
+      return `Low confidence (${confidencePct}%) — open Why below before trusting automation.`
+
+    }
+
+    return "Signals are mixed this burst — check Why below before trusting automation."
+
+  }, [uncertain, runnerUp, liveConfidence, confidencePct])
+
+
+
   const previewEnabled = engineStatus === "running" || snapshot.dataSource === "roomos-ml"
+
   const preview = useInferenceCameraPreview(previewEnabled, {
+
     resumeLive: previewResumeLive,
+
   })
+
   const feedLive = preview.status === "live"
-  const showBootstrapBanner = modelKind === "bootstrap"
+
+
+
   const showDarkWarning = previewDark && feedLive
+
   const useCover = previewFit === "cover"
 
+  const multiRoom = rooms.length > 1
+
+  const inferenceMode = resolveInferenceDisplayMode(modelKind, snapshot.dataSource)
+  const trustLine =
+    inferenceMode === "replay"
+      ? "Replay source — not reading your webcam this session"
+      : inferenceMode === "demo_model"
+        ? "Demo/bootstrap model — live camera, synthetic weights"
+        : undefined
+
+
+
   return (
+
     <section
+
       aria-labelledby="roomos-live-title"
+
       className="relative size-full min-h-0 overflow-hidden bg-black"
+
     >
+
       <h2 id="roomos-live-title" className="sr-only">
+
         Live room view and inferred activity
+
       </h2>
 
+
+
       <div className="absolute inset-0 z-0 flex items-center justify-center bg-black">
+
         {preview.streamSrc ? (
+
           // eslint-disable-next-line @next/next/no-img-element
+
           <img
+
             src={preview.streamSrc}
+
             alt=""
+
             decoding="async"
+
             onLoad={preview.onStreamLoad}
+
             onError={preview.onStreamError}
+
             className={cn(
+
               "object-center",
+
               useCover
+
                 ? "size-full object-cover"
+
                 : "h-full w-auto max-w-full object-contain",
+
               feedLive || preview.status !== "waiting" ? "opacity-100" : "opacity-40",
+
             )}
+
           />
+
         ) : (
+
           <div className="size-full bg-zinc-900" aria-hidden />
+
         )}
+
       </div>
 
+
+
       <div
-        className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-zinc-950/40"
+
+        className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-zinc-950 via-zinc-950/25 to-zinc-950/55"
+
         aria-hidden
+
       />
 
+
+
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 px-3 pb-2 pl-14 pr-24 pt-3 sm:px-4 sm:pl-16 sm:pr-28 sm:pt-4">
+
+        {multiRoom ? (
+
+          <LivePresenceRail
+
+            rooms={rooms}
+
+            activeRoomId={activeRoomId}
+
+            snapshot={snapshot}
+
+            onOpenGallery={onFocusRoom}
+
+          />
+
+        ) : null}
+
+      </div>
+
+
+
       {!feedLive && preview.message ? (
+
         <p
+
           className="absolute left-1/2 top-1/2 z-20 max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-white/10 bg-zinc-950/90 px-4 py-3 text-center text-sm text-zinc-200 backdrop-blur-md"
+
           role="status"
+
         >
+
           {preview.status === "waiting"
+
             ? "Connecting to inference camera…"
+
             : preview.message}
+
         </p>
+
       ) : null}
+
+
 
       {feedbackEvent && onDismissFeedbackEvent ? (
+
         <TelegramCorrectionBanner event={feedbackEvent} onDismiss={onDismissFeedbackEvent} />
+
       ) : null}
+
+
 
       {preferencesEvent && onDismissPreferencesEvent ? (
+
         <PreferencesTelegramBanner
+
           event={preferencesEvent}
+
           onDismiss={onDismissPreferencesEvent}
+
         />
+
       ) : null}
 
-      {showBootstrapBanner || showDarkWarning ? (
-        <div className="pointer-events-auto absolute inset-x-2 top-2 z-20 sm:inset-x-4">
-          {showBootstrapBanner ? (
-            <p className="rounded-lg border border-amber-400/50 bg-amber-950/95 px-3 py-2 text-center text-[11px] text-amber-50">
-              Demo model — run <code className="font-mono">npm run train:multi-room</code>
-            </p>
-          ) : (
-            <p className="rounded-lg border border-rose-400/40 bg-rose-950/95 px-3 py-2 text-center text-[11px] text-rose-50">
-              Camera is dark — close other apps using the webcam or pick another device above
-            </p>
-          )}
+
+
+      {showDarkWarning ? (
+        <div className="pointer-events-auto absolute inset-x-2 top-[4.5rem] z-20 sm:inset-x-4 sm:top-20">
+          <p className="rounded-lg border border-rose-400/40 bg-rose-950/95 px-3 py-2 text-center text-[11px] text-rose-50">
+            Camera is dark — close other apps using the webcam or pick another device
+          </p>
         </div>
       ) : null}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[min(58vh,520px)] flex-col justify-end">
-        <button
-          type="button"
-          onClick={() => setControlsOpen((o) => !o)}
-          className="pointer-events-auto mx-auto mb-1 flex items-center gap-1 rounded-full border border-white/15 bg-zinc-950/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-300 backdrop-blur-md"
-        >
-          {controlsOpen ? (
-            <>
-              Hide controls <ChevronDown className="size-3" />
-            </>
-          ) : (
-            <>
-              Show controls <ChevronUp className="size-3" />
-            </>
-          )}
-        </button>
 
-        {controlsOpen ? (
-          <div className="pointer-events-auto overflow-y-auto overscroll-contain border-t border-white/10 bg-zinc-950/75 p-2 backdrop-blur-xl sm:p-3">
-            <div className="flex min-w-0 flex-col gap-2">
-              <LiveQuickCorrection snapshot={snapshot} compact />
-              <SecondaryStateConfidence
-                variant="overlay"
-                distribution={liveDistribution}
-                primary={snapshot.primaryState}
-                overlayShellClassName={cn(
-                  roomosUi.liveOverlayGlassTranslucent,
-                  "bg-zinc-950/50",
-                )}
-                finePercent
-                subtitle="Likelihoods"
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="pointer-events-auto px-2 pb-2 sm:px-3 sm:pb-3">
-            <PrimaryStateOverlay
-              state={snapshot.primaryState}
-              confidence={liveConfidence}
-              sceneSummary={formatAppliedSceneSummary(
-                snapshot.appliedScene,
-                snapshot.connectedCategories,
-              )}
-              overlayShellClassName={cn(
-                roomosUi.liveOverlayGlassTranslucent,
-                "bg-zinc-950/50",
-              )}
-              className="!px-3 !py-2.5 sm:!px-4 [&_#roomos-live-trust]:hidden [&_h3]:!text-2xl [&_h3]:sm:!text-3xl"
-            />
-          </div>
-        )}
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[min(62vh,540px)] flex-col justify-end">
+
+        <div
+          className={cn(
+            "pointer-events-auto flex flex-col gap-0 px-2 pb-2 sm:px-3 sm:pb-3",
+            inspectOpen && "gap-1",
+          )}
+        >
+          <PrimaryStateOverlay
+            state={snapshot.primaryState}
+            confidence={liveConfidence}
+            uncertaintyNote={uncertaintyNote}
+            trustLine={trustLine}
+            sceneSummary={formatAppliedSceneSummary(
+              snapshot.appliedScene,
+              snapshot.connectedCategories,
+            )}
+            overlayShellClassName={cn(
+              roomosUi.liveOverlayGlassTranslucent,
+              "bg-zinc-950/55",
+            )}
+            className={cn(
+              "!px-3 !py-2.5 sm:!px-4",
+              inspectOpen
+                ? "[&_h3]:!text-xl [&_h3]:sm:!text-2xl"
+                : "[&_h3]:!text-2xl [&_h3]:sm:!text-3xl",
+            )}
+          />
+          <LiveExplainPanel
+            snapshot={snapshot}
+            open={inspectOpen}
+            onToggle={() => setInspectOpen((o) => !o)}
+            roomName={activeRoomName}
+            multiRoom={multiRoom}
+          />
+        </div>
+
       </div>
+
     </section>
+
   )
+
 }
+
+

@@ -41,8 +41,8 @@ log = get_logger("roomos.inference.live")
 
 # Historic fixed taxonomy — fallback only. The live order now comes from the
 # dynamic mood registry (data/moods.json) via _dynamic_ui_state_order().
-_UI_STATE_ORDER: tuple[str, ...] = ("sleep", "gaming", "work", "relaxing", "away")
-_ACTIVITY_LABELS: tuple[str, ...] = ("work", "gaming", "sleep", "relaxing")
+_UI_STATE_ORDER: tuple[str, ...] = ("sleep", "work", "relaxing", "away")
+_ACTIVITY_LABELS: tuple[str, ...] = ("work", "sleep", "relaxing")
 
 
 def _dynamic_ui_state_order() -> tuple[str, ...]:
@@ -70,12 +70,21 @@ def _allowed_live_label_set() -> set[str]:
 def _mask_inactive_labels(
     probs: Dict[str, float], allowed: set[str]
 ) -> Dict[str, float]:
-    """Zero out deleted-mood classes and renormalize over allowed labels."""
+    """Zero out non-eligible classes and renormalize over allowed labels.
+
+    When the model assigns all mass to deleted or hidden labels, fall back to a
+    uniform distribution over ``allowed`` keys present in ``probs`` (never
+    resurrect disallowed labels).
+    """
     masked = {k: (float(v) if k in allowed else 0.0) for k, v in probs.items()}
     total = sum(masked.values())
-    if total <= 1e-9:
-        return dict(probs)
-    return {k: v / total for k, v in masked.items()}
+    if total > 1e-9:
+        return {k: v / total for k, v in masked.items()}
+    pool = sorted(k for k in probs if k in allowed)
+    if not pool:
+        return {k: 0.0 for k in probs}
+    uniform = 1.0 / len(pool)
+    return {k: (uniform if k in pool else 0.0) for k in probs}
 
 
 @dataclass
@@ -95,10 +104,13 @@ class LiveSnapshot:
     last_automation: Dict[str, object] = field(default_factory=dict)
     automation_mode: str = "dry_run"  # dry_run | live | off
     data_source: str = "roomos-ml"  # roomos-ml | demo-replay
+    room_id: Optional[str] = None
+    active_room_id: Optional[str] = None
+    orchestrator_mode: Optional[str] = None
 
     def to_frontend_dict(self) -> dict:
         dist = _normalize_ui_distribution(self.distribution)
-        return {
+        out = {
             "schemaVersion": int(self.schema_version),
             "sequence": int(self.sequence),
             "capturedAt": self.captured_at,
@@ -120,6 +132,13 @@ class LiveSnapshot:
             "automationMode": self.automation_mode,
             "dataSource": self.data_source,
         }
+        if self.room_id is not None:
+            out["roomId"] = self.room_id
+        if self.active_room_id is not None:
+            out["activeRoomId"] = self.active_room_id
+        if self.orchestrator_mode is not None:
+            out["orchestratorMode"] = self.orchestrator_mode
+        return out
 
 
 def _live_presence_fixup(
@@ -327,6 +346,8 @@ class LiveInferenceEngine:
         self._evidence_lock = threading.RLock()
         self._latest_evidence: Optional[dict] = None
         self._recent_screenshots: Deque[np.ndarray] = deque(maxlen=5)
+        self._recent_evidence_frames: Deque[np.ndarray] = deque(maxlen=5)
+        self._evidence_max_width = 1280
         self._frame_lock = threading.RLock()
         self._latest_live_frame_bgr: Optional[np.ndarray] = None
         self._latest_snapshot: Optional[LiveSnapshot] = None
@@ -359,6 +380,8 @@ class LiveInferenceEngine:
             )
             self._auto_retrainer._feature_columns = list(self._model.feature_columns)
         self._previous_displayed_label: str = unknown_label
+        self.orchestrator_managed: bool = False
+        self.inference_room_id: Optional[str] = None
 
     def start_background(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -371,10 +394,20 @@ class LiveInferenceEngine:
         log.info("Live engine started in background thread.")
 
     def _run_guarded(self) -> None:
+        from ..video.input import user_camera_error
+
         try:
             self.run()
         except Exception as e:
-            self._run_error = str(e)
+            detail = str(e).strip()
+            lower = detail.lower()
+            if any(
+                token in lower
+                for token in ("camera", "droidcam", "mjpeg", "webcam", "video source")
+            ):
+                self._run_error = detail or user_camera_error()
+            else:
+                self._run_error = user_camera_error()
             log.exception("Live inference thread failed: %s", e)
 
     def stop(self) -> None:
@@ -446,9 +479,16 @@ class LiveInferenceEngine:
         self._boot_phase = "opening_camera"
 
         preview_cfg = video_cfg.get("preview", {}) or {}
+        self._evidence_max_width = int(
+            preview_cfg.get("max_width", video_cfg.get("preview_max_width", 1280))
+        )
         preview_fps = float(
             preview_cfg.get("max_fps", video_cfg.get("preview_max_fps", 20))
         )
+        need_evidence = (
+            self._transition_journal is not None or self._feedback_model is not None
+        )
+        use_preview_path = self._on_preview_frame is not None or need_evidence
         capture_width = video_cfg.get("capture_width")
         capture_height = video_cfg.get("capture_height")
         capture_fps = video_cfg.get("capture_fps")
@@ -463,8 +503,8 @@ class LiveInferenceEngine:
             resize_width=int(video_cfg.resize_width),
             read_timeout_sec=float(video_cfg.read_timeout_sec),
             backend=backend_hint,
-            preview_fps=preview_fps if self._on_preview_frame else None,
-            preview_callback=self._on_preview_frame,
+            preview_fps=preview_fps if use_preview_path else None,
+            preview_callback=self._emit_preview_frame if use_preview_path else None,
             capture_width=int(capture_width) if capture_width else None,
             capture_height=int(capture_height) if capture_height else None,
             capture_fps=float(capture_fps) if capture_fps else None,
@@ -490,7 +530,9 @@ class LiveInferenceEngine:
                 try:
                     from ..training.collection import mood_collection
 
-                    mood_collection.handle_burst(burst, fused)
+                    mood_collection.handle_burst(
+                        burst, fused, room_id=self.inference_room_id
+                    )
                 except Exception as e:
                     log.debug("Mood collection hook failed: %s", e)
                 feats = fused.as_dict()
@@ -679,7 +721,8 @@ class LiveInferenceEngine:
                 log.warning("Action engine raised: %s", e)
 
         mood_needs_sync = (
-            pred.label in self._ui_classes
+            not self.orchestrator_managed
+            and pred.label in self._ui_classes
             and pred.label != self._last_synced_mood
             and bool(connected)
         )
@@ -704,6 +747,11 @@ class LiveInferenceEngine:
 
                 apply_scene = resolve_apply_scene_for_mood(pred.label)
                 pref_dry_run = preference_sync_dry_run(actions_dry_run)
+                from ..devices.action_arbiter import ActionSource
+
+                pref_source = ActionSource.PREFERENCE_SYNC
+                if self._last_synced_mood == "away":
+                    pref_source = ActionSource.ORCHESTRATOR_RESUME
 
                 pref_record = asyncio.run(
                     apply_preference_scene_async(
@@ -711,6 +759,7 @@ class LiveInferenceEngine:
                         dry_run=pref_dry_run,
                         integrations=integrations,
                         room_state=pred.label,
+                        action_source=pref_source,
                     )
                 )
                 previous_mood = self._last_synced_mood
@@ -816,13 +865,16 @@ class LiveInferenceEngine:
             return raw_probs, {"applied": False, "error": str(e)}
 
     def _remember_evidence(self, now_iso: str, burst, fused, snap: LiveSnapshot, personalization: dict) -> None:
-        screenshots = [
-            f.image_bgr
-            for f in getattr(burst, "frames", [])
-            if getattr(f, "image_bgr", None) is not None
-        ][:5]
         with self._evidence_lock:
-            if len(screenshots) < 5:
+            screenshots = [frame.copy() for frame in self._recent_evidence_frames]
+        if len(screenshots) < 1:
+            screenshots = [
+                f.image_bgr
+                for f in getattr(burst, "frames", [])
+                if getattr(f, "image_bgr", None) is not None
+            ][:5]
+        if len(screenshots) < 1:
+            with self._evidence_lock:
                 screenshots = list(self._recent_screenshots)
             self._latest_evidence = {
                 "captured_at": now_iso,
@@ -950,6 +1002,10 @@ class LiveInferenceEngine:
             "captured_at": snap.captured_at,
             "personalization": dict(snap.personalization or {}),
         }
+        if self.inference_room_id:
+            meta["room_id"] = self.inference_room_id
+        if snap.room_id:
+            meta["room_id"] = snap.room_id
         if metadata:
             meta.update(dict(metadata))
         correction = self._feedback_model.record_correction(
@@ -1132,6 +1188,21 @@ class LiveInferenceEngine:
             "storage": self._feedback_model.status_payload(),
         }
 
+    def _push_evidence_frame(self, image_bgr: np.ndarray) -> None:
+        """Keep recent preview-resolution frames for transition review."""
+        frame = _evidence_screenshot(image_bgr, max_width=self._evidence_max_width)
+        with self._evidence_lock:
+            self._recent_evidence_frames.append(frame)
+
+    def push_evidence_from_preview(self, image_bgr: np.ndarray) -> None:
+        """Transition/feedback evidence — called from the preview encode worker."""
+        if self._transition_journal is not None or self._feedback_model is not None:
+            self._push_evidence_frame(image_bgr)
+
+    def _emit_preview_frame(self, image_bgr: np.ndarray) -> None:
+        if self._on_preview_frame is not None:
+            self._on_preview_frame(image_bgr)
+
     def _record_state_switch(
         self,
         *,
@@ -1149,11 +1220,14 @@ class LiveInferenceEngine:
         if from_label == to_label:
             return
 
-        screenshots = [
-            f.image_bgr
-            for f in getattr(burst, "frames", [])
-            if getattr(f, "image_bgr", None) is not None
-        ][:5]
+        with self._evidence_lock:
+            screenshots = [frame.copy() for frame in self._recent_evidence_frames]
+        if len(screenshots) < 1:
+            screenshots = [
+                f.image_bgr
+                for f in getattr(burst, "frames", [])
+                if getattr(f, "image_bgr", None) is not None
+            ][:5]
         if len(screenshots) < 1:
             with self._evidence_lock:
                 screenshots = list(self._recent_screenshots)
@@ -1313,30 +1387,30 @@ class LiveInferenceEngine:
     def _load_preference_scenes(self) -> dict[str, dict[str, object]]:
         path = self._preferences_path
         try:
-            mtime = path.stat().st_mtime if path.exists() else 0.0
+            pref_mtime_ns = path.stat().st_mtime_ns if path.exists() else 0
         except OSError:
-            mtime = 0.0
+            pref_mtime_ns = 0
+        integ_revision = ""
+        try:
+            from app.integrations_service import integrations_revision_key
+
+            integ_revision = integrations_revision_key()
+        except Exception:
+            pass
+        cache_key = f"{pref_mtime_ns}:{integ_revision}"
         cached_key, cached = self._preferences_cache
+        if cache_key == cached_key and cached:
+            return cached
         try:
             from app.preferences_service import load_preferences
 
             doc = load_preferences()
-            integ_key = ""
-            try:
-                from app.integrations_service import load_integrations
-
-                integ_key = str(load_integrations().get("updatedAt", ""))
-            except Exception:
-                pass
-            cache_key = f"{mtime}:{doc.get('updatedAt', '')}:{integ_key}"
-            if cache_key == cached_key and cached:
-                return cached
             out = active_preset_preferences(doc)
             self._preferences_cache = (cache_key, out)
             return out
         except Exception as e:
             log.debug("Could not load preferences for scene: %s", e)
-            self._preferences_cache = (str(mtime), {})
+            self._preferences_cache = (cache_key, {})
             return {}
 
 
@@ -1421,19 +1495,25 @@ def _looks_like_bootstrap_bundle(model: ActivityModel) -> bool:
     return False
 
 
-def _feedback_screenshot(image_bgr: np.ndarray) -> np.ndarray:
-    """Return a small evidence copy for user-reported corrections."""
+def _evidence_screenshot(image_bgr: np.ndarray, *, max_width: int = 1280) -> np.ndarray:
+    """Downscale for disk storage while keeping the full scene visible."""
     try:
         import cv2
 
         h, w = image_bgr.shape[:2]
-        if w > 320:
-            scale = 320.0 / float(w)
+        cap = max(320, int(max_width))
+        if w > cap:
+            scale = cap / float(w)
             return cv2.resize(
                 image_bgr,
-                (320, max(1, int(round(h * scale)))),
+                (cap, max(1, int(round(h * scale)))),
                 interpolation=cv2.INTER_AREA,
             )
     except Exception:
         pass
     return image_bgr.copy()
+
+
+def _feedback_screenshot(image_bgr: np.ndarray) -> np.ndarray:
+    """Return a small evidence copy for user-reported corrections."""
+    return _evidence_screenshot(image_bgr, max_width=320)

@@ -41,11 +41,6 @@ export function useInferenceCameraPreview(
     }
     setStatus("waiting")
     setMessage("Connecting to inference camera…")
-    const t = window.setTimeout(() => {
-      setStatus((s) => (s === "waiting" ? "live" : s))
-      setMessage(null)
-    }, 1200)
-    return () => window.clearTimeout(t)
   }, [enabled, resumeLive, streamSrc])
 
   const onStreamLoad = useCallback(() => {

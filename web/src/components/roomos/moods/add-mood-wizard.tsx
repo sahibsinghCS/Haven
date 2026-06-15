@@ -22,6 +22,7 @@ import { useMoodMutations, useMoods } from "@/hooks/use-moods"
 import { buildLiveCollectUrl } from "@/lib/roomos/mood-collect-start"
 import { markLiveStartIntent } from "@/lib/roomos/live-session-start"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
+import { useLiveSessionStore } from "@/stores/live-session-store"
 import { useMoodSessionStore } from "@/stores/mood-session-store"
 import type { MoodDefinition } from "@/types/roomos"
 import { cn } from "@/lib/utils"
@@ -45,6 +46,8 @@ export function AddMoodWizard({
   const [durationMin, setDurationMin] = useState(5)
   const [consentOpen, setConsentOpen] = useState(false)
   const [pendingTeach, setPendingTeach] = useState(false)
+  const [trainAllRooms, setTrainAllRooms] = useState(false)
+  const rooms = useLiveSessionStore((s) => s.rooms)
 
   const restorable = moodsData?.restorableBuiltins ?? []
   const consentAccepted = moodsData?.consent?.accepted ?? false
@@ -86,7 +89,11 @@ export function AddMoodWizard({
   }
 
   async function navigateToLiveCollect(moodId: string) {
-    setPendingCollect(moodId, durationSec)
+    const roomIds =
+      trainAllRooms && rooms.length > 0
+        ? rooms.filter((r) => r.enabled).map((r) => r.id)
+        : []
+    setPendingCollect(moodId, durationSec, roomIds)
     markLiveStartIntent()
     setOpen(false)
     router.push(buildLiveCollectUrl(moodId, durationSec))
@@ -210,10 +217,24 @@ export function AddMoodWizard({
                     onValueChange={([v]) => setDurationMin(v ?? 5)}
                   />
                 </div>
-                <p className="rounded-xl border border-[color:var(--haven-line)] bg-stone-50/80 px-3 py-2.5 text-[12.5px] leading-relaxed text-[color:var(--haven-muted)]">
-                  You can stop early on the Live page. Review bursts before training, then
-                  set lights and temperature on this page.
-                </p>
+                {rooms.length > 1 ? (
+                  <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-[color:var(--haven-line)] bg-stone-50/80 px-3 py-2.5 text-[12.5px] leading-relaxed text-[color:var(--haven-muted)]">
+                    <input
+                      type="checkbox"
+                      checked={trainAllRooms}
+                      className="mt-0.5 size-3.5"
+                      onChange={(e) => setTrainAllRooms(e.target.checked)}
+                    />
+                    <span>
+                      Collect in all enabled rooms (otherwise only the active room on Live).
+                    </span>
+                  </label>
+                ) : (
+                  <p className="rounded-xl border border-[color:var(--haven-line)] bg-stone-50/80 px-3 py-2.5 text-[12.5px] leading-relaxed text-[color:var(--haven-muted)]">
+                    You can stop early on the Live page. Review bursts before training, then
+                    set lights and temperature on this page.
+                  </p>
+                )}
               </div>
               <DialogFooter className="border-t border-[color:var(--haven-line)] px-6 py-4">
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>

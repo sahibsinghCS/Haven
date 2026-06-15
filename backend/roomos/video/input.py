@@ -20,7 +20,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterator, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -228,6 +228,11 @@ def _local_ipv4s() -> List[str]:
     return [ip for ip in ips if ip and not ip.startswith("127.")]
 
 
+# Hypervisor / link-local prefixes — not where phones usually live; skipping
+# them avoids doubling scan time when VirtualBox/WSL adapters are present.
+_IGNORED_LAN_PREFIXES = frozenset({"192.168.56.", "169.254."})
+
+
 def _lan_subnets(preferred_prefix: Optional[str] = None) -> List[str]:
     """Unique ``a.b.c.`` /24 prefixes for every local IPv4 interface.
 
@@ -242,6 +247,8 @@ def _lan_subnets(preferred_prefix: Optional[str] = None) -> List[str]:
         if len(parts) != 4:
             continue
         prefix = ".".join(parts[:3]) + "."
+        if prefix in _IGNORED_LAN_PREFIXES and prefix != preferred_prefix:
+            continue
         if prefix not in seen:
             seen.add(prefix)
             prefixes.append(prefix)
@@ -279,45 +286,107 @@ def _looks_like_droidcam_http(host: str, port: int, timeout: float = 1.2) -> boo
             pass
 
 
-def discover_droidcam_url(
+def _droidcam_scan_ports(
+    preferred_port: Optional[int] = None,
+) -> List[int]:
+    ports: List[int] = []
+    for p in (preferred_port, *_DROIDCAM_DEFAULT_PORTS):
+        if p and int(p) not in ports:
+            ports.append(int(p))
+    return ports
+
+
+def _droidcam_url(host: str, port: int) -> str:
+    return f"http://{host}:{port}/video"
+
+
+_DISCOVERY_CACHE_TTL_SEC = 30.0
+_discovery_cond = threading.Condition()
+_discovery_cache: dict[tuple, tuple[float, List[str]]] = {}
+_discovery_scanning: set[tuple] = set()
+
+
+def clear_droidcam_discovery_cache() -> None:
+    """Drop cached LAN scan results (tests / forced refresh)."""
+    with _discovery_cond:
+        _discovery_cache.clear()
+        _discovery_scanning.clear()
+        _discovery_cond.notify_all()
+
+
+def discover_all_droidcam_urls(
     *,
     preferred_port: Optional[int] = None,
     preferred_prefix: Optional[str] = None,
     connect_timeout: float = 0.3,
     max_workers: int = 200,
-) -> Optional[str]:
-    """Scan localhost + the local network(s) for a live DroidCam MJPEG feed.
+) -> List[str]:
+    """Scan localhost + LAN for **all** reachable DroidCam HTTP feeds.
 
-    Returns the first ``http://host:port/video`` that actually serves frames, or
-    ``None``. Used by ``droidcam:auto`` and to auto-heal a saved DroidCam URL
-    after the phone's IP changes.
+    Each phone runs its own server (unique IP). Multi-room ``droidcam:auto``
+    rooms each claim the next unassigned URL from this list.
+
+    Results are cached briefly and concurrent callers share a single in-flight
+    scan so the API stays responsive when the UI lists cameras repeatedly.
     """
+    key = (preferred_port, preferred_prefix, round(connect_timeout, 3), max_workers)
+    with _discovery_cond:
+        entry = _discovery_cache.get(key)
+        if entry and time.monotonic() - entry[0] < _DISCOVERY_CACHE_TTL_SEC:
+            return list(entry[1])
+        while key in _discovery_scanning:
+            _discovery_cond.wait(timeout=90.0)
+            entry = _discovery_cache.get(key)
+            if entry and time.monotonic() - entry[0] < _DISCOVERY_CACHE_TTL_SEC:
+                return list(entry[1])
+        _discovery_scanning.add(key)
+
+    try:
+        urls = _discover_all_droidcam_urls_uncached(
+            preferred_port=preferred_port,
+            preferred_prefix=preferred_prefix,
+            connect_timeout=connect_timeout,
+            max_workers=max_workers,
+        )
+    finally:
+        with _discovery_cond:
+            _discovery_cache[key] = (time.monotonic(), list(urls))
+            _discovery_scanning.discard(key)
+            _discovery_cond.notify_all()
+    return urls
+
+
+def _discover_all_droidcam_urls_uncached(
+    *,
+    preferred_port: Optional[int] = None,
+    preferred_prefix: Optional[str] = None,
+    connect_timeout: float = 0.3,
+    max_workers: int = 200,
+) -> List[str]:
     import concurrent.futures
 
-    ports: List[int] = []
-    for p in (preferred_port, *_DROIDCAM_DEFAULT_PORTS):
-        if p and int(p) not in ports:
-            ports.append(int(p))
+    ports = _droidcam_scan_ports(preferred_port)
+    found: List[str] = []
+    seen_hosts: set[str] = set()
 
-    # 1) Localhost first (USB / DroidCam client) — fast and avoids a LAN scan.
-    # Do not open /video here: DroidCam allows only one HTTP client and a probe
-    # would race with the real capture open immediately after discovery.
     for host in _DROIDCAM_DEFAULT_HOSTS:
         for port in ports:
             if _droidcam_port_open(host, port):
-                url = f"http://{host}:{port}/video"
-                log.info("DroidCam found at %s (localhost, port %d open)", url, port)
-                return url
+                url = _droidcam_url(host, port)
+                if url not in found:
+                    found.append(url)
+                    log.info("DroidCam found at %s (localhost)", url)
 
-    # 2) Sweep each local /24 for open DroidCam ports, then verify the stream.
     subnets = _lan_subnets(preferred_prefix=preferred_prefix)
     if not subnets:
-        return None
+        return found
 
     tasks: List[Tuple[str, int]] = []
     for prefix in subnets:
         for octet in range(1, 255):
             host = f"{prefix}{octet}"
+            if host in ("127.0.0.1", "localhost"):
+                continue
             for port in ports:
                 tasks.append((host, port))
 
@@ -337,16 +406,126 @@ def discover_droidcam_url(
             if res is not None:
                 open_hosts.append(res)
 
-    for host, port in open_hosts:
-        url = f"http://{host}:{port}/video"
-        log.info("DroidCam discovered at %s (LAN scan, port %d open)", url, port)
-        return url
+    for host, port in sorted(open_hosts, key=lambda hp: (hp[0], hp[1])):
+        if host in seen_hosts:
+            continue
+        seen_hosts.add(host)
+        url = _droidcam_url(host, port)
+        if url not in found:
+            found.append(url)
+            log.info("DroidCam discovered at %s (LAN)", url)
+    return found
+
+
+def discover_droidcam_url(
+    *,
+    preferred_port: Optional[int] = None,
+    preferred_prefix: Optional[str] = None,
+    connect_timeout: float = 0.3,
+    max_workers: int = 200,
+    exclude_urls: Optional[set[str]] = None,
+) -> Optional[str]:
+    """Return the first DroidCam URL not already in *exclude_urls*."""
+    exclude = exclude_urls or set()
+    urls = discover_all_droidcam_urls(
+        preferred_port=preferred_port,
+        preferred_prefix=preferred_prefix,
+        connect_timeout=connect_timeout,
+        max_workers=max_workers,
+    )
+    for url in urls:
+        if url not in exclude:
+            return url
     return None
 
 
-def _probe_droidcam() -> Optional[str]:
+def _probe_droidcam(exclude_urls: Optional[set[str]] = None) -> Optional[str]:
     """Return a working DroidCam URL (localhost then LAN), or None."""
-    return discover_droidcam_url()
+    return discover_droidcam_url(exclude_urls=exclude_urls)
+
+
+def collect_claimed_droidcam_urls(
+    rooms: Sequence[Any],
+    *,
+    skip_room_id: Optional[str] = None,
+) -> set[str]:
+    """DroidCam HTTP URLs already assigned to other rooms (stable by room id).
+
+    Each ``droidcam:auto`` room claims the next free phone on the network so
+    multiple rooms can all use auto-discover without colliding.
+    """
+    used: set[str] = set()
+    ordered = sorted(rooms, key=lambda r: str(getattr(r, "id", "")))
+    for room in ordered:
+        rid = str(getattr(room, "id", ""))
+        if skip_room_id and rid == skip_room_id:
+            continue
+        camera = getattr(room, "camera", None)
+        src = getattr(camera, "source", None) if camera is not None else None
+        if is_auto_video_source(src):
+            url = discover_droidcam_url(exclude_urls=used)
+            if url:
+                used.add(url)
+        elif isinstance(src, str) and is_phone_stream_url(src):
+            used.add(src)
+    return used
+
+
+@dataclass(frozen=True)
+class ResolvedVideoSource:
+    """Result of resolving ``video.source: auto`` to a concrete capture target."""
+
+    source: Optional[Union[int, str]]
+    backend: str
+    unresolved: bool = False
+
+
+def is_auto_video_source(source: VideoSourceLike) -> bool:
+    """True when the config requests silent phone-stream discovery."""
+    if isinstance(source, int):
+        return False
+    return str(source).strip().lower() in ("auto", "droidcam:auto")
+
+
+def is_phone_stream_url(value: str) -> bool:
+    """True for HTTP MJPEG phone streams (including saved discovery URLs)."""
+    return _is_droidcam_url(value)
+
+
+def user_camera_error(detail: Optional[str] = None) -> str:
+    """Generic camera error for API/UI — no vendor-specific wording."""
+    base = (
+        "Could not open camera. Choose a device below or close other apps using the webcam."
+    )
+    if detail:
+        return f"{base} ({detail})"
+    return base
+
+
+def resolve_video_source(
+    source: VideoSourceLike,
+    *,
+    backend: str = "auto",
+    exclude_urls: Optional[set[str]] = None,
+) -> ResolvedVideoSource:
+    """Resolve ``auto`` / ``droidcam:auto`` to a concrete OpenCV source.
+
+    Pass *exclude_urls* (phones already used by other rooms) so each auto room
+    binds a distinct DroidCam feed. Does not fall back to a local webcam when
+    auto-discovery fails.
+    """
+    if isinstance(source, str):
+        sl = source.strip().lower()
+        if sl in ("auto", "droidcam:auto"):
+            url = _probe_droidcam(exclude_urls=exclude_urls)
+            if url:
+                log.info("Resolved %r -> %s", source, url)
+                return ResolvedVideoSource(source=url, backend="auto")
+            log.info("Resolved %r: no phone stream found (camera setup required)", source)
+            return ResolvedVideoSource(source=None, backend=backend, unresolved=True)
+        if source.isdigit():
+            return ResolvedVideoSource(source=int(source), backend=backend)
+    return ResolvedVideoSource(source=source, backend=backend)
 
 
 def _is_droidcam_url(value: str) -> bool:
@@ -497,10 +676,10 @@ def _apply_capture_format(
             cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         except Exception:
             pass
-        try:
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            pass
+    try:
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    except Exception:
+        pass
 
 
 def _open_capture(
@@ -640,6 +819,57 @@ class _MjpegHttpCapture:
             self._buffer += chunk
 
 
+def _open_droidcam_virtual_webcam(
+    *,
+    capture_width: Optional[int] = None,
+    capture_height: Optional[int] = None,
+    capture_fps: Optional[float] = None,
+) -> Optional[tuple[Any, str]]:
+    """Open DroidCam's Windows virtual webcam when the Wi-Fi HTTP feed is busy."""
+    candidates: list[tuple[Union[int, str], str]] = []
+    for cam in list_available_cameras(max_index=6):
+        label = str(cam.get("label") or "").lower()
+        hint = str(cam.get("device_hint") or "").lower()
+        if "droidcam" not in label and "droidcam" not in hint:
+            continue
+        src = cam.get("source")
+        if src is None:
+            continue
+        backend = str(cam.get("backend") or "dshow")
+        candidates.append((src, backend))
+
+    if sys.platform.startswith("win"):
+        for idx in (1, 0, 2, 3):
+            for backend in ("msmf", "dshow"):
+                pair = (idx, backend)
+                if pair not in candidates:
+                    candidates.append(pair)
+
+    seen: set[tuple[str, str]] = set()
+    for src, backend in candidates:
+        key = (str(src), backend)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            cap, active = _open_capture(
+                src,
+                backend,
+                capture_width=capture_width,
+                capture_height=capture_height,
+                capture_fps=capture_fps,
+            )
+            log.info(
+                "Opened DroidCam virtual webcam %r via %s (HTTP feed was busy)",
+                src,
+                active,
+            )
+            return cap, active
+        except RuntimeError:
+            continue
+    return None
+
+
 def _open_mjpeg_http(
     url: str,
     *,
@@ -700,7 +930,18 @@ def _open_video_capture(
         # OpenCV often fails on DroidCam HTTP and a failed open can mark the feed
         # busy before our MJPEG reader runs — use the stdlib reader directly.
         if _is_droidcam_url(source):
-            return _open_mjpeg_http(source), "mjpeg-http"
+            try:
+                return _open_mjpeg_http(source), "mjpeg-http"
+            except RuntimeError as exc:
+                if "busy" in str(exc).lower():
+                    virtual = _open_droidcam_virtual_webcam(
+                        capture_width=capture_width,
+                        capture_height=capture_height,
+                        capture_fps=capture_fps,
+                    )
+                    if virtual is not None:
+                        return virtual
+                raise
         try:
             return _open_capture(
                 source,
@@ -943,6 +1184,87 @@ def list_available_cameras(max_index: int = 4) -> List[dict]:
     return cameras
 
 
+def _droidcam_list_label(url: str) -> str:
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(str(url))
+        host = parsed.hostname or "phone"
+        if host in ("127.0.0.1", "localhost"):
+            return "DroidCam (this PC)"
+        return f"DroidCam · {host}"
+    except Exception:
+        return "DroidCam (phone)"
+
+
+def list_droidcam_network_cameras(
+    *,
+    exclude_sources: Optional[set[str]] = None,
+    scan: bool = True,
+) -> List[dict]:
+    """Network DroidCam feeds for the camera picker (one entry per phone)."""
+    exclude = exclude_sources or set()
+    out: List[dict] = []
+    if scan:
+        try:
+            urls = discover_all_droidcam_urls()
+        except Exception as e:
+            log.warning("DroidCam LAN scan failed: %s", e)
+            urls = []
+    else:
+        urls = []
+
+    for idx, url in enumerate(urls):
+        if url in exclude:
+            continue
+        out.append(
+            {
+                "index": 1000 + idx,
+                "source": url,
+                "backend": "auto",
+                "label": _droidcam_list_label(url),
+                "available": True,
+                "mean_luma": None,
+                "frame_shape": None,
+                "kind": "droidcam",
+            }
+        )
+
+    # Auto-discover assigns the next free phone per room (see collect_claimed_droidcam_urls).
+    if "droidcam:auto" not in exclude:
+        out.insert(
+            0,
+            {
+                "index": 999,
+                "source": "droidcam:auto",
+                "backend": "auto",
+                "label": "Phone camera (auto-discover)",
+                "available": True,
+                "mean_luma": None,
+                "frame_shape": None,
+                "kind": "droidcam_auto",
+            },
+        )
+    return out
+
+
+def list_all_cameras_for_ui(
+    *,
+    max_index: int = 4,
+    exclude_sources: Optional[set[str]] = None,
+    include_droidcam_scan: bool = True,
+) -> List[dict]:
+    """USB/webcam indices plus discovered DroidCam HTTP streams."""
+    local = list_available_cameras(max_index=max_index)
+    exclude = exclude_sources or set()
+    filtered_local = [c for c in local if str(c.get("source")) not in exclude]
+    network = list_droidcam_network_cameras(
+        exclude_sources=exclude,
+        scan=include_droidcam_scan,
+    )
+    return filtered_local + network
+
+
 def _attach_windows_device_hints(results: List[dict], dshow_names: List[str]) -> None:
     """Guess friendly names — ffmpeg list order often differs from OpenCV index order."""
     video_names = [n for n in dshow_names if "audio" not in n.lower()]
@@ -1135,10 +1457,14 @@ class FrameSource:
         self._next_preview_emit_at = 0.0
         self._frame_index = 0
 
-        # Only network streams suffer from buffer-accumulation latency. Local
-        # webcams use CAP_PROP_BUFFERSIZE=1 and are read in lock-step, so leave
-        # them on the simple sequential path.
-        if isinstance(self.coerced_source, str) and "://" in self.coerced_source:
+        # Network streams buffer in the driver/socket; drain in a background thread.
+        # Local webcams (incl. DroidCam virtual cam) stay on direct read — a grabber
+        # here forces preprocess on every camera frame and adds latency.
+        if (
+            isinstance(self.coerced_source, str)
+            and "://" in self.coerced_source
+            and self.is_live()
+        ):
             self._start_grabber()
 
     def _start_grabber(self) -> None:
@@ -1267,10 +1593,25 @@ class FrameSource:
             consecutive_failures = 0
             last_ok = time.monotonic()
 
-            # Latency control: local webcams use CAP_PROP_BUFFERSIZE=1; network
-            # streams are drained by the background grabber (see _start_grabber),
-            # which hands us only the freshest frame so a slow ML/preview loop
-            # can't build up a growing backlog of stale frames.
+            preview_due = (
+                self.preview_callback is not None
+                and self._preview_period is not None
+                and now_rel >= self._next_preview_emit_at
+            )
+            sample_due = now_rel >= self._next_emit_at
+
+            if not preview_due and not sample_due:
+                if self._grab_cond is not None:
+                    continue
+                if self.is_live() and self._grab_cond is None and self._cap is not None:
+                    try:
+                        self._cap.read()
+                    except Exception:
+                        pass
+                continue
+
+            # Latency control: network streams use the background grabber; local
+            # webcams use CAP_PROP_BUFFERSIZE=1 and discard reads above when idle.
 
             if self.frame_preprocess:
                 frame = preprocess_frame(frame, self.frame_preprocess)
@@ -1279,7 +1620,7 @@ class FrameSource:
             if (
                 self.preview_callback is not None
                 and self._preview_period is not None
-                and now_rel >= self._next_preview_emit_at
+                and preview_due
             ):
                 self._next_preview_emit_at = now_rel + self._preview_period
                 try:
@@ -1288,7 +1629,7 @@ class FrameSource:
                     log.debug("preview_callback failed: %s", e)
 
             # Sample-rate gating: only emit if enough wall-time has passed.
-            if now_rel < self._next_emit_at:
+            if not sample_due:
                 continue
             self._next_emit_at = now_rel + self._sample_period
 

@@ -34,9 +34,24 @@ function parseCameraValue(value: string): { source: number | string; backend: st
 
 export function LiveCameraSelect({
   onChanged,
+  onSelectValue,
+  pickerOnly = false,
+  forNewRoom = false,
+  excludeRoomId,
+  initialValue,
+  tone = "dark",
   className,
 }: {
   onChanged?: () => void
+  /** When ``pickerOnly``, called with value instead of POST /camera. */
+  onSelectValue?: (value: string) => void
+  pickerOnly?: boolean
+  /** Hide cameras already assigned to other rooms (multi-DroidCam setup). */
+  forNewRoom?: boolean
+  /** When editing a room, keep its camera in the list but hide other rooms' picks. */
+  excludeRoomId?: string
+  initialValue?: string
+  tone?: "dark" | "light"
   className?: string
 }) {
   const [loading, setLoading] = useState(false)
@@ -48,6 +63,10 @@ export function LiveCameraSelect({
   const bumpCameraRefresh = useRoomOsAmbientStore((s) => s.bumpCameraRefresh)
 
   useEffect(() => {
+    if (initialValue) {
+      setSelected(initialValue)
+      return
+    }
     let cancelled = false
     ;(async () => {
       try {
@@ -68,14 +87,28 @@ export function LiveCameraSelect({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [initialValue])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await fetchCameras()
+      const data = await fetchCameras(undefined, {
+        forNewRoom: pickerOnly && forNewRoom,
+        excludeRoomId,
+      })
       setCameras(data.cameras)
       setScanned(true)
+      if (pickerOnly && forNewRoom && !selected) {
+        const autoPick =
+          data.cameras.find((c) => c.kind === "droidcam_auto") ??
+          data.cameras.find((c) => c.available)
+        if (autoPick) {
+          const value = cameraValue(autoPick)
+          setSelected(value)
+          setCurrentLabel(formatCameraDeviceLabel(autoPick.label))
+          onSelectValue?.(value)
+        }
+      }
       const match = data.cameras.find((c) => c.source === data.current.source)
       if (match) {
         setSelected(cameraValue(match))
@@ -91,7 +124,7 @@ export function LiveCameraSelect({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [excludeRoomId, forNewRoom, onSelectValue, pickerOnly, selected])
 
   const onOpenChange = (open: boolean) => {
     if (open && !scanned && !loading) {
@@ -101,6 +134,15 @@ export function LiveCameraSelect({
 
   const onSelect = async (value: string) => {
     if (busy || value === selected) return
+    if (pickerOnly) {
+      setSelected(value)
+      const cam = cameras.find((c) => cameraValue(c) === value)
+      if (cam) {
+        setCurrentLabel(formatCameraDeviceLabel(cam.label))
+      }
+      onSelectValue?.(value)
+      return
+    }
     const { source, backend } = parseCameraValue(value)
     setBusy(true)
     try {
@@ -113,6 +155,7 @@ export function LiveCameraSelect({
       toast.success("Camera switched — reconnecting preview…")
       bumpCameraRefresh()
       onChanged?.()
+      onSelectValue?.(value)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not switch camera")
     } finally {
@@ -128,7 +171,10 @@ export function LiveCameraSelect({
       role="group"
       aria-label="Webcam selection"
     >
-      <Camera className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+      <Camera
+        className={cn("size-3.5 shrink-0", tone === "light" ? "text-stone-500" : "text-zinc-500")}
+        aria-hidden
+      />
       <Select
         value={selected}
         onValueChange={(v) => void onSelect(v)}
@@ -138,8 +184,10 @@ export function LiveCameraSelect({
         <SelectTrigger
           size="sm"
           className={cn(
-            "h-8 min-w-[9.5rem] max-w-[14rem] border-white/10 bg-zinc-950/70 text-xs text-zinc-100",
-            "hover:bg-zinc-900/80",
+            "h-8 min-w-[9.5rem] max-w-[14rem] text-xs",
+            tone === "light"
+              ? "border-stone-200/80 bg-white/90 text-stone-900 hover:bg-white"
+              : "border-white/10 bg-zinc-950/70 text-zinc-100 hover:bg-zinc-900/80",
           )}
           aria-label="Select webcam"
         >
@@ -154,12 +202,26 @@ export function LiveCameraSelect({
               Scanning…
             </span>
           ) : (
-            <SelectValue placeholder={noneAvailable ? "No cameras" : currentLabel} />
+            <SelectValue
+              placeholder={noneAvailable ? "No cameras found" : currentLabel}
+            />
           )}
         </SelectTrigger>
-        <SelectContent className="max-h-72 border-white/10 bg-zinc-950 text-zinc-100">
+        <SelectContent
+          className={cn(
+            "max-h-72",
+            tone === "light"
+              ? "border-stone-200/80 bg-white text-stone-900"
+              : "border-white/10 bg-zinc-950 text-zinc-100",
+          )}
+        >
           {!scanned && !loading ? (
             <p className="px-2 py-3 text-[11px] text-zinc-500">Opening list scans devices…</p>
+          ) : null}
+          {noneAvailable ? (
+            <p className="px-2 py-3 text-[11px] leading-relaxed text-zinc-500">
+              No cameras found — plug in a USB webcam and tap rescan.
+            </p>
           ) : null}
           {cameras.map((cam) => {
             const label = formatCameraDeviceLabel(cam.label)
@@ -177,10 +239,12 @@ export function LiveCameraSelect({
                 <span className="flex flex-col gap-0.5">
                   <span>{label}</span>
                   <span className="text-[10px] font-normal text-zinc-500">
-                    {typeof cam.source === "string"
-                      ? "Scans Wi-Fi + USB for your phone"
-                      : !cam.available
-                        ? "Not available to OpenCV"
+                    {!cam.available
+                      ? "Not available — try another device"
+                      : cam.kind === "droidcam" || cam.kind === "droidcam_auto"
+                        ? cam.kind === "droidcam_auto"
+                          ? "Next free phone on Wi‑Fi (one per room)"
+                          : "Phone stream · HTTP"
                         : dark
                           ? `Index ${cam.index} · very dark`
                           : `Index ${cam.index} · ${cam.backend}`}
@@ -196,9 +260,10 @@ export function LiveCameraSelect({
         onClick={() => void load()}
         disabled={loading || busy}
         className={cn(
-          "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10",
-          "bg-zinc-950/70 text-zinc-400 transition-colors hover:bg-zinc-900/80 hover:text-zinc-200",
-          "disabled:opacity-50",
+          "inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50",
+          tone === "light"
+            ? "border-stone-200/80 bg-white/90 text-stone-500 hover:bg-white hover:text-stone-800"
+            : "border-white/10 bg-zinc-950/70 text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-200",
         )}
         aria-label="Rescan cameras"
       >

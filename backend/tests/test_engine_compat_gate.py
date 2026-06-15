@@ -108,6 +108,25 @@ def test_format_includes_fix_commands():
     assert "npm run train:demo" in msg
 
 
+def test_registry_label_gate_requires_inference_eligible_overlap(tmp_path, monkeypatch):
+    """With moods.json, gate fails when bundle matches no eligible active mood."""
+    from roomos.moods import registry as mood_registry
+    from roomos.model.compat import _registry_label_check
+
+    moods_path = tmp_path / "moods.json"
+    monkeypatch.setattr(mood_registry, "_cache", None)
+    monkeypatch.setattr(mood_registry, "default_moods_path", lambda: moods_path)
+    mood_registry.load_registry(moods_path)
+
+    assert _registry_label_check(["sleep", "work", "relaxing", "away", "gaming"]) == []
+
+    mood_registry.delete_mood("work", path=moods_path)
+    mismatches = _registry_label_check(["work"])
+    assert len(mismatches) == 1
+    assert mismatches[0].category == "labels"
+    assert "eligible" in mismatches[0].field
+
+
 def test_gate_live_engine_start_resolves_paths():
     infer_cfg = load_config(_BACKEND / "configs/inference.yaml")
     bundle = _BACKEND / "data/models/latest"

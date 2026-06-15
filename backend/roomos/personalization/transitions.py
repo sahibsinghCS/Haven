@@ -281,11 +281,12 @@ def _write_screenshots(event_dir: Path, screenshots_bgr: List[np.ndarray]) -> Li
         path = event_dir / f"frame_{i:02d}.jpg"
         try:
             h, w = frame.shape[:2]
-            if w > 480:
-                scale = 480.0 / float(w)
+            max_w = 1280
+            if w > max_w:
+                scale = max_w / float(w)
                 frame = cv2.resize(
                     frame,
-                    (480, max(1, int(round(h * scale)))),
+                    (max_w, max(1, int(round(h * scale)))),
                     interpolation=cv2.INTER_AREA,
                 )
             if cv2.imwrite(str(path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80]):

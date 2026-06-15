@@ -23,7 +23,9 @@ const nav = [
 export function RoomDashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const primaryState = useRoomOsAmbientStore((s) => s.primaryState)
+  const lastAmbientMood = useRoomOsAmbientStore((s) => s.lastAmbientMood)
   const isLive = pathname === "/live"
+  const ambientMood = isLive ? primaryState : lastAmbientMood
   const reduceMotion = useReducedMotion()
 
   useEffect(() => {
@@ -66,8 +68,9 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
         "relative flex flex-1 flex-col overflow-x-clip",
         isLive
           ? "h-svh max-h-svh overflow-hidden bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100"
-          : "min-h-full haven-app text-[color:var(--haven-ink)]",
+          : "haven-app haven-grain min-h-full text-[color:var(--haven-ink)]",
       )}
+      data-haven-mood={!isLive && ambientMood ? ambientMood : undefined}
       style={
         isLive
           ? undefined
@@ -90,6 +93,13 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
         )}
         aria-hidden
       />
+      {!isLive && ambientMood ? (
+        <div
+          className="pointer-events-none fixed -top-24 left-1/2 z-0 h-[320px] w-[min(900px,95vw)] -translate-x-1/2 rounded-full blur-3xl transition-opacity duration-700"
+          style={{ background: `radial-gradient(ellipse, var(--haven-ambient) 0%, transparent 68%)` }}
+          aria-hidden
+        />
+      ) : null}
       {accent && isLive ? (
         <motion.div
           key={primaryState ?? "none"}
@@ -97,8 +107,6 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
             "pointer-events-none fixed -top-32 left-1/2 h-[380px] w-[min(1100px,100vw)] -translate-x-1/2 rounded-full blur-3xl",
             "bg-gradient-to-r",
             primaryState === "sleep" && "from-indigo-600/18 via-indigo-950/6 to-transparent",
-            primaryState === "gaming" &&
-              "from-violet-600/14 via-blue-950/8 to-transparent",
             primaryState === "work" && "from-sky-500/12 via-cyan-950/6 to-transparent",
             primaryState === "relaxing" &&
               "from-teal-500/11 via-emerald-950/5 to-transparent",
@@ -251,11 +259,15 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
       <LiveSessionBridge />
 
       <main
+        key={pathname}
         className={cn(
           "relative z-10 flex w-full flex-1 flex-col",
           isLive
             ? "max-w-none min-h-0 p-0"
-            : "mx-auto w-full max-w-6xl min-h-0 px-4 py-10 sm:px-6 sm:py-14",
+            : cn(
+                "mx-auto w-full max-w-6xl min-h-0 px-4 py-8 sm:px-6 sm:py-12",
+                roomosUi.pageEnter,
+              ),
         )}
       >
         {children}

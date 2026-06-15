@@ -114,6 +114,53 @@ def _compute_sample_weights(y: np.ndarray, mode: str) -> Optional[np.ndarray]:
     return np.array([weights[int(v)] for v in y], dtype=np.float32)
 
 
+def _compute_equal_total_class_weights(
+    train_df: pd.DataFrame,
+) -> Optional[np.ndarray]:
+    """Per-row weights so each label's total training weight is equal.
+
+    Honors ``row_weight`` inside a class (e.g. personal bursts vs base rows) but
+    prevents a mood with many collected bursts from dominating others.
+    """
+    if "label" not in train_df.columns or "row_weight" not in train_df.columns:
+        return None
+    labels = train_df["label"].astype(str).to_numpy()
+    rw = train_df["row_weight"].fillna(1.0).astype(np.float32).to_numpy()
+    rw = np.clip(rw, 1e-6, None)
+    class_sums: Dict[str, float] = {}
+    for lab in np.unique(labels):
+        class_sums[str(lab)] = float(rw[labels == lab].sum())
+    if not class_sums:
+        return None
+    target = sum(class_sums.values()) / len(class_sums)
+    sw = np.empty(len(labels), dtype=np.float32)
+    for i, lab in enumerate(labels):
+        sw[i] = (target / class_sums[lab]) * rw[i]
+    totals = {str(lab): float(sw[labels == lab].sum()) for lab in np.unique(labels)}
+    log.info("Equal total class weights: %s", totals)
+    return sw
+
+
+def _compute_train_sample_weights(
+    train_df: pd.DataFrame,
+    y: np.ndarray,
+    train_cfg: object,
+) -> Optional[np.ndarray]:
+    """Resolve XGBoost ``sample_weight`` for the training split."""
+    mode = str(_cfg_get(train_cfg, "class_weighting", "balanced"))
+    if mode == "none" or not mode:
+        return _apply_row_weights(None, train_df, train_cfg)
+
+    label_mult = _cfg_get(train_cfg, "label_row_weights", None)
+    has_label_mult = isinstance(label_mult, dict) and bool(label_mult)
+    use_row_weights = bool(_cfg_get(train_cfg, "use_row_weights", False))
+    if use_row_weights and "row_weight" in train_df.columns and not has_label_mult:
+        return _compute_equal_total_class_weights(train_df)
+
+    sw = _compute_sample_weights(y, mode)
+    return _apply_row_weights(sw, train_df, train_cfg)
+
+
 def _apply_row_weights(
     sw: Optional[np.ndarray],
     train_df: pd.DataFrame,
@@ -204,6 +251,12 @@ def train_model(
     df = df.copy()
     n_before = len(df)
     df = df[df["label"].notna() & (df["label"].astype(str).str.len() > 0)]
+    try:
+        from ..moods.registry import filter_deprecated_training_rows
+
+        df = filter_deprecated_training_rows(df)
+    except Exception:
+        pass
     log.info("Dropped %d unlabeled rows (kept %d).", n_before - len(df), len(df))
     if df.empty:
         raise ValueError("No labeled rows available for training.")
@@ -257,8 +310,7 @@ def train_model(
     X_test = test_df[feature_cols].astype(float).fillna(0.0).to_numpy(dtype=np.float32) if len(test_df) else None
     y_test = test_df["_y"].to_numpy(dtype=np.int32) if len(test_df) else None
 
-    sw = _compute_sample_weights(y_train, str(train_cfg.get("class_weighting", "balanced")))
-    sw = _apply_row_weights(sw, train_df, train_cfg)
+    sw = _compute_train_sample_weights(train_df, y_train, train_cfg)
     _log_row_weight_summary(train_df)
 
     # XGBoost.

@@ -39,6 +39,7 @@ class CollectionSession:
     mood_id: str
     duration_sec: float
     datasets_root: Path
+    room_ids: list[str] = field(default_factory=list)  # empty = all rooms
     started_monotonic: float = field(default_factory=time.monotonic)
     started_at: str = field(default_factory=_now_iso)
     bursts_saved: int = 0
@@ -75,6 +76,7 @@ class CollectionSession:
             },
             "stopReason": self.stop_reason,
             "finishedAt": self.finished_at,
+            "roomIds": list(self.room_ids),
         }
 
 
@@ -101,7 +103,14 @@ class MoodCollectionManager:
 
     # --- session lifecycle (API thread) --------------------------------
 
-    def start(self, mood_id: str, duration_sec: float, datasets_root: Path) -> Dict[str, Any]:
+    def start(
+        self,
+        mood_id: str,
+        duration_sec: float,
+        datasets_root: Path,
+        *,
+        room_ids: Optional[list[str]] = None,
+    ) -> Dict[str, Any]:
         with self._lock:
             if self._session is not None and self._session.active:
                 raise RuntimeError(
@@ -110,10 +119,12 @@ class MoodCollectionManager:
             duration = float(duration_sec)
             if not (10.0 <= duration <= 3600.0):
                 raise ValueError("durationSec must be between 10 and 3600 seconds.")
+            normalized_rooms = [str(r).strip() for r in (room_ids or []) if str(r).strip()]
             self._session = CollectionSession(
                 mood_id=mood_id,
                 duration_sec=duration,
                 datasets_root=Path(datasets_root),
+                room_ids=normalized_rooms,
             )
             self._last_thumb = None
             self._ensure_writer()
@@ -178,7 +189,9 @@ class MoodCollectionManager:
 
     # --- burst intake (engine ML thread) --------------------------------
 
-    def handle_burst(self, burst: Any, fused: Any) -> None:
+    def handle_burst(
+        self, burst: Any, fused: Any, *, room_id: Optional[str] = None
+    ) -> None:
         """Called by the live engine after every processed burst. Never raises."""
         try:
             with self._lock:
@@ -186,6 +199,8 @@ class MoodCollectionManager:
                     return
                 session = self._session
             assert session is not None
+            if session.room_ids and room_id and room_id not in session.room_ids:
+                return
 
             frames = [
                 f.image_bgr
@@ -277,16 +292,19 @@ class MoodCollectionManager:
                     metadata=metadata,
                     n_frames=saved,
                 )
+                meta: Dict[str, Any] = {
+                    "burstId": burst_id,
+                    "capturedAt": _now_iso(),
+                    "meanLuma": round(mean_luma, 2),
+                    "blurScore": round(blur, 2),
+                    "frameCount": saved,
+                }
+                if room_id:
+                    meta["roomId"] = room_id
                 pds.append_burst_metadata(
                     session.datasets_root,
                     session.mood_id,
-                    {
-                        "burstId": burst_id,
-                        "capturedAt": _now_iso(),
-                        "meanLuma": round(mean_luma, 2),
-                        "blurScore": round(blur, 2),
-                        "frameCount": saved,
-                    },
+                    meta,
                 )
                 with self._lock:
                     session.bursts_saved += 1

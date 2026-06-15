@@ -7,7 +7,12 @@ import type { LiveInferenceStatus } from "@/hooks/use-live-inference"
 import type { BootPhase, CompatReport, LiveMode, ModelKind } from "@/lib/roomos/api-client"
 import type { LiveFeedbackEvent } from "@/types/feedback-event"
 import type { LivePreferencesEvent } from "@/types/preferences-event"
-import type { LiveInferenceSnapshot } from "@/types/roomos"
+import type {
+  LiveInferenceSnapshot,
+  OrchestratorMode,
+  RoomStatus,
+  RoomsStatusResponse,
+} from "@/types/roomos"
 
 type LiveSessionStore = {
   /** User wants the inference camera on (power toggle). */
@@ -48,7 +53,14 @@ type LiveSessionStore = {
   modelKind: ModelKind
   compatReport: CompatReport | null
   liveMode: LiveMode
-  setEngineSession: (patch: Partial<Omit<LiveSessionStore, "setLiveInference" | "setEngineSession" | "dismissFeedbackEvent" | "dismissPreferencesEvent" | "setCameraEnabled" | "setEngineWasRunning" | "setPreviewStreamLive" | "resetForCameraOff">>) => void
+  cameraSetupRequired: boolean
+  rooms: RoomStatus[]
+  orchestratorMode: OrchestratorMode
+  activeRoomId: string | null
+  graceRemainingSec: number | null
+  graceDurationSec: number
+  setRoomsStatus: (status: RoomsStatusResponse) => void
+  setEngineSession: (patch: Partial<Omit<LiveSessionStore, "setLiveInference" | "setEngineSession" | "dismissFeedbackEvent" | "dismissPreferencesEvent" | "setCameraEnabled" | "setEngineWasRunning" | "setPreviewStreamLive" | "resetForCameraOff" | "setRoomsStatus">>) => void
 }
 
 export const useLiveSessionStore = create<LiveSessionStore>((set) => ({
@@ -72,6 +84,7 @@ export const useLiveSessionStore = create<LiveSessionStore>((set) => ({
       bootPhase: "off",
       liveMode: "off",
       inferenceSource: null,
+      cameraSetupRequired: false,
     }),
 
   snapshot: null,
@@ -94,5 +107,19 @@ export const useLiveSessionStore = create<LiveSessionStore>((set) => ({
   modelKind: "unknown",
   compatReport: null,
   liveMode: "off",
+  cameraSetupRequired: false,
+  rooms: [],
+  orchestratorMode: "away",
+  activeRoomId: null,
+  graceRemainingSec: null,
+  graceDurationSec: 60,
+  setRoomsStatus: (status) =>
+    set({
+      rooms: status.rooms,
+      orchestratorMode: status.orchestratorMode,
+      activeRoomId: status.activeRoomId,
+      graceRemainingSec: status.graceRemainingSec,
+      graceDurationSec: status.graceDurationSec,
+    }),
   setEngineSession: (patch) => set((s) => ({ ...s, ...patch })),
 }))

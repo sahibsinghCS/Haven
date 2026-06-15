@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 from roomos.devices.scene_apply import (
     apply_preference_scene,
+    invalidate_connected_device_categories_cache,
     preference_sync_dry_run,
     resolve_apply_scene_for_mood,
     scene_to_display_targets,
@@ -37,7 +38,7 @@ def test_preference_sync_dry_run(mock_merge, mock_ui):
     assert "smart_plug:plug-1" in record.get("would_apply", {})
 
 
-@patch("roomos.devices.scene_apply.apply_smart_plug_state", new_callable=AsyncMock)
+@patch("roomos.devices.scene_apply.gateway_apply_plug", new_callable=AsyncMock)
 @patch("roomos.devices.scene_apply.load_ui_device_settings")
 @patch("roomos.devices.scene_apply.merge_runtime_integrations")
 def test_preference_sync_plug_on(mock_merge, mock_ui, mock_plug):
@@ -58,7 +59,11 @@ def test_preference_sync_plug_on(mock_merge, mock_ui, mock_plug):
         }
     }
     mock_merge.return_value = {}
-    mock_plug.return_value = {"state": "on", "executed": True}
+    mock_plug.return_value = {
+        "state": "on",
+        "executed": True,
+        "arbiter": {"allowed": True, "reason": "allowed"},
+    }
     record = apply_preference_scene(
         {"devices": {"plug-1": {"fanOn": True}}},
         dry_run=False,
@@ -83,6 +88,7 @@ def test_preference_sync_dry_run_overridden_when_devices_enabled(mock_ui):
 
 @patch("roomos.devices.scene_apply.load_ui_device_settings")
 def test_preference_sync_stays_dry_run_without_devices(mock_ui):
+    invalidate_connected_device_categories_cache()
     mock_ui.return_value = {"devices": {"smartPlugs": [], "lights": [], "thermostats": []}}
     assert preference_sync_dry_run(True) is True
 
@@ -111,7 +117,7 @@ def test_scene_to_display_targets_only_connected_categories(mock_ui):
     assert "temperatureF" not in out
 
 
-@patch("roomos.devices.scene_apply.apply_smart_plug_state", new_callable=AsyncMock)
+@patch("roomos.devices.scene_apply.gateway_apply_plug", new_callable=AsyncMock)
 @patch("roomos.devices.scene_apply.load_ui_device_settings")
 @patch("roomos.devices.scene_apply.merge_runtime_integrations")
 def test_preference_sync_skips_disconnected_plug(mock_merge, mock_ui, mock_plug):
@@ -138,6 +144,43 @@ def test_preference_sync_skips_disconnected_plug(mock_merge, mock_ui, mock_plug)
     )
     mock_plug.assert_not_awaited()
     assert record.get("reason") == "no_devices_enabled"
+
+
+@patch("roomos.devices.scene_apply.load_ui_device_settings")
+def test_scene_for_device_subset_inherits_stale_plug_target(mock_ui):
+    mock_ui.return_value = {
+        "devices": {
+            "smartPlugs": [
+                {"id": "plug-live", "connected": True, "enabled": True},
+            ],
+            "lights": [],
+            "thermostats": [],
+        }
+    }
+    from roomos.devices.scene_apply import _scene_for_device_subset
+
+    scene = {"devices": {"plug-stale": {"fanOn": True}}}
+    subset = _scene_for_device_subset(scene, frozenset(["plug-live"]))
+    assert subset["devices"]["plug-live"]["fanOn"] is True
+
+
+@patch("roomos.devices.scene_apply.load_ui_device_settings")
+def test_target_for_device_inherits_from_other_plug(mock_ui):
+    mock_ui.return_value = {
+        "devices": {
+            "smartPlugs": [
+                {"id": "plug-live", "connected": True, "enabled": True},
+                {"id": "plug-stale", "connected": True, "enabled": True},
+            ],
+            "lights": [],
+            "thermostats": [],
+        }
+    }
+    from roomos.devices.scene_apply import _target_for_device
+
+    scene = {"devices": {"plug-stale": {"fanOn": True}}}
+    target = _target_for_device("plug-live", scene, category="smartPlugs")
+    assert target["fanOn"] is True
 
 
 @patch("roomos.preferences.document._connected_device_ids_by_category")

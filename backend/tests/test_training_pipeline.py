@@ -17,7 +17,7 @@ from roomos.model.train import train_model
 
 def _fake_dataset(n_per_class: int = 40, n_features: int = 12, seed: int = 0):
     rng = np.random.default_rng(seed)
-    classes = ["work", "sleep", "gaming", "relaxing", "away"]
+    classes = ["work", "sleep", "relaxing", "away"]
     rows = []
     for ci, cls in enumerate(classes):
         for j in range(n_per_class):
@@ -35,7 +35,7 @@ def _fake_dataset(n_per_class: int = 40, n_features: int = 12, seed: int = 0):
 def _train_config(tmp_path) -> Config:
     cfg = Config(
         raw={
-            "labels": {"classes": ["work", "sleep", "gaming", "relaxing", "away"], "unknown_class": "unknown"},
+            "labels": {"classes": ["work", "sleep", "relaxing", "away"], "unknown_class": "unknown"},
             "training": {
                 "output_dir": str(tmp_path / "bundle"),
                 "random_state": 7,
@@ -85,13 +85,57 @@ def test_apply_row_weights_multiplies_sample_weight():
     assert float(out[:2].sum()) > float(out[2:].sum())
 
 
+def test_equal_total_class_weights_with_row_weights():
+    from roomos.model.train import _compute_train_sample_weights
+
+    train_df = pd.DataFrame(
+        {
+            "label": ["jump_rope"] * 20 + ["work"] * 5,
+            "row_weight": [12.0] * 20 + [12.0] * 5,
+        }
+    )
+    y = np.zeros(len(train_df), dtype=np.int32)
+    y[20:] = 1
+    sw = _compute_train_sample_weights(
+        train_df,
+        y,
+        {"class_weighting": "balanced", "use_row_weights": True},
+    )
+    assert sw is not None
+    jump_total = float(sw[:20].sum())
+    work_total = float(sw[20:].sum())
+    assert jump_total == pytest.approx(work_total, rel=1e-5)
+    # More bursts in jump_rope -> lower per-burst weight.
+    assert sw[0] < sw[20]
+
+
+def test_equal_total_class_weights_personal_vs_base():
+    from roomos.model.train import _compute_train_sample_weights
+
+    train_df = pd.DataFrame(
+        {
+            "label": ["jump_rope"] * 10 + ["work"] * 50,
+            "row_weight": [12.0] * 10 + [1.0] * 50,
+        }
+    )
+    y = np.zeros(len(train_df), dtype=np.int32)
+    y[10:] = 1
+    sw = _compute_train_sample_weights(
+        train_df,
+        y,
+        {"class_weighting": "balanced", "use_row_weights": True},
+    )
+    assert sw is not None
+    assert float(sw[:10].sum()) == pytest.approx(float(sw[10:].sum()), rel=1e-5)
+
+
 def test_bundle_roundtrip(tmp_path):
     df = _fake_dataset()
     cfg = _train_config(tmp_path)
     result = train_model(df, cfg)
 
     model = load_model_bundle(result.bundle_dir)
-    assert model.classes == ["work", "sleep", "gaming", "relaxing", "away"]
+    assert model.classes == ["work", "sleep", "relaxing", "away"]
     assert model.feature_columns == result.feature_columns
 
     # Predict using only some of the features (others should default to 0).

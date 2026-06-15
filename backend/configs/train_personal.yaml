@@ -1,17 +1,13 @@
 # Personal room training — feature flags MUST match configs/inference.yaml for /live.
-extends: train.yaml
-
-features:
-  enabled:
-    clip: true
-    pose: false
-    motion: true
-    posture: false
+# Inherit multi-room XGBoost regularization (shallower trees) so merging a small
+# personal dataset does not overfit and degrade builtin mood accuracy.
+extends: train_multi_room.yaml
 
 training:
   output_dir: data/models/latest
   features_path: data/features/personal_features.parquet
 
-  # Your room stills count much more than any generic prior when you merge data.
+  # Personal bursts are up-weighted vs generic multi-room rows; equalized per mood
+  # at train time (see roomos.model.train._compute_train_sample_weights).
   use_row_weights: true
   default_row_weight: 12.0

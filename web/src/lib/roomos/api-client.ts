@@ -243,6 +243,14 @@ function normalizeSnapshot(raw: unknown): LiveInferenceSnapshot {
         : undefined,
     automationMode,
     confidenceHistory,
+    roomId: typeof s.roomId === "string" ? s.roomId : undefined,
+    activeRoomId: typeof s.activeRoomId === "string" ? s.activeRoomId : undefined,
+    orchestratorMode:
+      s.orchestratorMode === "active" ||
+      s.orchestratorMode === "grace" ||
+      s.orchestratorMode === "away"
+        ? s.orchestratorMode
+        : undefined,
   }
 }
 
@@ -331,6 +339,7 @@ export type BootPhase =
   | "opening_camera"
   | "warming_up"
   | "streaming"
+  | "camera_setup"
 
 export type ModelKind =
   | "bootstrap"
@@ -342,6 +351,8 @@ export type ModelKind =
 export type LiveEngineStatus = {
   engine_running: boolean
   engine_error: string | null
+  /** True when auto-discovery found no camera and the user must pick a device. */
+  camera_setup_required?: boolean
   has_snapshot: boolean
   live_mode?: LiveMode
   compat_ok?: boolean | null
@@ -370,6 +381,14 @@ export type LiveEngineStatus = {
   /** Whether MediaPipe pose features are active in this inference run. */
   pose_enabled?: boolean | null
   data_source?: string | null
+  orchestratorMode?: import("@/types/roomos").OrchestratorMode
+  activeRoomId?: string | null
+  inferenceRoomId?: string | null
+  graceDurationSec?: number
+  graceRemainingSec?: number | null
+  rooms?: import("@/types/roomos").RoomStatus[]
+  /** Recent device command arbiter decisions (live status poll). */
+  deviceActions?: import("@/types/roomos").DeviceActionDecision[]
 }
 
 export type CameraOption = {
@@ -379,6 +398,7 @@ export type CameraOption = {
   label: string
   available: boolean
   mean_luma?: number | null
+  kind?: "droidcam" | "droidcam_auto"
 }
 
 export type CamerasResponse = {
@@ -390,8 +410,18 @@ export type CamerasResponse = {
   }
 }
 
-export async function fetchCameras(signal?: AbortSignal): Promise<CamerasResponse> {
-  const res = await fetch(`${API_BASE}/api/live/cameras`, { signal, cache: "no-store" })
+export async function fetchCameras(
+  signal?: AbortSignal,
+  opts?: { forNewRoom?: boolean; excludeRoomId?: string },
+): Promise<CamerasResponse> {
+  const params = new URLSearchParams()
+  if (opts?.forNewRoom) params.set("forNewRoom", "true")
+  if (opts?.excludeRoomId) params.set("excludeRoomId", opts.excludeRoomId)
+  const qs = params.toString()
+  const res = await fetch(
+    `${API_BASE}/api/live/cameras${qs ? `?${qs}` : ""}`,
+    { signal, cache: "no-store" },
+  )
   if (!res.ok) throw new Error(`cameras ${res.status}`)
   return (await res.json()) as CamerasResponse
 }
@@ -979,6 +1009,21 @@ export async function testLights(body?: {
   return (await res.json()) as { ok: boolean; executed?: boolean; brand?: string }
 }
 
+export async function fetchDeviceActionLog(
+  limit = 20,
+  signal?: AbortSignal,
+): Promise<import("@/types/roomos").DeviceActionDecision[]> {
+  const res = await fetch(`${API_BASE}/api/integrations/device-actions?limit=${limit}`, {
+    signal,
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error(`device-actions ${res.status}`)
+  const raw = (await res.json()) as { decisions?: unknown }
+  return Array.isArray(raw.decisions)
+    ? (raw.decisions as import("@/types/roomos").DeviceActionDecision[])
+    : []
+}
+
 export type DiscoveredDevice = {
   category: "smart_plug" | "lights"
   brand: string
@@ -1079,13 +1124,14 @@ export async function deleteMood(
 export async function startMoodCollection(
   moodId: string,
   durationSec: number,
+  roomIds?: string[],
 ): Promise<MoodCollectionStatusResponse> {
   const res = await fetch(
     `${API_BASE}/api/moods/${encodeURIComponent(moodId)}/collection/start`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ durationSec }),
+      body: JSON.stringify({ durationSec, roomIds: roomIds ?? [] }),
     },
   )
   if (!res.ok) await moodsError(res, `collection start failed: ${res.status}`)
@@ -1118,11 +1164,13 @@ export async function fetchMoodCollectionStatus(
 export async function fetchMoodBursts(
   moodId: string,
   signal?: AbortSignal,
+  roomId?: string | null,
 ): Promise<{ bursts: MoodBurstSummary[] } & MoodCollectionStatusResponse> {
-  const res = await fetch(`${API_BASE}/api/moods/${encodeURIComponent(moodId)}/bursts`, {
-    signal,
-    cache: "no-store",
-  })
+  const qs = roomId ? `?roomId=${encodeURIComponent(roomId)}` : ""
+  const res = await fetch(
+    `${API_BASE}/api/moods/${encodeURIComponent(moodId)}/bursts${qs}`,
+    { signal, cache: "no-store" },
+  )
   if (!res.ok) await moodsError(res, `bursts fetch failed: ${res.status}`)
   return (await res.json()) as { bursts: MoodBurstSummary[] } & MoodCollectionStatusResponse
 }
@@ -1196,6 +1244,93 @@ export async function recordTrainingConsent(accepted: boolean): Promise<{
     consent: { accepted: boolean; acceptedAt?: string | null }
     datasetFolder: string
   }
+}
+
+import type { RoomsStatusResponse } from "@/types/roomos"
+
+export async function fetchRoomsStatus(signal?: AbortSignal): Promise<RoomsStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/rooms/status`, { signal, cache: "no-store" })
+  if (!res.ok) throw new Error(`rooms status ${res.status}`)
+  return (await res.json()) as RoomsStatusResponse
+}
+
+export function roomPreviewMjpegUrl(roomId: string): string {
+  if (typeof window !== "undefined") {
+    return `/api/rooms/${encodeURIComponent(roomId)}/preview.mjpeg`
+  }
+  return `${API_BASE}/api/rooms/${encodeURIComponent(roomId)}/preview.mjpeg`
+}
+
+export async function createRoom(params: {
+  name: string
+  camera: { source: number | string; backend: string }
+  deviceIds?: string[]
+}): Promise<RoomsStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/rooms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: params.name,
+      camera: params.camera,
+      deviceIds: params.deviceIds ?? [],
+    }),
+  })
+  if (!res.ok) throw new Error(`create room ${res.status}`)
+  return (await res.json()) as RoomsStatusResponse
+}
+
+export async function updateRoom(
+  roomId: string,
+  patch: {
+    name?: string
+    enabled?: boolean
+    camera?: { source: number | string; backend: string }
+    deviceIds?: string[]
+  },
+): Promise<RoomsStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(roomId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...(patch.name != null ? { name: patch.name } : {}),
+      ...(patch.enabled != null ? { enabled: patch.enabled } : {}),
+      ...(patch.camera != null ? { camera: patch.camera } : {}),
+      ...(patch.deviceIds != null ? { deviceIds: patch.deviceIds } : {}),
+    }),
+  })
+  if (!res.ok) throw new Error(`update room ${res.status}`)
+  return (await res.json()) as RoomsStatusResponse
+}
+
+export async function setRoomEnabled(
+  roomId: string,
+  enabled: boolean,
+): Promise<RoomsStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(roomId)}/enabled`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  })
+  if (!res.ok) throw new Error(`set room enabled ${res.status}`)
+  return (await res.json()) as RoomsStatusResponse
+}
+
+export async function setActiveRoom(roomId: string): Promise<RoomsStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/rooms/active`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ roomId }),
+  })
+  if (!res.ok) throw new Error(`set active room ${res.status}`)
+  return (await res.json()) as RoomsStatusResponse
+}
+
+export async function deleteRoom(roomId: string): Promise<RoomsStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(roomId)}`, {
+    method: "DELETE",
+  })
+  if (!res.ok) throw new Error(`delete room ${res.status}`)
+  return (await res.json()) as RoomsStatusResponse
 }
 
 export { normalizeSnapshot }

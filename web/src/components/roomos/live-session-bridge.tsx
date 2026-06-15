@@ -40,6 +40,12 @@ export function LiveSessionBridge() {
       lastFeedbackEvent: live.lastFeedbackEvent,
       lastPreferencesEvent: live.lastPreferencesEvent,
     })
+    if (live.snapshot?.orchestratorMode) {
+      useLiveSessionStore.setState({
+        orchestratorMode: live.snapshot.orchestratorMode,
+        activeRoomId: live.snapshot.activeRoomId ?? null,
+      })
+    }
   }, [
     live.snapshot,
     live.status,
@@ -62,6 +68,7 @@ export function LiveSessionBridge() {
       modelKind: engine.modelKind,
       compatReport: engine.compatReport,
       liveMode: engine.liveMode,
+      cameraSetupRequired: engine.cameraSetupRequired,
     })
   }, [
     engine.status,
@@ -75,6 +82,7 @@ export function LiveSessionBridge() {
     engine.modelKind,
     engine.compatReport,
     engine.liveMode,
+    engine.cameraSetupRequired,
     setEngineSession,
   ])
 

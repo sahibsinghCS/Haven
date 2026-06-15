@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/select"
 import { useHavenAuth } from "@/components/auth/haven-auth-provider"
 import { HavenAccountBar } from "@/components/roomos/haven-account-bar"
+import { HavenOfflineBanner } from "@/components/roomos/haven-offline-banner"
+import { RoomsSettingsSection } from "@/components/roomos/rooms-settings-section"
 import {
   fetchDeviceSettingsDocument,
   saveDeviceSettingsDocument,
@@ -392,18 +394,7 @@ export function SettingsPageClient() {
         </p>
       ) : null}
 
-      {!apiOnline && !authRequired ? (
-        <p
-          className={cn(
-            roomosUi.prefsCallout,
-            "border-amber-500/25 bg-amber-50/90 px-4 py-3 text-[13px] leading-relaxed text-amber-950",
-          )}
-          role="status"
-        >
-          HAVEN is offline on this computer — settings are stored in your browser until you run the app
-          locally (<span className="font-mono text-[12px]">npm run demo</span>).
-        </p>
-      ) : null}
+      {!apiOnline && !authRequired ? <HavenOfflineBanner context="settings" /> : null}
 
       <HavenConnectHero />
 
@@ -696,6 +687,12 @@ export function SettingsPageClient() {
         </DeviceConnectionCard>
         </div>
       </details>
+
+      {doc ? (
+        <div className="rounded-2xl border border-[color:var(--haven-line)] bg-white/40 p-5">
+          <RoomsSettingsSection devicesDoc={doc} />
+        </div>
+      ) : null}
 
       <div
         className={cn(

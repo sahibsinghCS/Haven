@@ -31,7 +31,6 @@ const PREVIEW: Record<
   { hex: string; brightness: number; temp: number; fan: boolean }
 > = {
   sleep: { hex: "#4f46e5", brightness: 22, temp: 68, fan: false },
-  gaming: { hex: "#7c3aed", brightness: 58, temp: 70, fan: true },
   work: { hex: "#38bdf8", brightness: 82, temp: 72, fan: true },
   relaxing: { hex: "#14b8a6", brightness: 44, temp: 73, fan: true },
   away: { hex: "#a8a29e", brightness: 18, temp: 69, fan: false },

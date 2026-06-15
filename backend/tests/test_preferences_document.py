@@ -92,6 +92,21 @@ def test_normalize_rejects_empty_presets():
 
 
 @patch("roomos.preferences.document._connected_device_ids_by_category")
+def test_migrate_scene_inherits_stale_plug_targets(mock_ids):
+    mock_ids.return_value = {
+        "smartPlugs": ["plug-live", "plug-stale"],
+        "lights": [],
+        "thermostats": [],
+    }
+    from roomos.preferences.document import _migrate_scene_to_v2
+
+    scene = {"devices": {"plug-stale": {"fanOn": True}}}
+    migrated = _migrate_scene_to_v2(scene, mock_ids.return_value, state="work")
+    assert migrated["devices"]["plug-stale"]["fanOn"] is True
+    assert migrated["devices"]["plug-live"]["fanOn"] is True
+
+
+@patch("roomos.preferences.document._connected_device_ids_by_category")
 def test_active_preset_preferences_hydrates_empty_device_maps(mock_ids):
     mock_ids.return_value = {"smartPlugs": ["plug-1"], "lights": [], "thermostats": []}
     doc = {

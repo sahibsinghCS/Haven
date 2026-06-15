@@ -28,12 +28,16 @@ training_router = APIRouter(prefix="/api/training", tags=["training"])
 
 
 class CreateMoodRequest(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=80)
+    name: Optional[str] = Field(default=None, max_length=40)
     builtinKey: Optional[str] = None
 
 
 class CollectionStartRequest(BaseModel):
     durationSec: float = Field(default=300.0, ge=10.0, le=3600.0)
+    roomIds: List[str] = Field(
+        default_factory=list,
+        description="Physical rooms to collect from; empty = active room only",
+    )
 
 
 class ConsentRequest(BaseModel):
@@ -43,14 +47,13 @@ class ConsentRequest(BaseModel):
 # --- helpers ------------------------------------------------------------------
 
 
-def _mood_payload(mood: dict) -> dict:
-    out = dict(mood)
+def _mood_payload(mood: dict, *, bundle_classes: set[str]) -> dict:
     counts = pds.dataset_counts(mood_registry.datasets_root(), mood["id"])
-    ml = dict(out.get("ml") or {})
+    ml = dict(mood.get("ml") or {})
     ml["burstCount"] = counts["burstCount"]
     ml["frameCount"] = counts["frameCount"]
-    out["ml"] = ml
-    return out
+    base = {**mood, "ml": ml}
+    return mood_registry.enrich_mood(base, bundle_classes=bundle_classes)
 
 
 def _require_mood(mood_id: str) -> dict:
@@ -92,14 +95,26 @@ def _hot_reload_engine() -> None:
 @router.get("")
 def list_moods() -> dict:
     doc = mood_registry.load_registry()
+    bundle = mood_registry.bundle_class_set()
     deleted_builtins = [
-        {"builtinKey": key, "displayName": name}
+        {
+            "builtinKey": key,
+            "displayName": name,
+            "lifecycle": "builtin_deleted",
+            "inferenceEligible": key in bundle,
+        }
         for key, name in mood_registry.BUILTIN_MOODS.items()
         if not any(m["id"] == key for m in doc["moods"])
     ]
+    inference_labels = sorted(
+        mood_registry.inference_eligible_labels(bundle_classes=bundle) - {"unknown"}
+    )
     return {
-        "moods": [_mood_payload(m) for m in doc["moods"]],
+        "moods": [_mood_payload(m, bundle_classes=bundle) for m in doc["moods"]],
         "restorableBuiltins": deleted_builtins,
+        "inferenceLabels": inference_labels,
+        "uiStateOrder": list(mood_registry.ui_state_order(bundle_classes=bundle)),
+        "lifecycleStates": list(mood_registry.LIFECYCLE_STATES),
         "consent": doc.get("consent", {"accepted": False}),
         "datasetFolder": str(mood_registry.datasets_root()),
         "collection": mood_collection.status(),
@@ -116,7 +131,7 @@ def create_mood(payload: CreateMoodRequest) -> dict:
         )
     except mood_registry.MoodValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"mood": _mood_payload(mood)}
+    return {"mood": _mood_payload(mood, bundle_classes=mood_registry.bundle_class_set())}
 
 
 @router.delete("/{mood_id}")
@@ -190,10 +205,16 @@ def start_collection(mood_id: str, payload: CollectionStartRequest) -> dict:
             detail="A training job is running. Wait for it to finish first.",
         )
     try:
+        room_ids = list(payload.roomIds)
+        if not room_ids:
+            active = state.orchestrator.active_room_id
+            if active:
+                room_ids = [active]
         session = mood_collection.start(
             mood_id,
             payload.durationSec,
             mood_registry.datasets_root(),
+            room_ids=room_ids,
         )
     except (RuntimeError, ValueError) as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
@@ -238,9 +259,16 @@ def collection_status(mood_id: str) -> dict:
 
 
 @router.get("/{mood_id}/bursts")
-def list_bursts(mood_id: str) -> dict:
+def list_bursts(mood_id: str, roomId: Optional[str] = Query(default=None)) -> dict:
     _require_mood(mood_id)
     bursts = pds.list_bursts(mood_registry.datasets_root(), mood_id)
+    if roomId:
+        bursts = [b for b in bursts if str(b.get("roomId") or "") == roomId]
+    rooms = {r["id"]: r["name"] for r in state.rooms_status().get("rooms", [])}
+    for burst in bursts:
+        rid = str(burst.get("roomId") or "")
+        if rid and rid in rooms:
+            burst["roomName"] = rooms[rid]
     return {"bursts": bursts, **_collection_payload(mood_id)}
 
 
@@ -307,6 +335,18 @@ def training_job(job_id: str) -> dict:
     job = personal_training_jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Unknown training job: {job_id!r}")
+    return {"job": job}
+
+
+@training_router.post("/restore-baseline", status_code=202)
+def restore_baseline() -> dict:
+    """Retrain from multi-room features only — fixes degraded post-mood training."""
+    if mood_collection.is_active():
+        mood_collection.stop(reason="user")
+    try:
+        job = personal_training_jobs.start_baseline_restore(on_promoted=_hot_reload_engine)
+    except PersonalTrainingError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return {"job": job}
 
 

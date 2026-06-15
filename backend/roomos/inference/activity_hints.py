@@ -82,23 +82,17 @@ class ActivityHintGate:
         margin = float(self.cfg.min_margin)
         floor = float(self.cfg.min_top_prob)
 
-        # Gaming vs work (monitor/game vs desk/document)
+        # Gaming vs work (monitor/game vs desk/document) — map to work when gaming retired
         if gaming_scene >= work_scene + margin:
-            _nudge_pair(out, "gaming", "work", strength, floor)
+            _nudge_pair(out, "work", "relaxing", strength * 0.5, floor)
         elif work_scene >= gaming_scene + margin:
-            _nudge_pair(out, "work", "gaming", strength, floor)
+            _nudge_pair(out, "work", "relaxing", strength * 0.35, floor)
 
         # Relaxing vs work (couch/TV vs desk)
         if relax_scene >= work_scene + margin:
             _nudge_pair(out, "relaxing", "work", strength, floor)
         elif work_scene >= relax_scene + margin:
             _nudge_pair(out, "work", "relaxing", strength * 0.95, floor)
-
-        # Gaming vs relaxing (controller/game vs passive TV/couch)
-        if gaming_scene >= relax_scene + margin:
-            _nudge_pair(out, "gaming", "relaxing", strength * 0.7, floor)
-        elif relax_scene >= gaming_scene + margin:
-            _nudge_pair(out, "relaxing", "gaming", strength * 0.7, floor)
 
         total = sum(out.values()) or 1.0
         return {k: v / total for k, v in out.items()}

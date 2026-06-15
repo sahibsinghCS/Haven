@@ -114,24 +114,28 @@ def _train_config_from_bundle(bundle: Path) -> tuple[Config, str]:
 def _registry_label_check(bundle_classes: List[str]) -> List[CompatibilityMismatch]:
     """Dynamic-mood label gate.
 
-    With a mood registry the bundle's class list is allowed to drift from the
-    static config (custom moods added, builtins deleted) — deleted labels are
-    masked at runtime. We only hard-fail when the bundle covers NO active mood,
-    which would leave live inference with nothing valid to predict.
+    With a mood registry the bundle's class list may include deleted moods
+    (masked at runtime). Startup fails only when *inference-eligible* labels are
+    empty — i.e. no active, ML-enabled mood (or legacy label) the bundle can
+    predict for the current registry.
     """
-    from ..moods.registry import active_mood_ids
+    from ..moods.registry import active_mood_ids, inference_eligible_labels
 
-    active = set(active_mood_ids())
-    overlap = active & set(bundle_classes)
-    if overlap:
+    bundle_set = set(bundle_classes)
+    eligible = inference_eligible_labels(bundle_classes=bundle_set) - {"unknown"}
+    if eligible:
         return []
+    active = sorted(active_mood_ids())
     return [
         CompatibilityMismatch(
             category="labels",
-            field="class set",
+            field="inference eligible labels",
             train=str(sorted(bundle_classes)),
-            inference=f"active moods: {sorted(active)}",
-            detail="Model knows none of the active moods. Collect data and retrain from Moods / Preferences.",
+            inference=f"eligible: [] (active moods: {active})",
+            detail=(
+                "Deployed model cannot predict any active mood. Collect data, "
+                "train from Moods / Preferences, or restore a builtin the bundle knows."
+            ),
         )
     ]
 

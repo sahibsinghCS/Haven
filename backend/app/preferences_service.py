@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 from roomos.preferences.apply import PreferenceApplyResult, PreferenceChangeSpec, apply_preference_changes
@@ -84,12 +85,36 @@ def sync_preferences_to_devices(*, room_state: Optional[str] = None) -> Optional
 
     pref_dry_run = preference_sync_dry_run(actions_dry_run)
     scene = resolve_apply_scene_for_mood(mood)
-    record = apply_preference_scene(
-        scene,
-        dry_run=pref_dry_run,
-        integrations=integrations,
-        room_state=mood,
-    )
+    inference_room_id = getattr(state, "_inference_room_id", None)
+    if state.live_mode == "live" and inference_room_id:
+        from roomos.devices.scene_apply import apply_room_scene_async
+
+        room = state.rooms_store.get_room(str(inference_room_id))
+        if room is not None and room.device_ids:
+            record = asyncio.run(
+                apply_room_scene_async(
+                    scene,
+                    device_ids=list(room.device_ids),
+                    dry_run=pref_dry_run,
+                    integrations=integrations,
+                    room_state=mood,
+                    room_id=room.id,
+                )
+            )
+        else:
+            record = apply_preference_scene(
+                scene,
+                dry_run=pref_dry_run,
+                integrations=integrations,
+                room_state=mood,
+            )
+    else:
+        record = apply_preference_scene(
+            scene,
+            dry_run=pref_dry_run,
+            integrations=integrations,
+            room_state=mood,
+        )
     if engine is not None:
         engine._preferences_cache = ("", {})
     log.info(

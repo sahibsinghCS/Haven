@@ -2,7 +2,6 @@ import type { KnownRoomStateId } from "@/types/roomos"
 
 export const ROOM_STATE_LABEL: Record<KnownRoomStateId, string> = {
   sleep: "Sleep",
-  gaming: "Gaming",
   work: "Work / Studying",
   relaxing: "Relaxing",
   away: "Away",
@@ -46,12 +45,6 @@ export const ROOM_STATE_ACCENT: Record<
     heroMesh: "from-zinc-900 via-indigo-950/52 to-zinc-950",
     bar: "bg-indigo-400/60",
     ring: "ring-indigo-400/32",
-  },
-  gaming: {
-    glow: "from-zinc-800/40 via-zinc-950/32 to-transparent",
-    heroMesh: "from-zinc-900 via-violet-950/38 to-zinc-950",
-    bar: "bg-violet-400/58",
-    ring: "ring-violet-400/34",
   },
   work: {
     glow: "from-zinc-800/38 via-zinc-950/30 to-transparent",
@@ -105,12 +98,6 @@ export const ROOM_STATE_LANDING_SKIN: Record<
     tag: "bg-indigo-500/[0.12] text-indigo-950 ring-indigo-500/15",
     glow: "bg-indigo-400/25",
   },
-  gaming: {
-    wash: "from-violet-50 via-fuchsia-50/60 to-[#f6f3ec]",
-    bar: "bg-violet-500/68",
-    tag: "bg-violet-500/[0.12] text-violet-950 ring-violet-500/15",
-    glow: "bg-violet-400/22",
-  },
   work: {
     wash: "from-sky-50 via-cyan-50/55 to-[#f6f3ec]",
     bar: "bg-sky-600/65",
@@ -160,12 +147,6 @@ export const ROOM_STATE_LANDING_ATMOSPHERE: Record<
     light: "Low, moonlit wash; contrast where you need it.",
     air: "Near-still by default; movement only when you want it.",
     thermal: "Biased cool for easier drift toward sleep-friendly temps.",
-  },
-  gaming: {
-    tagline: "Contrast for play: energy without spectacle.",
-    light: "Screen-safe brightness; no strobing gimmicks.",
-    air: "Fresh circulation when sessions stretch long.",
-    thermal: "Held steady so the room stays out of the way.",
   },
   work: {
     tagline: "Even field for deep focus.",

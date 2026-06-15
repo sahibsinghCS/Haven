@@ -5,17 +5,21 @@ extends: default.yaml
 # DroidCam: use source: "droidcam:auto" or the index probe reports; backend msmf
 # often works for the virtual cam, while built-in laptops need dshow on Windows.
 video:
-  source: 0
+  source: auto
   backend: dshow
   # Let the driver pick native resolution (forcing 1280×960 broke some built-in cams).
   frame_preprocess:
     enabled: true
     strip_letterbox: true
   preview:
-    max_fps: 30          # target preview FPS (>= the 25 we want on /live)
-    max_width: 1280      # cap encode size so CPU can sustain 30 FPS
-    jpeg_quality: 88     # near-lossless visually, ~30% faster encode than 96
+    max_fps: 30          # encode runs off capture thread; keeps MJPEG closer to real time
+    max_width: 1280      # balance sharpness vs encode CPU on the worker thread
+    jpeg_quality: 88
     fit: contain
+  room_preview:
+    max_fps: 1.5
+    max_width: 960
+    jpeg_quality: 78
 
 features:
   enabled:

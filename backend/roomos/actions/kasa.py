@@ -144,21 +144,38 @@ class KasaHandler(ActionHandler):
         timeout_sec = float(self.integration.get("timeout_sec", 8.0))
 
         try:
+            from ..devices.action_arbiter import ActionSource
+            from ..devices.command_gateway import gateway_apply_plug
+
+            plug_cfg = {
+                **self.integration,
+                "host": host,
+                "brand": self.integration.get("brand") or "tplink_kasa",
+            }
             result = asyncio.run(
-                apply_kasa_state(
-                    host,
+                gateway_apply_plug(
+                    plug_cfg,
                     state,
-                    username=username,
-                    password=password,
-                    timeout_sec=timeout_sec,
+                    source=ActionSource.AUTOMATION_RULE,
+                    device_id=host,
+                    dry_run=False,
+                    context={"rule": event.rule_name, "activity": event.activity},
                 )
             )
+            if result.get("skipped"):
+                return {
+                    "executed": False,
+                    "skipped": True,
+                    "reason": result.get("reason"),
+                    "arbiter": result.get("arbiter"),
+                    "host": host,
+                    "state": state,
+                }
             log.info(
-                "[%s] kasa -> %s state=%s device=%s",
+                "[%s] kasa -> %s state=%s",
                 event.rule_name,
                 host,
                 state,
-                result.get("device"),
             )
             return {"executed": True, "dry_run": False, **result}
         except Exception as e:

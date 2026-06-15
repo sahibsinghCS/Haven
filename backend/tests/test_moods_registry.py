@@ -69,8 +69,50 @@ def test_gaming_not_in_registry(moods_env):
     doc = mood_registry.load_registry(moods_path)
     ids = {m["id"] for m in doc["moods"]}
     assert "gaming" not in ids
-    allowed = mood_registry.allowed_live_labels(moods_path)
-    assert "gaming" in allowed  # legacy inference-only label
+    bundle = {"sleep", "work", "relaxing", "away"}
+    allowed = mood_registry.allowed_live_labels(moods_path, bundle_classes=bundle)
+    assert "gaming" not in allowed
+    assert "unknown" in allowed
+
+
+def test_inference_eligible_requires_bundle_class(moods_env):
+    moods_path, _ = moods_env
+    mood_registry.load_registry(moods_path)
+    custom = mood_registry.create_mood(name="Reading", path=moods_path)
+    eligible = mood_registry.inference_eligible_labels(
+        moods_path, bundle_classes={"sleep", "work", "relaxing", "away"}
+    )
+    assert custom["id"] not in eligible
+    assert "sleep" in eligible
+
+
+def test_lifecycle_custom_untrained(moods_env):
+    moods_path, _ = moods_env
+    mood_registry.load_registry(moods_path)
+    custom = mood_registry.create_mood(name="Yoga", path=moods_path)
+    enriched = mood_registry.enrich_mood(
+        custom, bundle_classes={"sleep", "work", "relaxing", "away"}
+    )
+    assert enriched["lifecycle"] == "custom_untrained"
+    assert enriched["inferenceEligible"] is False
+    assert enriched["inBundle"] is False
+
+
+def test_lifecycle_ready_when_in_bundle(moods_env):
+    moods_path, _ = moods_env
+    mood = mood_registry.get_mood("work", moods_path)
+    enriched = mood_registry.enrich_mood(
+        mood, bundle_classes={"sleep", "work", "relaxing", "away"}
+    )
+    assert enriched["lifecycle"] == "ready"
+    assert enriched["inferenceEligible"] is True
+
+
+def test_deleted_builtin_lifecycle():
+    mood = {"id": "away", "kind": "builtin", "ml": {"enabled": True, "status": "ready"}}
+    assert (
+        mood_registry.compute_lifecycle(mood, deleted_builtin=True) == "builtin_deleted"
+    )
 
 
 def test_deleted_mood_excluded_from_ml_candidates(moods_env):
@@ -82,6 +124,40 @@ def test_deleted_mood_excluded_from_ml_candidates(moods_env):
     assert "sleep" in classes
 
 
+def test_resolve_personal_training_classes_excludes_gaming(moods_env):
+    moods_path, _ = moods_env
+    mood_registry.load_registry(moods_path)
+    custom = mood_registry.create_mood(name="Jump Rope", path=moods_path)
+    base_labels = {"sleep", "work", "relaxing", "away", "gaming"}
+    candidates = mood_registry.ml_class_candidates(moods_path)
+    classes = mood_registry.resolve_personal_training_classes(
+        candidates=candidates,
+        personal_burst_counts={custom["id"]: 10, "sleep": 0, "work": 0},
+        base_labels=base_labels,
+        min_bursts_to_train=3,
+        trigger_mood_id=custom["id"],
+    )
+    assert "gaming" not in classes
+    assert custom["id"] in classes
+    assert "sleep" in classes
+
+
+def test_resolve_personal_training_classes_drops_orphan_custom(moods_env):
+    moods_path, _ = moods_env
+    mood_registry.load_registry(moods_path)
+    base_labels = {"sleep", "work", "relaxing", "away", "gaming"}
+    candidates = mood_registry.ml_class_candidates(moods_path)
+    classes = mood_registry.resolve_personal_training_classes(
+        candidates=candidates,
+        personal_burst_counts={m: 0 for m in candidates},
+        base_labels=base_labels,
+        min_bursts_to_train=3,
+        trigger_mood_id="sleep",
+    )
+    assert "jump_rope" not in classes
+    assert "gaming" not in classes
+
+
 def test_mask_inactive_labels_zeros_deleted():
     probs = {"sleep": 0.1, "work": 0.7, "relaxing": 0.1, "away": 0.1}
     allowed = {"sleep", "relaxing", "away", "unknown"}
@@ -89,6 +165,16 @@ def test_mask_inactive_labels_zeros_deleted():
     assert masked["work"] == 0.0
     assert abs(sum(masked.values()) - 1.0) < 1e-6
     assert masked["sleep"] > 0
+
+
+def test_mask_all_mass_on_deleted_falls_back_uniform():
+    probs = {"work": 1.0, "sleep": 0.0, "relaxing": 0.0}
+    allowed = {"sleep", "relaxing", "away"}
+    masked = _mask_inactive_labels(probs, allowed)
+    assert masked["work"] == 0.0
+    assert masked["sleep"] == 0.5
+    assert masked["relaxing"] == 0.5
+    assert abs(sum(masked.values()) - 1.0) < 1e-6
 
 
 def test_set_consent_persists(moods_env):

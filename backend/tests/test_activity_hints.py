@@ -14,16 +14,16 @@ _WORK = "a tidy work desk with a monitor and a notebook"
 _COUCH = "a cozy sofa with throw pillows and a blanket"
 
 
-def test_gaming_beats_work_when_clip_says_gaming():
+def test_game_scene_nudges_work_over_relaxing():
     gate = ActivityHintGate(cfg=ActivityHintConfig(nudge_strength=0.3, min_margin=0.01))
     feats = {
         _key(_GAMING): 0.29,
         _key(_WORK): 0.20,
         _key(_COUCH): 0.18,
     }
-    probs = {"work": 0.55, "gaming": 0.25, "relaxing": 0.1, "sleep": 0.05, "away": 0.05}
+    probs = {"work": 0.45, "relaxing": 0.35, "sleep": 0.1, "away": 0.1}
     out = gate.apply(probs, feats)
-    assert out["gaming"] > out["work"]
+    assert out["work"] > out["relaxing"]
 
 
 def test_relaxing_beats_work_on_couch_clip():
@@ -33,6 +33,6 @@ def test_relaxing_beats_work_on_couch_clip():
         _key(_WORK): 0.19,
         _key(_GAMING): 0.17,
     }
-    probs = {"work": 0.5, "relaxing": 0.3, "gaming": 0.1, "sleep": 0.05, "away": 0.05}
+    probs = {"work": 0.5, "relaxing": 0.35, "sleep": 0.1, "away": 0.05}
     out = gate.apply(probs, feats)
     assert out["relaxing"] > out["work"]

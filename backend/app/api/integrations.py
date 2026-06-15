@@ -191,6 +191,15 @@ def smart_plug_status(device_id: str = "") -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+@router.get("/device-actions")
+def device_action_log(limit: int = 20) -> dict[str, Any]:
+    """Recent device command arbiter decisions (for Settings / debug UI)."""
+    from roomos.devices.action_arbiter import get_arbiter
+
+    items = get_arbiter().recent_decisions(limit=max(1, min(100, int(limit))))
+    return {"ok": True, "decisions": items}
+
+
 @router.post("/smart-plug/test")
 def test_smart_plug(body: PlugTestBody) -> dict[str, Any]:
     state = (body.state or "on").strip().lower()
@@ -198,9 +207,20 @@ def test_smart_plug(body: PlugTestBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="state must be 'on' or 'off'")
     cfg = _smart_plug_config_from_request(body)
     try:
-        from roomos.devices.smart_plug import apply_smart_plug_state
+        from roomos.devices.action_arbiter import ActionSource
+        from roomos.devices.command_gateway import gateway_apply_plug
 
-        result = asyncio.run(apply_smart_plug_state(cfg, state))
+        device_id = str(body.device_id or cfg.get("id") or cfg.get("host") or "plug")
+        result = asyncio.run(
+            gateway_apply_plug(
+                cfg,
+                state,
+                source=ActionSource.MANUAL_TEST,
+                device_id=device_id,
+                dry_run=False,
+                context={"endpoint": "smart-plug/test"},
+            )
+        )
         _maybe_heal_plug_host(cfg, result)
         return {"ok": True, **result}
     except Exception as e:
@@ -221,13 +241,19 @@ def test_thermostat(body: ThermostatTestBody) -> dict[str, Any]:
     heat = body.heat_f if body.heat_f is not None else cfg.get("targetHeatF")
     cool = body.cool_f if body.cool_f is not None else cfg.get("targetCoolF")
     try:
-        from roomos.devices.thermostat import apply_thermostat_setpoints
+        from roomos.devices.action_arbiter import ActionSource
+        from roomos.devices.command_gateway import gateway_apply_thermostat
 
+        device_id = str(body.device_id or cfg.get("id") or "thermostat")
         result = asyncio.run(
-            apply_thermostat_setpoints(
+            gateway_apply_thermostat(
                 cfg,
+                source=ActionSource.MANUAL_TEST,
+                device_id=device_id,
                 heat_f=float(heat) if heat is not None else None,
                 cool_f=float(cool) if cool is not None else None,
+                dry_run=False,
+                context={"endpoint": "thermostat/test"},
             )
         )
         return {"ok": True, **result}
@@ -242,9 +268,18 @@ def test_lights(body: LightsTestBody) -> dict[str, Any]:
     brightness = 50 if body.brightness is None else max(0, min(100, int(body.brightness)))
     scene = {"brightness": brightness, "lightColorHex": body.light_color_hex or "#E8F4FF"}
     try:
-        from roomos.devices.lights_control import apply_lights_scene
+        from roomos.devices.action_arbiter import ActionSource
+        from roomos.devices.command_gateway import gateway_apply_lights
 
-        result = apply_lights_scene(cfg, scene)
+        device_id = str(body.device_id or cfg.get("id") or "lights")
+        result = gateway_apply_lights(
+            cfg,
+            scene,
+            source=ActionSource.MANUAL_TEST,
+            device_id=device_id,
+            dry_run=False,
+            context={"endpoint": "lights/test"},
+        )
         return {"ok": True, **result}
     except Exception as e:
         log.warning("Lights test failed: %s", e)

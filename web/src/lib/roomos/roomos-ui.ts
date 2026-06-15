@@ -40,6 +40,15 @@ export const roomosUi = {
     "!border-0 !bg-teal-800 !text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_22px_-10px_rgba(15,118,110,0.65)] hover:!bg-teal-900 hover:!text-white dark:!bg-teal-800 dark:!text-white dark:hover:!bg-teal-900",
   havenOutlineBtn:
     "border-stone-300/90 bg-white/90 text-stone-800 shadow-sm hover:bg-white hover:text-stone-900 dark:border-stone-400/40 dark:bg-white/95 dark:text-stone-900",
+  /** Page section rhythm */
+  pageEnter: "haven-enter",
+  pageEnterStagger1: "haven-enter haven-enter-delay-1",
+  pageEnterStagger2: "haven-enter haven-enter-delay-2",
+  /** Dense metadata row (live HUD, teaching stats) */
+  metaRow:
+    "flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[11px] leading-snug",
+  metaLabel: "font-semibold uppercase tracking-[0.12em] text-[color:var(--haven-faint)]",
+  metaValue: "font-medium tabular-nums text-[color:var(--haven-ink-soft)]",
 } as const
 
 /** Left accent: visible on light preference cards */

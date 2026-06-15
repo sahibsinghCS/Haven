@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { useMoodBursts, useMoodMutations, useMoods } from "@/hooks/use-moods"
+import { useLiveSessionStore } from "@/stores/live-session-store"
 import { moodBurstFrameUrl } from "@/lib/roomos/api-client"
 import { roomStateLabel } from "@/lib/roomos/state-meta"
 import { useMoodSessionStore } from "@/stores/mood-session-store"
@@ -20,12 +22,22 @@ export function MoodBurstReviewPanel() {
   const reviewMoodId = useMoodSessionStore((s) => s.reviewMoodId)
   const closeBurstReview = useMoodSessionStore((s) => s.closeBurstReview)
   const { data: moodsData } = useMoods()
-  const { data, isLoading } = useMoodBursts(reviewMoodId, Boolean(reviewMoodId))
+  const rooms = useLiveSessionStore((s) => s.rooms)
+  const [roomFilter, setRoomFilter] = useState<string | "all">("all")
+  const { data, isLoading } = useMoodBursts(
+    reviewMoodId,
+    Boolean(reviewMoodId),
+    roomFilter === "all" ? null : roomFilter,
+  )
   const { deleteBurst, deleteFrame, train } = useMoodMutations()
   const setActiveTraining = useMoodSessionStore((s) => s.setActiveTraining)
 
   const mood = moodsData?.moods.find((m) => m.id === reviewMoodId)
   const bursts = data?.bursts ?? []
+  const roomOptions = useMemo(() => {
+    const ids = new Set(bursts.map((b) => b.roomId).filter(Boolean) as string[])
+    return rooms.filter((r) => ids.has(r.id))
+  }, [bursts, rooms])
   const readyToTrain = data?.readyToTrain ?? false
   const minimums = data?.minimums
 
@@ -49,6 +61,37 @@ export function MoodBurstReviewPanel() {
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {roomOptions.length > 0 ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={cn(
+                  "rounded-full border px-3 py-1 text-[11px]",
+                  roomFilter === "all"
+                    ? "border-teal-500/40 bg-teal-500/10 text-teal-900"
+                    : "border-[color:var(--haven-line)] text-[color:var(--haven-muted)]",
+                )}
+                onClick={() => setRoomFilter("all")}
+              >
+                All rooms
+              </button>
+              {roomOptions.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-[11px]",
+                    roomFilter === room.id
+                      ? "border-teal-500/40 bg-teal-500/10 text-teal-900"
+                      : "border-[color:var(--haven-line)] text-[color:var(--haven-muted)]",
+                  )}
+                  onClick={() => setRoomFilter(room.id)}
+                >
+                  {room.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {isLoading ? (
             <p className="text-sm text-[color:var(--haven-muted)]">Loading bursts…</p>
           ) : bursts.length === 0 ? (
@@ -70,6 +113,7 @@ export function MoodBurstReviewPanel() {
                       <p className="text-[12px] text-[color:var(--haven-muted)]">
                         {burst.frameCount} frames
                         {burst.meanLuma != null ? ` · luma ${burst.meanLuma.toFixed(0)}` : ""}
+                        {burst.roomName ? ` · ${burst.roomName}` : null}
                       </p>
                     </div>
                     <Button

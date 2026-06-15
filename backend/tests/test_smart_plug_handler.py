@@ -11,14 +11,8 @@ def test_build_smart_plug_handler():
     assert h.type_name == "smart_plug"
 
 
-@patch("roomos.actions.smart_plug.apply_smart_plug_state")
-def test_smart_plug_skipped_when_dry_run(mock_apply):
-    import asyncio
-
-    async def _noop(*a, **k):
-        return {}
-
-    mock_apply.side_effect = _noop
+@patch("roomos.actions.smart_plug.gateway_apply_plug")
+def test_smart_plug_skipped_when_dry_run(mock_gateway):
     h = build_handler(
         {"type": "smart_plug", "state": "on"},
         integrations={"smart_plug": {"enabled": True, "brand": "shelly", "host": "10.0.0.9"}},
@@ -34,4 +28,4 @@ def test_smart_plug_skipped_when_dry_run(mock_apply):
     )
     result = h.execute(event, dry_run=True)
     assert result.get("skipped") is True
-    mock_apply.assert_not_called()
+    mock_gateway.assert_not_called()

@@ -13,6 +13,8 @@ export function PrimaryStateOverlay({
   state,
   confidence,
   sceneSummary,
+  uncertaintyNote,
+  trustLine,
   overlayShellClassName,
   className,
 }: {
@@ -20,6 +22,10 @@ export function PrimaryStateOverlay({
   confidence: number
   /** One-line device summary (not color-coded state alone) */
   sceneSummary: string
+  /** Shown when top labels are close — honest mixed read */
+  uncertaintyNote?: string | null
+  /** Overrides default local-inference trust copy */
+  trustLine?: string
   /** Replaces default `liveOverlayGlass` (e.g. translucent over video) */
   overlayShellClassName?: string
   className?: string
@@ -79,8 +85,17 @@ export function PrimaryStateOverlay({
             id="roomos-live-trust"
             className="mt-2 max-w-md text-xs leading-relaxed text-zinc-500 sm:text-[0.8125rem]"
           >
-            Local burst classifier · same camera as preview · nothing uploaded
+            {trustLine ??
+              "Local burst classifier · same camera as preview · nothing uploaded"}
           </p>
+          {uncertaintyNote ? (
+            <p
+              className="mt-2 max-w-md rounded-lg border border-amber-400/25 bg-amber-950/35 px-2.5 py-1.5 text-[11px] leading-snug text-amber-100/95"
+              role="note"
+            >
+              {uncertaintyNote}
+            </p>
+          ) : null}
           <div className="mt-5 flex flex-wrap items-end gap-x-6 gap-y-3">
             <h3 className="haven-display text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.04em] text-zinc-50 sm:text-5xl lg:text-[3.75rem] xl:text-[4.25rem] 2xl:text-[4.75rem]">
               {roomStateLabel(state)}
