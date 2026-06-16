@@ -122,7 +122,8 @@ export function buildLiveExplainSummary(snapshot: LiveInferenceSnapshot): LiveEx
   })
 
   const topStates = sortedDistributionEntries(shownDist)
-    .slice(0, 4)
+    .filter(([, value]) => value >= 0.005)
+    .slice(0, 6)
     .map(([id, value]) => ({
       id,
       label: roomStateLabel(id),

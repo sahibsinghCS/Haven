@@ -39,6 +39,9 @@ _COUCH = "a cozy sofa with throw pillows and a blanket"
 _PERSON_WORK = "a person sitting at a desk working on a computer"
 _PERSON_GAMING = "a person playing video games with a controller"
 _PERSON_RELAX = "a person watching television and relaxing"
+_READING_COUCH = "a person reading a book on a couch"
+_READING_BED = "a person reading a book in bed"
+_STUDY_TEXTBOOKS = "a student studying at a desk with laptop and textbooks"
 
 
 @dataclass
@@ -73,9 +76,11 @@ class ActivityHintGate:
         person_work = _f(features, _PERSON_WORK)
         person_gaming = _f(features, _PERSON_GAMING)
         person_relax = _f(features, _PERSON_RELAX)
+        reading_scene = max(_f(features, _READING_COUCH), _f(features, _READING_BED))
+        study_scene = _f(features, _STUDY_TEXTBOOKS)
 
         gaming_scene = max(gaming_obj, console, person_gaming)
-        work_scene = max(work_desk, work_laptop, person_work)
+        work_scene = max(work_desk, work_laptop, person_work, study_scene)
         relax_scene = max(couch, person_relax)
 
         strength = float(self.cfg.nudge_strength)
@@ -93,6 +98,17 @@ class ActivityHintGate:
             _nudge_pair(out, "relaxing", "work", strength, floor)
         elif work_scene >= relax_scene + margin:
             _nudge_pair(out, "work", "relaxing", strength * 0.95, floor)
+
+        # Reading vs work — only nudge when the classifier already sees reading and
+        # book CLIP clearly beats desk/study (avoids false reading on plain desk).
+        if "reading" in out and float(out.get("reading", 0.0)) >= floor:
+            desk_work = max(work_desk, work_laptop, person_work)
+            study = study_scene
+            work_like = max(desk_work, study)
+            clip_margin = reading_scene - work_like
+            if clip_margin >= margin * 1.5:
+                boost = strength * (0.85 + min(0.5, clip_margin * 2.5))
+                _nudge_pair(out, "reading", "work", boost, floor)
 
         total = sum(out.values()) or 1.0
         return {k: v / total for k, v in out.items()}

@@ -109,6 +109,34 @@ def test_equal_total_class_weights_with_row_weights():
     assert sw[0] < sw[20]
 
 
+def test_equal_total_class_weights_custom_mood_fraction():
+    from roomos.model.train import _compute_train_sample_weights
+
+    train_df = pd.DataFrame(
+        {
+            "label": ["reading"] * 24 + ["work"] * 586,
+            "row_weight": [2.0] * 24 + [1.0] * 586,
+        }
+    )
+    y = np.zeros(len(train_df), dtype=np.int32)
+    y[24:] = 1
+    sw = _compute_train_sample_weights(
+        train_df,
+        y,
+        {
+            "class_weighting": "balanced",
+            "use_row_weights": True,
+            "custom_mood_labels": ["reading"],
+            "custom_mood_class_weight_fraction": 0.35,
+        },
+    )
+    assert sw is not None
+    reading_total = float(sw[:24].sum())
+    work_total = float(sw[24:].sum())
+    assert reading_total < work_total
+    assert reading_total == pytest.approx(work_total * 0.35, rel=1e-4)
+
+
 def test_equal_total_class_weights_personal_vs_base():
     from roomos.model.train import _compute_train_sample_weights
 

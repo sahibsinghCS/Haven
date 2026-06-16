@@ -1086,7 +1086,9 @@ export type MoodCollectionStatusResponse = {
   session: MoodCollectionSession | null
   dataset: MoodDatasetCounts
   minimums: { bursts: number; frames: number }
+  recommended?: { bursts: number; frames: number }
   readyToTrain: boolean
+  meetsRecommended?: boolean
 }
 
 export async function fetchMoods(signal?: AbortSignal): Promise<MoodsResponse> {

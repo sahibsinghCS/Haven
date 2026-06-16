@@ -36,3 +36,28 @@ def test_relaxing_beats_work_on_couch_clip():
     probs = {"work": 0.5, "relaxing": 0.35, "sleep": 0.1, "away": 0.05}
     out = gate.apply(probs, feats)
     assert out["relaxing"] > out["work"]
+
+
+def test_reading_beats_work_when_book_clip_strong_and_model_sees_reading():
+    gate = ActivityHintGate(cfg=ActivityHintConfig(nudge_strength=0.3, min_margin=0.01))
+    reading = "a person reading a book on a couch"
+    feats = {
+        _key(reading): 0.34,
+        _key(_WORK): 0.16,
+        _key("a student studying at a desk with laptop and textbooks"): 0.14,
+    }
+    probs = {"work": 0.48, "reading": 0.32, "relaxing": 0.1, "sleep": 0.05, "away": 0.05}
+    out = gate.apply(probs, feats)
+    assert out["reading"] > out["work"]
+
+
+def test_reading_hint_skipped_when_model_does_not_see_reading():
+    gate = ActivityHintGate(cfg=ActivityHintConfig(nudge_strength=0.3, min_margin=0.01))
+    reading = "a person reading a book on a couch"
+    feats = {
+        _key(reading): 0.34,
+        _key(_WORK): 0.16,
+    }
+    probs = {"work": 0.72, "reading": 0.05, "relaxing": 0.1, "sleep": 0.08, "away": 0.05}
+    out = gate.apply(probs, feats)
+    assert out["work"] > out["reading"]

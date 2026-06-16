@@ -415,6 +415,23 @@ def resolve_personal_training_classes(
     return classes
 
 
+def correction_allowed_labels(path: Optional[Path] = None) -> set[str]:
+    """Labels the user may pick when correcting a transition or live snapshot.
+
+    Includes every active registry mood with ML enabled, even when the deployed
+    bundle does not yet contain that class (custom moods awaiting retrain).
+    """
+    labels: set[str] = set()
+    for mood in load_registry(path)["moods"]:
+        mid = str(mood.get("id") or "").strip()
+        if not mid:
+            continue
+        ml = mood.get("ml") if isinstance(mood.get("ml"), dict) else {}
+        if ml.get("enabled", True):
+            labels.add(mid)
+    return labels
+
+
 def builtin_and_legacy_labels() -> set[str]:
     """Builtin registry ids plus legacy inference-only labels."""
     return set(BUILTIN_MOODS) | set(LEGACY_INFERENCE_ONLY)

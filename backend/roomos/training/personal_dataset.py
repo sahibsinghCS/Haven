@@ -23,9 +23,12 @@ log = get_logger("roomos.training.personal_dataset")
 
 # A burst needs at least this many frames to stay usable for training.
 MIN_FRAMES_PER_BURST = 3
-# Minimum data before a mood can be trained (configurable via API payloads).
-MIN_BURSTS_TO_TRAIN = 3
-MIN_FRAMES_TO_TRAIN = 15
+# Hard floor before training is allowed (kept low for dev/tests via env override).
+MIN_BURSTS_TO_TRAIN = 12
+MIN_FRAMES_TO_TRAIN = 60
+# Shown in UI — aim for this before training custom moods for stable live inference.
+RECOMMENDED_BURSTS_TO_TRAIN = 20
+RECOMMENDED_FRAMES_TO_TRAIN = 100
 
 
 def _safe_id(value: str) -> str:

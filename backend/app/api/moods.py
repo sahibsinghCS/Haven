@@ -75,9 +75,17 @@ def _collection_payload(mood_id: Optional[str] = None) -> dict:
             "bursts": pds.MIN_BURSTS_TO_TRAIN,
             "frames": pds.MIN_FRAMES_TO_TRAIN,
         }
+        payload["recommended"] = {
+            "bursts": pds.RECOMMENDED_BURSTS_TO_TRAIN,
+            "frames": pds.RECOMMENDED_FRAMES_TO_TRAIN,
+        }
         payload["readyToTrain"] = (
             counts["burstCount"] >= pds.MIN_BURSTS_TO_TRAIN
             and counts["frameCount"] >= pds.MIN_FRAMES_TO_TRAIN
+        )
+        payload["meetsRecommended"] = (
+            counts["burstCount"] >= pds.RECOMMENDED_BURSTS_TO_TRAIN
+            and counts["frameCount"] >= pds.RECOMMENDED_FRAMES_TO_TRAIN
         )
     return payload
 
@@ -223,10 +231,26 @@ def start_collection(mood_id: str, payload: CollectionStartRequest) -> dict:
 
 
 @router.post("/{mood_id}/collection/stop")
-def stop_collection(mood_id: str) -> dict:
+def stop_collection(
+    mood_id: str,
+    forceEarly: bool = Query(default=False),
+) -> dict:
     _require_mood(mood_id)
-    session = mood_collection.stop(reason="user")
     counts = pds.dataset_counts(mood_registry.datasets_root(), mood_id)
+    if not forceEarly and (
+        counts["burstCount"] < pds.MIN_BURSTS_TO_TRAIN
+        or counts["frameCount"] < pds.MIN_FRAMES_TO_TRAIN
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Need at least {pds.MIN_BURSTS_TO_TRAIN} bursts and "
+                f"{pds.MIN_FRAMES_TO_TRAIN} frames before you can finish capture "
+                f"(have {counts['burstCount']} bursts / {counts['frameCount']} frames). "
+                "Keep the session running, or vary your pose and lighting."
+            ),
+        )
+    session = mood_collection.stop(reason="user")
     mood_registry.update_mood_ml(
         mood_id,
         status="untrained",

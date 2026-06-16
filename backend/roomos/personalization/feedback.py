@@ -168,8 +168,14 @@ class FeedbackReinforcementModel:
         screenshots_bgr: Iterable[np.ndarray],
         notes: str = "",
         metadata: Optional[Mapping[str, Any]] = None,
+        allowed_labels: Optional[Iterable[str]] = None,
     ) -> FeedbackCorrection:
-        if corrected_label not in self.classes:
+        allowed = (
+            {str(x) for x in allowed_labels}
+            if allowed_labels is not None
+            else set(self.classes)
+        )
+        if corrected_label not in allowed:
             raise ValueError(f"Unknown corrected label: {corrected_label!r}")
 
         now = datetime.now(timezone.utc).isoformat()

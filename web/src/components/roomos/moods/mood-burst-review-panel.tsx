@@ -39,7 +39,10 @@ export function MoodBurstReviewPanel() {
     return rooms.filter((r) => ids.has(r.id))
   }, [bursts, rooms])
   const readyToTrain = data?.readyToTrain ?? false
+  const meetsRecommended = data?.meetsRecommended ?? false
   const minimums = data?.minimums
+  const recommended = data?.recommended
+  const dataset = data?.dataset
 
   async function handleTrain() {
     if (!reviewMoodId) return
@@ -173,8 +176,21 @@ export function MoodBurstReviewPanel() {
         <div className="border-t border-[color:var(--haven-line)] px-5 py-4">
           {minimums ? (
             <p className="mb-3 text-[12px] text-[color:var(--haven-muted)]">
-              Minimum to train: {minimums.bursts} bursts and {minimums.frames} frames.
-              {readyToTrain ? " You have enough." : " Keep collecting if needed."}
+              Your captures: {dataset?.burstCount ?? 0} bursts · {dataset?.frameCount ?? 0}{" "}
+              frames on this device.
+              <br />
+              Required to train: {minimums.bursts} bursts / {minimums.frames} frames.
+              {recommended ? (
+                <>
+                  {" "}
+                  Recommended: {recommended.bursts} bursts / {recommended.frames} frames.
+                </>
+              ) : null}
+              {readyToTrain
+                ? meetsRecommended
+                  ? " You meet the recommended amount."
+                  : " Minimum met — more variety (poses, lighting) still helps."
+                : " Keep collecting on Live before training."}
             </p>
           ) : null}
           <Button

@@ -7,7 +7,8 @@ training:
   output_dir: data/models/latest
   features_path: data/features/personal_features.parquet
 
-  # Personal bursts are up-weighted vs generic multi-room rows; equalized per mood
-  # at train time (see roomos.model.train._compute_train_sample_weights).
+  # Tag personal bursts; mood balancing ignores the multiplier (see train.py).
   use_row_weights: true
-  default_row_weight: 12.0
+  default_row_weight: 2.0
+  # Custom moods get this fraction of a builtin class's total train weight (not 1:1).
+  custom_mood_class_weight_fraction: 0.35

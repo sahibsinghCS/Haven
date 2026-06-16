@@ -102,8 +102,12 @@ def test_collection_start_stop(moods_client):
     assert status.json()["session"]["active"] is True
 
     stop = client.post("/api/moods/sleep/collection/stop")
-    assert stop.status_code == 200
-    assert stop.json()["session"]["active"] is False
+    assert stop.status_code == 409
+    assert "bursts" in stop.json()["detail"].lower()
+
+    stop_force = client.post("/api/moods/sleep/collection/stop?forceEarly=true")
+    assert stop_force.status_code == 200
+    assert stop_force.json()["session"]["active"] is False
 
 
 def test_burst_list_and_delete(moods_client):

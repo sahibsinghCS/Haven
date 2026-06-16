@@ -32,6 +32,11 @@ from ..utils.logging import get_logger
 from ..video import open_video_source
 from ..video.input import _should_fallback_to_webcam
 from .activity_hints import ActivityHintGate, build_activity_hints_from_config
+from .custom_mood_gate import (
+    apply_custom_mood_gate,
+    build_custom_mood_gate_from_config,
+    stats_from_json,
+)
 from .occupancy import OccupancyDecision, OccupancyGate, build_gate_from_config
 from .overlays import draw_overlay
 from .smoothing import PredictionSmoother, SmoothedPrediction, smoothing_confirm_bursts
@@ -57,6 +62,19 @@ def _dynamic_ui_state_order() -> tuple[str, ...]:
     return _UI_STATE_ORDER
 
 
+def _resolve_ui_classes(model: ActivityModel) -> list[str]:
+    """Registry UI order plus any deployed bundle classes (custom moods)."""
+    order = list(_dynamic_ui_state_order())
+    allowed = _allowed_live_label_set()
+    seen = set(order)
+    for label in model.classes:
+        if label in seen or label not in allowed:
+            continue
+        order.append(label)
+        seen.add(label)
+    return order
+
+
 def _allowed_live_label_set() -> set[str]:
     """Labels the engine may surface (active moods + legacy + unknown)."""
     try:
@@ -65,6 +83,31 @@ def _allowed_live_label_set() -> set[str]:
         return allowed_live_labels()
     except Exception:
         return set(_UI_STATE_ORDER) | {"unknown"}
+
+
+def _correction_allowed_labels() -> set[str]:
+    """Registry moods the user may assign when correcting predictions."""
+    try:
+        from ..moods.registry import correction_allowed_labels
+
+        return correction_allowed_labels()
+    except Exception:
+        return set(_UI_STATE_ORDER)
+
+
+def _registry_custom_mood_ids() -> set[str]:
+    try:
+        from ..moods.registry import load_registry
+
+        return {
+            str(m["id"])
+            for m in load_registry().get("moods", [])
+            if isinstance(m, dict)
+            and m.get("kind") == "custom"
+            and (m.get("ml") or {}).get("enabled", True)
+        }
+    except Exception:
+        return set()
 
 
 def _mask_inactive_labels(
@@ -259,6 +302,11 @@ class LiveInferenceEngine:
         self._activity_hints: ActivityHintGate = build_activity_hints_from_config(
             infer_cfg.get("activity_hints"),
         )
+        self._custom_mood_gate = build_custom_mood_gate_from_config(
+            infer_cfg.get("custom_mood_gate"),
+        )
+        self._custom_mood_ids = _registry_custom_mood_ids()
+        self._custom_mood_train_stats = stats_from_json(self._model.custom_mood_stats)
 
         # Boot phase exposed via state.status_payload so the UI can show
         # specific copy ("Loading models", "Camera up — first burst pending",
@@ -297,7 +345,7 @@ class LiveInferenceEngine:
 
         history_len = int(infer_cfg.get("snapshot_history", 60))
         self._history: Deque[Dict[str, object]] = deque(maxlen=history_len)
-        self._ui_classes = list(_dynamic_ui_state_order())
+        self._ui_classes = _resolve_ui_classes(self._model)
         self._allowed_labels = _allowed_live_label_set()
         prefs_path = infer_cfg.get("preferences_path", "data/preferences.json")
         self._preferences_path = (
@@ -524,6 +572,10 @@ class LiveInferenceEngine:
             ml_state = {"last_pred": last_pred}
 
             def _process_burst(burst) -> None:
+                refreshed = _resolve_ui_classes(self._model)
+                if set(refreshed) != set(self._ui_classes):
+                    self._ui_classes = refreshed
+                    self._allowed_labels = _allowed_live_label_set()
                 fused = pipe.fusion.fuse(burst)
                 # Active mood-collection session? Persist this burst (frames +
                 # features) to the on-device dataset without blocking inference.
@@ -537,6 +589,13 @@ class LiveInferenceEngine:
                     log.debug("Mood collection hook failed: %s", e)
                 feats = fused.as_dict()
                 probs = predict_proba_row(self._model, feats)
+                probs = apply_custom_mood_gate(
+                    probs,
+                    feats,
+                    custom_mood_ids=self._custom_mood_ids,
+                    train_stats=self._custom_mood_train_stats,
+                    cfg=self._custom_mood_gate,
+                )
                 if self._live_presence_fixup_enabled:
                     if self._is_bootstrap_model:
                         probs = _bootstrap_live_fixup(probs, feats)
@@ -1008,6 +1067,9 @@ class LiveInferenceEngine:
             meta["room_id"] = snap.room_id
         if metadata:
             meta.update(dict(metadata))
+        allowed = _correction_allowed_labels()
+        if corrected_label not in allowed:
+            raise ValueError(f"Unknown corrected label: {corrected_label!r}")
         correction = self._feedback_model.record_correction(
             predicted_label=snap.primary_state,
             corrected_label=corrected_label,
@@ -1016,6 +1078,7 @@ class LiveInferenceEngine:
             screenshots_bgr=screenshots,
             notes=notes,
             metadata=meta,
+            allowed_labels=allowed,
         )
         after_probs, after_info = self._feedback_model.adjust_probabilities(features, raw_probs)
         if correction.predicted_label == correction.corrected_label:
@@ -1052,8 +1115,10 @@ class LiveInferenceEngine:
     def reload_model_bundle(self) -> None:
         """Hot-reload XGBoost after background auto-retrain."""
         self._model = load_model_bundle(self._model_dir)
-        self._ui_classes = list(_dynamic_ui_state_order())
+        self._ui_classes = _resolve_ui_classes(self._model)
         self._allowed_labels = _allowed_live_label_set()
+        self._custom_mood_ids = _registry_custom_mood_ids()
+        self._custom_mood_train_stats = stats_from_json(self._model.custom_mood_stats)
         smooth_cfg = self.config.smoothing
         unknown_label = str(self.config.labels.get("unknown_class", "unknown"))
         self._smoother = PredictionSmoother(
@@ -1136,7 +1201,8 @@ class LiveInferenceEngine:
             raise ValueError(f"Unknown transition id: {transition_id!r}")
 
         predicted = str(rec.get("to_label", ""))
-        if corrected_label not in self._model.classes:
+        allowed = _correction_allowed_labels()
+        if corrected_label not in allowed:
             raise ValueError(f"Unknown corrected label: {corrected_label!r}")
 
         features = dict(rec.get("features", {}))
@@ -1156,6 +1222,7 @@ class LiveInferenceEngine:
                 "from_label": rec.get("from_label"),
                 "captured_at": rec.get("captured_at"),
             },
+            allowed_labels=allowed,
         )
         after_probs, after_info = self._feedback_model.adjust_probabilities(features, raw_probs)
         self._transition_journal.mark_corrected(

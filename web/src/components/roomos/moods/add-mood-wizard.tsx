@@ -231,8 +231,9 @@ export function AddMoodWizard({
                   </label>
                 ) : (
                   <p className="rounded-xl border border-[color:var(--haven-line)] bg-stone-50/80 px-3 py-2.5 text-[12.5px] leading-relaxed text-[color:var(--haven-muted)]">
-                    You can stop early on the Live page. Review bursts before training, then
-                    set lights and temperature on this page.
+                    Capture runs until you hit at least 12 bursts (20 recommended), or the timer
+                    ends. Only your on-device frames train this mood — not the built-in multi-room
+                    photos.
                   </p>
                 )}
               </div>

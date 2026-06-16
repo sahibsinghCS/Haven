@@ -53,6 +53,15 @@ inference:
     nudge_strength: 0.14
     min_margin: 0.02
 
+  custom_mood_gate:
+    enabled: true
+    min_confidence: 0.78
+    min_margin: 0.18
+    min_motion_fraction_of_median: 0.45
+    low_motion_median_threshold: 0.038
+    low_motion_min_confidence: 0.74
+    low_motion_min_margin: 0.16
+
   occupancy:
     enabled: false
 

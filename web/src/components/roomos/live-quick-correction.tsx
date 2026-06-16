@@ -51,7 +51,10 @@ export function LiveQuickCorrection({
   const [memoryStatus, setMemoryStatus] = useState<FeedbackStatus | null>(null)
 
   const primary = snapshot.primaryState
-  const alternatives = ROOM_STATE_ORDER.filter((s) => s !== primary)
+  const distKeys = Object.keys(snapshot.distribution ?? {})
+  const stateOrder =
+    distKeys.length > 0 ? distKeys : [...ROOM_STATE_ORDER]
+  const alternatives = stateOrder.filter((s) => s !== primary && s !== "unknown")
   const primaryAccent = roomStateAccent(primary)
   const evidence = memoryStatus?.evidence
   const frameCount = evidence?.available ? (evidence.frameCount ?? 0) : 0
@@ -387,6 +390,20 @@ function LearningSummary({ result }: { result: FeedbackResponse }) {
   )
 }
 
+function distributionStateIds(
+  before: RoomStateDistribution,
+  after: RoomStateDistribution,
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const id of [...Object.keys(before), ...Object.keys(after), ...ROOM_STATE_ORDER]) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
 function ProbabilityShift({
   before,
   after,
@@ -404,7 +421,7 @@ function ProbabilityShift({
         Same burst — before vs after memory{applied ? "" : " (similar scene needed)"}:
       </p>
       <div className="mt-2 space-y-1.5">
-        {ROOM_STATE_ORDER.map((id) => {
+        {distributionStateIds(before, after).map((id) => {
           const b = Math.round((before[id] ?? 0) * 100)
           const a = Math.round((after[id] ?? 0) * 100)
           const delta = a - b

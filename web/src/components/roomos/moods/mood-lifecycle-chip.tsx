@@ -79,7 +79,7 @@ export function MoodLifecycleChip({ mood }: { mood: MoodDefinition }) {
       <p className="text-[11px] leading-snug text-[color:var(--haven-faint)]">{meta.explain}</p>
       {(bursts > 0 || frames > 0) && (
         <p className="text-[10px] tabular-nums text-[color:var(--haven-faint)]">
-          {frames} frames · {bursts} bursts on device
+          {frames} frames · {bursts} bursts you captured (this mood only)
           {mood.ml?.lastTrainedAt
             ? ` · trained ${new Date(mood.ml.lastTrainedAt).toLocaleDateString()}`
             : ""}

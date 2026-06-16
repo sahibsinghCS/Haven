@@ -158,6 +158,15 @@ def test_resolve_personal_training_classes_drops_orphan_custom(moods_env):
     assert "gaming" not in classes
 
 
+def test_correction_allowed_labels_includes_custom_not_in_bundle(moods_env):
+    moods_path, _ = moods_env
+    mood_registry.load_registry(moods_path)
+    custom = mood_registry.create_mood(name="Jump Rope", path=moods_path)
+    allowed = mood_registry.correction_allowed_labels(moods_path)
+    assert custom["id"] in allowed
+    assert "gaming" not in allowed
+
+
 def test_mask_inactive_labels_zeros_deleted():
     probs = {"sleep": 0.1, "work": 0.7, "relaxing": 0.1, "away": 0.1}
     allowed = {"sleep", "relaxing", "away", "unknown"}

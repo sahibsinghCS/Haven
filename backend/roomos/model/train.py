@@ -116,28 +116,41 @@ def _compute_sample_weights(y: np.ndarray, mode: str) -> Optional[np.ndarray]:
 
 def _compute_equal_total_class_weights(
     train_df: pd.DataFrame,
+    train_cfg: object = None,
 ) -> Optional[np.ndarray]:
     """Per-row weights so each label's total training weight is equal.
 
-    Honors ``row_weight`` inside a class (e.g. personal bursts vs base rows) but
-    prevents a mood with many collected bursts from dominating others.
+    Balances by **sample count** per mood. ``row_weight`` is intentionally not
+    multiplied here — personal bursts already carry a 12x tag, and folding that
+    into mood balancing made tiny custom datasets dominate the whole model.
+
+    Custom moods (user-collected) may use ``custom_mood_class_weight_fraction``
+    so a handful of room-specific bursts do not outweigh thousands of base rows.
     """
-    if "label" not in train_df.columns or "row_weight" not in train_df.columns:
+    if "label" not in train_df.columns:
         return None
     labels = train_df["label"].astype(str).to_numpy()
-    rw = train_df["row_weight"].fillna(1.0).astype(np.float32).to_numpy()
-    rw = np.clip(rw, 1e-6, None)
-    class_sums: Dict[str, float] = {}
+    class_counts: Dict[str, int] = {}
     for lab in np.unique(labels):
-        class_sums[str(lab)] = float(rw[labels == lab].sum())
-    if not class_sums:
+        class_counts[str(lab)] = int((labels == lab).sum())
+    if not class_counts:
         return None
-    target = sum(class_sums.values()) / len(class_sums)
+    target = len(labels) / len(class_counts)
+    custom_labels = {
+        str(x) for x in (_cfg_get(train_cfg, "custom_mood_labels", None) or [])
+    }
+    custom_fraction = float(
+        _cfg_get(train_cfg, "custom_mood_class_weight_fraction", 1.0)
+    )
+    custom_fraction = max(0.05, min(1.0, custom_fraction))
     sw = np.empty(len(labels), dtype=np.float32)
     for i, lab in enumerate(labels):
-        sw[i] = (target / class_sums[lab]) * rw[i]
+        class_target = target
+        if lab in custom_labels and custom_fraction < 1.0:
+            class_target = target * custom_fraction
+        sw[i] = class_target / class_counts[lab]
     totals = {str(lab): float(sw[labels == lab].sum()) for lab in np.unique(labels)}
-    log.info("Equal total class weights: %s", totals)
+    log.info("Equal total class weights (by count): %s", totals)
     return sw
 
 
@@ -155,7 +168,7 @@ def _compute_train_sample_weights(
     has_label_mult = isinstance(label_mult, dict) and bool(label_mult)
     use_row_weights = bool(_cfg_get(train_cfg, "use_row_weights", False))
     if use_row_weights and "row_weight" in train_df.columns and not has_label_mult:
-        return _compute_equal_total_class_weights(train_df)
+        return _compute_equal_total_class_weights(train_df, train_cfg)
 
     sw = _compute_sample_weights(y, mode)
     return _apply_row_weights(sw, train_df, train_cfg)

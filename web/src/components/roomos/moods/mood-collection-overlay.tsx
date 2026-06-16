@@ -33,6 +33,14 @@ export function MoodCollectionOverlay({
   const openBurstReview = useMoodSessionStore((s) => s.openBurstReview)
 
   const session = statusData?.session ?? moodsData?.collection ?? null
+  const dataset = statusData?.dataset
+  const minimums = statusData?.minimums
+  const recommended = statusData?.recommended
+  const burstTotal = Math.max(session?.burstsSaved ?? 0, dataset?.burstCount ?? 0)
+  const frameTotal = Math.max(session?.framesSaved ?? 0, dataset?.frameCount ?? 0)
+  const minBursts = minimums?.bursts ?? 12
+  const recBursts = recommended?.bursts ?? 20
+  const canStopCapture = burstTotal >= minBursts && frameTotal >= (minimums?.frames ?? 60)
   const active = session?.active && session.moodId === moodId
   const elapsed = session?.elapsedSec ?? 0
   const remaining = session?.remainingSec ?? 0
@@ -82,9 +90,14 @@ export function MoodCollectionOverlay({
                 {formatTime(remaining)} left
               </span>
               <span className="font-mono tabular-nums text-zinc-500">
-                {session.framesSaved} frames · {session.burstsSaved} bursts
+                {burstTotal}/{minBursts} bursts min
+                {recBursts > minBursts ? ` · ${recBursts} rec.` : ""}
               </span>
             </div>
+            <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">
+              {frameTotal} frames saved for {roomStateLabel(moodId)} on your device — only these
+              photos train this mood, not the built-in multi-room Sleep/Work dataset.
+            </p>
             <Progress value={progress} className="mt-2 h-1.5 bg-white/10" />
             {previewDark ? (
               <p className="mt-2 text-[11px] leading-relaxed text-amber-200/90">
@@ -102,20 +115,28 @@ export function MoodCollectionOverlay({
               size="sm"
               variant="outline"
               className="mt-3 h-9 w-full gap-2 rounded-full border-white/15 bg-white/5 text-zinc-100 hover:bg-white/10"
-              disabled={stopCollection.isPending}
+              disabled={stopCollection.isPending || !canStopCapture}
               onClick={() => void stopCollection.mutateAsync(moodId)}
             >
               <Square className="size-3.5" aria-hidden />
-              Stop training
+              {canStopCapture ? "Finish capture" : `Need ${minBursts - burstTotal} more bursts`}
             </Button>
+            {!canStopCapture ? (
+              <p className="mt-2 text-[10px] leading-relaxed text-amber-200/90">
+                Keep acting out this mood until you hit the minimum. Stopping early used to allow
+                training with too few photos.
+              </p>
+            ) : null}
           </>
         ) : (
           <div className="mt-3 space-y-2">
             <p className="text-[12px] leading-relaxed text-zinc-300">
-              Saved {session.framesSaved} frames in {session.burstsSaved} bursts.
+              Saved {frameTotal} frames in {burstTotal} bursts for this mood.
               {statusData?.readyToTrain
-                ? " Ready to train the model."
-                : " Collect more data or review bursts before training."}
+                ? statusData.meetsRecommended
+                  ? " Ready to train the model."
+                  : " Minimum reached — more varied poses help accuracy."
+                : ` Need ${Math.max(0, minBursts - burstTotal)} more bursts before training.`}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button

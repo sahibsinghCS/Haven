@@ -42,6 +42,9 @@ MIN_TEST_SAMPLES_FOR_GATE = 10
 CLASS_IMBALANCE_WARN_RATIO = 10.0
 # Reject a personal promotion when builtin+legacy macro F1 drops vs previous bundle.
 MIN_BUILTIN_MACRO_F1_RETENTION = 0.88
+# Few personal bursts overfit room background — cap their rows in the merged train set.
+MAX_CUSTOM_MOOD_TRAIN_ROWS = 24
+MAX_CUSTOM_MOOD_TRAIN_FRACTION = 0.08
 
 PHASES = (
     "queued",
@@ -393,17 +396,33 @@ class PersonalTrainingJobManager:
         if not frames:
             raise PersonalTrainingError("No training rows available.")
         df = pd.concat(frames, ignore_index=True, sort=False)
+        df, cap_warnings = self._cap_custom_mood_rows(df, moods_path)
+        warnings.extend(cap_warnings)
+        custom_mood_stats = self._custom_mood_train_stats(df, moods_path)
 
         # 3) Train into a candidate bundle with the dynamic class list.
         self._update(job, jobs_root, phase="training", progress=0.45, warnings=warnings)
         cfg.raw.setdefault("labels", {})["classes"] = list(classes)
-        split = cfg.raw.setdefault("training", {}).setdefault("split", {})
+        doc = mood_registry.load_registry(moods_path)
+        custom_ids = sorted(
+            str(m["id"])
+            for m in doc.get("moods", [])
+            if isinstance(m, dict) and m.get("kind") == "custom"
+        )
+        train_block = cfg.raw.setdefault("training", {})
+        train_block["custom_mood_labels"] = custom_ids
+        train_block.setdefault("custom_mood_class_weight_fraction", 0.35)
+        split = train_block.setdefault("split", {})
         split.setdefault("strategy", "by_source")
         split["test_size"] = max(0.2, float(split.get("test_size", 0.2)))
         candidate_dir = models_dir / f"candidate_{job['id']}"
         if candidate_dir.exists():
             shutil.rmtree(candidate_dir, ignore_errors=True)
         result = train_model(df, cfg, output_dir=candidate_dir)
+        if custom_mood_stats:
+            from ..utils.io import write_json
+
+            write_json(candidate_dir / "custom_mood_stats.json", custom_mood_stats)
 
         # 4) Eval gate before promotion.
         self._update(job, jobs_root, phase="validating", progress=0.8)
@@ -647,6 +666,84 @@ class PersonalTrainingJobManager:
         log.info("Baseline restore done: classes=%s acc=%.3f", classes, accuracy)
 
     # --- dataset -> rows ---------------------------------------------------
+
+    def _cap_custom_mood_rows(
+        self,
+        df,
+        moods_path: Optional[Path],
+    ) -> tuple:
+        import pandas as pd
+
+        warnings: List[str] = []
+        if df.empty or "label" not in df.columns:
+            return df, warnings
+        doc = mood_registry.load_registry(moods_path)
+        custom_ids = {
+            str(m["id"])
+            for m in doc.get("moods", [])
+            if isinstance(m, dict) and m.get("kind") == "custom"
+        }
+        if not custom_ids:
+            return df, warnings
+
+        seed = int(load_config(TRAIN_CONFIG_PATH).training.get("random_state", 42))
+        parts = []
+        for label, group in df.groupby(df["label"].astype(str), sort=False):
+            g = group
+            if label in custom_ids and len(g) > MAX_CUSTOM_MOOD_TRAIN_ROWS:
+                g = g.sample(n=MAX_CUSTOM_MOOD_TRAIN_ROWS, random_state=seed)
+                warnings.append(
+                    f"Capped {label} training rows to {MAX_CUSTOM_MOOD_TRAIN_ROWS} "
+                    "to avoid overfitting your room."
+                )
+            parts.append(g)
+        out = pd.concat(parts, ignore_index=True, sort=False)
+        custom_mask = out["label"].astype(str).isin(custom_ids)
+        n_custom = int(custom_mask.sum())
+        max_custom = max(1, int(len(out) * MAX_CUSTOM_MOOD_TRAIN_FRACTION))
+        if n_custom > max_custom:
+            custom_rows = out[custom_mask].sample(n=max_custom, random_state=seed)
+            other = out[~custom_mask]
+            out = pd.concat([other, custom_rows], ignore_index=True, sort=False)
+            warnings.append(
+                f"Limited custom mood rows to {max_custom} "
+                f"({MAX_CUSTOM_MOOD_TRAIN_FRACTION:.0%} of merged dataset)."
+            )
+        return out, warnings
+
+    def _custom_mood_train_stats(
+        self,
+        df,
+        moods_path: Optional[Path],
+    ) -> Dict[str, dict]:
+        doc = mood_registry.load_registry(moods_path)
+        custom_ids = {
+            str(m["id"])
+            for m in doc.get("moods", [])
+            if isinstance(m, dict) and m.get("kind") == "custom"
+        }
+        stats: Dict[str, dict] = {}
+        if not custom_ids or "label" not in df.columns:
+            return stats
+        motion_col = "motion_mean_mean"
+        for mood_id in custom_ids:
+            rows = df[df["label"].astype(str) == mood_id]
+            if rows.empty:
+                continue
+            motions = (
+                rows[motion_col].astype(float)
+                if motion_col in rows.columns
+                else None
+            )
+            entry = {"burst_count": int(len(rows))}
+            if motions is not None and len(motions):
+                entry["motion_median"] = float(motions.median())
+                entry["motion_p25"] = float(motions.quantile(0.25))
+            else:
+                entry["motion_median"] = 0.0
+                entry["motion_p25"] = 0.0
+            stats[mood_id] = entry
+        return stats
 
     def _personal_rows(
         self,

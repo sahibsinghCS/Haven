@@ -12,7 +12,7 @@ A "bundle" is a directory with these files:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -40,6 +40,7 @@ class ActivityModel:
     feature_columns: List[str]
     train_config: dict
     bundle_dir: Path
+    custom_mood_stats: dict = field(default_factory=dict)
 
     @property
     def num_classes(self) -> int:
@@ -95,12 +96,15 @@ def load_model_bundle(bundle_dir: str | Path) -> ActivityModel:
     classes = list(label_data["classes"])
     cols = list(read_json(bundle / "feature_columns.json")["columns"])
     cfg = read_json(bundle / "train_config.json")
+    custom_stats_path = bundle / "custom_mood_stats.json"
+    custom_mood_stats = read_json(custom_stats_path) if custom_stats_path.is_file() else {}
     return ActivityModel(
         booster=clf,
         classes=classes,
         feature_columns=cols,
         train_config=cfg,
         bundle_dir=bundle,
+        custom_mood_stats=custom_mood_stats if isinstance(custom_mood_stats, dict) else {},
     )
 
 
