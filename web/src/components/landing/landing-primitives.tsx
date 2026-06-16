@@ -1,4 +1,5 @@
-import type { ReactNode } from "react"
+import type { ReactNode, Ref } from "react"
+import { forwardRef } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -18,14 +19,14 @@ export const landingLayout = {
    * First section after hero: pulls the narrative forward without crowding the fold.
    */
   sectionYAfterHero:
-    "pb-[clamp(5rem,10vw,8rem)] pt-[clamp(4rem,8vw,6rem)] sm:pb-[clamp(5.75rem,11vw,8.75rem)] sm:pt-[clamp(4.5rem,8.5vw,6.75rem)] lg:pb-[clamp(7rem,9vw,8.75rem)] lg:pt-[clamp(5rem,6vw,7rem)]",
+    "pb-[clamp(5rem,10vw,8rem)] pt-[clamp(3.5rem,7vw,5.5rem)] sm:pb-[clamp(5.75rem,11vw,8.75rem)] sm:pt-[clamp(4rem,7.5vw,6rem)] lg:pb-[clamp(7rem,9vw,8.75rem)] lg:pt-[clamp(4.5rem,5.5vw,6rem)]",
   sectionBorder: "border-t border-[color:color-mix(in_oklab,rgba(18,17,15,0.16)_72%,transparent)]",
   scrollMargin: "scroll-mt-28",
 } as const
 
-/** Hero bottom: single opaque ramp into pearl (one layer, no blend modes). */
+/** Hero bottom: compact ramp into pearl (fewer stops = less muddy band). */
 export const landingHeroBottomFade =
-  "linear-gradient(180deg, rgba(18,17,16,0) 0%, #1c1a17 14%, #2a2622 28%, #3d3830 40%, #524a40 50%, #6a6156 60%, #857b6d 68%, #a09383 75%, #b8aa98 81%, #cdc0ae 86%, #dfd4c4 90%, #ebe3d6 93%, #f3ede4 96%, #f9f6f1 98%, var(--landing-canvas-pearl) 100%)"
+  "linear-gradient(180deg, rgba(18,17,16,0) 0%, #1c1a17 22%, #4a443c 52%, #a89b8a 78%, var(--landing-canvas-pearl) 100%)"
 
 /** Serif display: Fraunces via root layout variable */
 export const landingFontDisplay = "[font-family:var(--landing-display)]"
@@ -119,22 +120,26 @@ export function LandingContainer({ className, children }: { className?: string; 
   return <div className={cn(landingLayout.container, className)}>{children}</div>
 }
 
-export function LandingSectionShell({
-  id,
-  labelledBy,
-  className,
-  children,
-  /** `afterHero`: tighter top + pulls section slightly toward hero for continuity */
-  rhythm = "default",
-}: {
-  id?: string
-  labelledBy?: string
-  className?: string
-  children: ReactNode
-  rhythm?: "default" | "afterHero"
-}) {
+export const LandingSectionShell = forwardRef(function LandingSectionShell(
+  {
+    id,
+    labelledBy,
+    className,
+    children,
+    /** `afterHero`: tighter top + pulls section slightly toward hero for continuity */
+    rhythm = "default",
+  }: {
+    id?: string
+    labelledBy?: string
+    className?: string
+    children: ReactNode
+    rhythm?: "default" | "afterHero"
+  },
+  ref: Ref<HTMLElement>,
+) {
   return (
     <section
+      ref={ref}
       id={id}
       aria-labelledby={labelledBy}
       className={cn(
@@ -148,7 +153,7 @@ export function LandingSectionShell({
       {children}
     </section>
   )
-}
+})
 
 export function LandingEyebrow({ className, children }: { className?: string; children: ReactNode }) {
   return (

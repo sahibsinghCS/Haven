@@ -90,8 +90,7 @@ export function HeroSection() {
   const heroLift = useTransform(scrollYProgress, [0, 1], [0, -34])
   const roomLift = useTransform(scrollYProgress, [0, 1], [0, 42])
   const roomRotate = useTransform(scrollYProgress, [0, 1], [0, -1.8])
-  const continueOpacity = useTransform(scrollYProgress, [0, 0.14], [1, 0])
-
+  const continueOpacity = useTransform(scrollYProgress, [0, 0.18], [1, 0])
   const copyStagger = useMemo(() => landingStaggerParent(reduceMotion, 0.08, 0.08), [reduceMotion])
   const copyLine = useMemo(() => landingFadeUp(reduceMotion, { y: 22, duration: landingDuration.hero }), [reduceMotion])
   const visualReveal = useMemo(
@@ -117,21 +116,21 @@ export function HeroSection() {
       ref={sectionRef}
       id="hero"
       aria-labelledby="landing-hero-heading"
-      className="relative flex min-h-[100dvh] flex-col justify-center overflow-x-clip bg-[var(--landing-canvas-pearl)] pt-[5rem] pb-[clamp(7rem,16vh,10rem)] text-[#fbf7ef] sm:pt-[5.5rem] sm:pb-[clamp(8rem,18vh,11rem)] lg:pt-[5rem] lg:pb-[clamp(7.5rem,15vh,10rem)]"
+      className="relative flex min-h-[100dvh] flex-col overflow-x-clip bg-[#121110] pt-[5rem] text-[#fbf7ef] sm:pt-[5.5rem] lg:pt-[5rem]"
     >
       <div
         className="pointer-events-none absolute inset-0 bg-[#121110]"
         style={{
-          maskImage: "linear-gradient(180deg, black 0%, black 52%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 52%, transparent 100%)",
+          maskImage: "linear-gradient(180deg, black 0%, black 78%, transparent 100%)",
+          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 78%, transparent 100%)",
         }}
         aria-hidden
       />
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_62%_at_50%_-10%,rgba(255,247,231,0.16),transparent_58%),radial-gradient(ellipse_70%_58%_at_8%_28%,rgba(20,184,166,0.18),transparent_54%),radial-gradient(ellipse_72%_64%_at_92%_76%,rgba(245,158,11,0.12),transparent_58%),linear-gradient(180deg,#11100e_0%,#0e0d0b_32%,#151412_58%,#1c1a17_76%,#24211e_90%,#2a2724_100%)]"
         style={{
-          maskImage: "linear-gradient(180deg, black 0%, black 48%, transparent 92%)",
-          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 48%, transparent 92%)",
+          maskImage: "linear-gradient(180deg, black 0%, black 74%, transparent 98%)",
+          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 74%, transparent 98%)",
         }}
         aria-hidden
       />
@@ -139,8 +138,8 @@ export function HeroSection() {
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            maskImage: "linear-gradient(180deg, black 0%, black 46%, transparent 90%)",
-            WebkitMaskImage: "linear-gradient(180deg, black 0%, black 46%, transparent 90%)",
+            maskImage: "linear-gradient(180deg, black 0%, black 72%, transparent 92%)",
+            WebkitMaskImage: "linear-gradient(180deg, black 0%, black 72%, transparent 92%)",
           }}
           aria-hidden
         >
@@ -160,13 +159,13 @@ export function HeroSection() {
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[clamp(18rem,42vh,28rem)]"
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[clamp(9rem,20vh,13rem)]"
         style={{ background: landingHeroBottomFade }}
         aria-hidden
       />
 
       <motion.div
-        className="relative z-10 w-full flex-1 py-8 lg:flex lg:items-center lg:py-10"
+        className="relative z-10 flex flex-1 flex-col justify-center py-8 lg:py-10"
         style={reduceMotion ? undefined : { y: heroLift }}
       >
         <LandingContainer className="grid w-full grid-cols-1 gap-10 lg:grid-cols-12 lg:items-center lg:gap-8 xl:gap-12">
@@ -372,65 +371,67 @@ export function HeroSection() {
               </div>
             </div>
           </motion.div>
+        </LandingContainer>
+      </motion.div>
 
-          <motion.div
-            variants={copyLine}
-            initial="hidden"
-            animate="show"
-            className="lg:col-span-12"
-          >
-            <div className="mt-8 lg:mt-10">
-              <p className="mb-3 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.28em] text-stone-500 sm:mb-4 sm:text-left">
-                At a glance
-              </p>
-              <div className="rounded-[1.2rem] border border-white/[0.1] bg-gradient-to-b from-white/[0.08] to-white/[0.03] p-px shadow-[0_24px_70px_-40px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:rounded-[1.35rem]">
-                <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[1.12rem] bg-white/[0.12] sm:grid-cols-4 lg:grid-cols-7">
-                  {heroTelemetry.map((cell) => (
-                    <div
-                      key={cell.label}
-                      className="relative flex min-h-[6.75rem] flex-col justify-between gap-2 bg-[#141210]/95 px-3.5 py-4 sm:min-h-[7rem] sm:px-4 sm:py-4"
-                    >
-                      <p className="font-mono text-[10px] font-semibold uppercase leading-snug tracking-[0.2em] text-stone-500">
-                        {cell.label}
+      <motion.div
+        variants={copyLine}
+        initial="hidden"
+        animate="show"
+        className="relative z-10 w-full pb-[clamp(1.25rem,3vh,2rem)]"
+      >
+        <LandingContainer>
+          <div>
+            <p className="mb-3 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.28em] text-stone-500 sm:mb-4 sm:text-left">
+              At a glance
+            </p>
+            <div className="rounded-[1.2rem] border border-white/[0.1] bg-gradient-to-b from-white/[0.08] to-white/[0.03] p-px shadow-[0_24px_70px_-40px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:rounded-[1.35rem]">
+              <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[1.12rem] bg-white/[0.12] sm:grid-cols-4 lg:grid-cols-7">
+                {heroTelemetry.map((cell) => (
+                  <div
+                    key={cell.label}
+                    className="relative flex min-h-[6.75rem] flex-col justify-between gap-2 bg-[#141210]/95 px-3.5 py-4 sm:min-h-[7rem] sm:px-4 sm:py-4"
+                  >
+                    <p className="font-mono text-[10px] font-semibold uppercase leading-snug tracking-[0.2em] text-stone-500">
+                      {cell.label}
+                    </p>
+                    <div>
+                      <p
+                        className={cn(
+                          landingFontDisplay,
+                          "text-[1.35rem] font-semibold leading-[1.15] tracking-[-0.03em] text-[#fff7ea] sm:text-[1.5rem]",
+                        )}
+                      >
+                        {cell.value}
                       </p>
-                      <div>
-                        <p
-                          className={cn(
-                            landingFontDisplay,
-                            "text-[1.35rem] font-semibold leading-[1.15] tracking-[-0.03em] text-[#fff7ea] sm:text-[1.5rem]",
-                          )}
-                        >
-                          {cell.value}
-                        </p>
-                        {cell.note ? (
-                          <p className="mt-1.5 text-[11px] leading-snug text-stone-500/90">{cell.note}</p>
-                        ) : null}
-                      </div>
+                      {cell.note ? (
+                        <p className="mt-1.5 text-[11px] leading-snug text-stone-500/90">{cell.note}</p>
+                      ) : null}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
             </div>
+          </div>
 
-            <motion.div
-              className="mt-6 flex justify-center sm:mt-8"
-              style={reduceMotion ? undefined : { opacity: continueOpacity }}
+          <motion.div
+            className="mt-5 flex justify-center sm:mt-6"
+            style={reduceMotion ? undefined : { opacity: continueOpacity }}
+          >
+            <a
+              href="#how-it-works"
+              className={cn(
+                "group inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.06] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.22em] text-stone-200/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-[color,transform,background-color] duration-300 hover:bg-white/[0.1] hover:text-white motion-safe:hover:-translate-y-px",
+                landingFocusRing,
+              )}
             >
-              <a
-                href="#how-it-works"
-                className={cn(
-                  "group inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.06] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.22em] text-stone-200/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-[color,transform,background-color] duration-300 hover:bg-white/[0.1] hover:text-white motion-safe:hover:-translate-y-px",
-                  landingFocusRing,
-                )}
-              >
-                <span className="relative flex size-1.5" aria-hidden>
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-teal-200/50 motion-reduce:hidden" />
-                  <span className="relative inline-flex size-1.5 rounded-full bg-teal-200/90" />
-                </span>
-                Continue
-                <ChevronDown className="size-3.5 opacity-70 transition-transform duration-300 group-hover:translate-y-0.5" strokeWidth={2.25} aria-hidden />
-              </a>
-            </motion.div>
+              <span className="relative flex size-1.5" aria-hidden>
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-teal-200/50 motion-reduce:hidden" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-teal-200/90" />
+              </span>
+              Continue
+              <ChevronDown className="size-3.5 opacity-70 transition-transform duration-300 group-hover:translate-y-0.5" strokeWidth={2.25} aria-hidden />
+            </a>
           </motion.div>
         </LandingContainer>
       </motion.div>

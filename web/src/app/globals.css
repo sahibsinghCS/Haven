@@ -473,7 +473,21 @@
   }
 }
 
+@keyframes landing-horizon-drift {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  .landing-horizon-drift {
+    animation: landing-horizon-drift 8s ease-in-out infinite;
+    will-change: transform, opacity;
+  }
   .landing-breathe {
     animation: landing-breathe 9s ease-in-out infinite;
     will-change: transform, opacity;

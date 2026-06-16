@@ -71,7 +71,7 @@ export function HowSection() {
       id="how-it-works"
       labelledBy="how-heading"
       rhythm="afterHero"
-      className="!border-t-0 bg-[var(--landing-canvas-pearl)]"
+      className="-mt-[clamp(3.5rem,8vh,5.5rem)] !border-t-0 bg-[var(--landing-canvas-pearl)]"
     >
       <div
         className="pointer-events-none absolute inset-0 bg-[linear-gradient(178deg,var(--landing-canvas-pearl)_0%,var(--landing-canvas)_42%,var(--landing-canvas-mist)_88%,var(--landing-canvas-deep)_100%)]"
