@@ -16,7 +16,7 @@ export function registerMoodLabels(moods: Array<{ id: string; displayName: strin
   }
 }
 
-/** Label for any mood id — builtin metadata, registered custom name, or title-cased id. */
+/** Label for any mood id. builtin metadata, registered custom name, or title-cased id. */
 export function roomStateLabel(stateId: string): string {
   if (stateId in ROOM_STATE_LABEL) {
     return ROOM_STATE_LABEL[stateId as KnownRoomStateId]
@@ -163,7 +163,7 @@ export const ROOM_STATE_LANDING_ATMOSPHERE: Record<
   away: {
     tagline: "Absent, but not unmanaged.",
     light: "Minimal baseline; presence without drama.",
-    air: "Light-touch circulation on a sensible schedule.",
+    air: "Light touch circulation on a sensible schedule.",
     thermal: "Lean targets with comfort waiting when you return.",
   },
 }

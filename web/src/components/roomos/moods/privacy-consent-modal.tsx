@@ -42,7 +42,7 @@ export function PrivacyConsentModal({
               </DialogTitle>
             </div>
             <DialogDescription className="text-[13.5px] leading-relaxed text-[color:var(--haven-muted)]">
-              Before RoomOS saves camera frames for a custom mood, here is how your data is
+              Before Haven saves camera frames for a custom mood, here is how your data is
               handled.
             </DialogDescription>
           </DialogHeader>
@@ -50,7 +50,7 @@ export function PrivacyConsentModal({
         <ul className="space-y-3 px-6 py-5 text-[13px] leading-relaxed text-[color:var(--haven-muted)]">
           <li className="flex gap-2">
             <span className="font-semibold text-[color:var(--haven-ink)]">1.</span>
-            Frames are stored only on this computer — never uploaded to the cloud.
+ Frames are stored only on this computer. never uploaded to the cloud.
           </li>
           <li className="flex gap-2">
             <span className="font-semibold text-[color:var(--haven-ink)]">2.</span>
@@ -76,7 +76,7 @@ export function PrivacyConsentModal({
             onClick={onAccept}
             disabled={busy}
           >
-            I understand — continue
+ I understand. continue
           </Button>
         </DialogFooter>
         <p className="px-6 pb-5 text-center text-[11px] text-[color:var(--haven-faint)]">

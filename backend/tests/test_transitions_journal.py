@@ -74,3 +74,21 @@ def test_relabel_wires_feedback_memory(tmp_path):
     )
     assert info["applied"] is True
     assert adjusted["relaxing"] > 0.1
+
+
+def test_clear_all_transitions(tmp_path):
+    journal = TransitionJournal(root_dir=tmp_path / "transitions", max_entries=50)
+    frame = np.zeros((32, 32, 3), dtype=np.uint8)
+    journal.record_switch(
+        from_label="work",
+        to_label="away",
+        confidence=0.5,
+        sequence=1,
+        features={"a": 1.0},
+        raw_probs={"work": 0.4, "away": 0.5},
+        screenshots_bgr=[frame],
+    )
+    removed = journal.clear_all()
+    assert removed == 1
+    assert journal.count == 0
+    assert journal.list_transitions(limit=10) == []

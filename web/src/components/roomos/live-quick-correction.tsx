@@ -27,7 +27,7 @@ type PendingConfirm = {
   mode: "confirm" | "correct"
 }
 
-/** Memory/retrain badge — no need to hammer the API on every snapshot tick. */
+/** Memory/retrain badge. no need to hammer the API on every snapshot tick. */
 const FEEDBACK_STATUS_POLL_MS = 10_000
 
 /**
@@ -101,8 +101,8 @@ export function LiveQuickCorrection({
       const progress = memoryStatus?.autoRetrain?.correctionsSinceLastRun
       toast.success(mode === "confirm" ? "Marked as right" : "Marked as wrong", {
         description: result.retrainsModel
-          ? "Saved snapshot — model retraining in background."
-          : `Saved locally — ${result.memoryExamples} examples in memory.`,
+          ? "Saved snapshot. model retraining in background."
+          : `Saved locally. ${result.memoryExamples} examples in memory.`,
         duration: 5000,
       })
     } catch (err) {
@@ -168,7 +168,7 @@ export function LiveQuickCorrection({
 
       {autoRt?.enabled && lastRetrain && lastRetrain.ok === false ? (
         <p className="mt-1 text-[10px] text-amber-300/90">
-          Retrain pending — run{" "}
+ Retrain pending. run{" "}
           <code className="font-mono text-[10px]">npm run train:reinforce</code> once, then restart dev.
         </p>
       ) : null}
@@ -250,7 +250,7 @@ export function LiveQuickCorrection({
           <ThumbsUp className="size-4" aria-hidden />
         )}
         <span className={cn("size-2 rounded-full shrink-0", primaryAccent.bar)} aria-hidden />
-        Yes — {roomStateLabel(primary)}
+ Yes. {roomStateLabel(primary)}
       </button>
 
       <p className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
@@ -418,7 +418,7 @@ function ProbabilityShift({
   return (
     <div>
       <p className="text-[10px] text-zinc-500">
-        Same burst — before vs after memory{applied ? "" : " (similar scene needed)"}:
+ Same burst. before vs after memory{applied ? "" : " (similar scene needed)"}:
       </p>
       <div className="mt-2 space-y-1.5">
         {distributionStateIds(before, after).map((id) => {

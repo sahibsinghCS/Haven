@@ -5,10 +5,16 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { motion, useReducedMotion } from "framer-motion"
 import Link from "next/link"
+import { useQueryClient } from "@tanstack/react-query"
 
+import { useHavenAuth } from "@/components/auth/haven-auth-provider"
 import { LiveCameraSelect } from "@/components/roomos/live-camera-select"
 import { LiveSessionBridge } from "@/components/roomos/live-session-bridge"
 import { cn } from "@/lib/utils"
+import {
+  prefetchDashboardCore,
+  prefetchDashboardRoute,
+} from "@/lib/roomos/dashboard-queries"
 import { roomStateAccent } from "@/lib/roomos/state-meta"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { useRoomOsAmbientStore } from "@/stores/roomos-store"
@@ -16,12 +22,16 @@ import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 const nav = [
   { href: "/live", label: "Live" },
   { href: "/review", label: "Review" },
+  { href: "/rhythm", label: "Rhythm" },
   { href: "/preferences", label: "Moods / Preferences" },
   { href: "/connections", label: "Connections" },
 ] as const
 
 export function RoomDashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const queryClient = useQueryClient()
+  const { user } = useHavenAuth()
+  const userId = user?.id ?? null
   const primaryState = useRoomOsAmbientStore((s) => s.primaryState)
   const lastAmbientMood = useRoomOsAmbientStore((s) => s.lastAmbientMood)
   const isLive = pathname === "/live"
@@ -41,6 +51,14 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
   const tabRefs = useRef<Record<string, HTMLAnchorElement | null>>({})
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null)
   const activeKey = useMemo(() => nav.find((n) => n.href === pathname)?.href, [pathname])
+
+  useEffect(() => {
+    prefetchDashboardCore(queryClient, userId)
+  }, [queryClient, userId])
+
+  const prefetchRoute = (href: string) => {
+    prefetchDashboardRoute(queryClient, href, userId)
+  }
 
   useEffect(() => {
     const measure = () => {
@@ -233,6 +251,8 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
                   ref={(el) => {
                     tabRefs.current[item.href] = el
                   }}
+                  onMouseEnter={() => prefetchRoute(item.href)}
+                  onFocus={() => prefetchRoute(item.href)}
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "relative z-[1] whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-semibold tracking-tight transition-colors duration-200 sm:px-4",
@@ -259,7 +279,6 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
       <LiveSessionBridge />
 
       <main
-        key={pathname}
         className={cn(
           "relative z-10 flex w-full flex-1 flex-col",
           isLive

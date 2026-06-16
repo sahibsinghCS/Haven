@@ -42,7 +42,7 @@ export function useMoods() {
       registerMoodLabels(data.moods)
       return data
     },
-    staleTime: 5_000,
+    staleTime: 5 * 60_000,
     retry: 1,
     refetchInterval: (query) => {
       const data = query.state.data

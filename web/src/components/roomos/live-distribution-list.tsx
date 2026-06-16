@@ -37,7 +37,7 @@ export const LiveDistributionList = memo(function LiveDistributionList({
     <div>
       {showModelHint ? (
         <p className="mb-3 text-[11px] leading-relaxed text-zinc-500">
-          Raw model likelihoods for this burst — before room-memory smoothing.
+          Raw model likelihoods for this burst, before room memory smoothing.
         </p>
       ) : null}
       <div

@@ -23,7 +23,7 @@ export const preferenceMatrixSchema = z.record(z.string(), statePreferenceSchema
 
 export type PreferenceMatrixFormValues = z.infer<typeof preferenceMatrixSchema>
 
-/** Legacy v1 defaults — used when seeding per-device targets. */
+/** Legacy v1 defaults. used when seeding per-device targets. */
 export const LEGACY_MOOD_DEFAULTS = {
   sleep: {
     lightColorHex: "#1E2A4A",
@@ -51,7 +51,7 @@ export const LEGACY_MOOD_DEFAULTS = {
   },
 } as const
 
-/** Defaults for a mood id — builtin values, or work-like neutrals for custom moods. */
+/** Defaults for a mood id. builtin values, or work-like neutrals for custom moods. */
 export function legacyDefaultsForMood(stateId: string): {
   lightColorHex: string
   brightness: number

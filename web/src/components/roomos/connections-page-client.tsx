@@ -15,7 +15,6 @@ import { HavenSetupWizard } from "@/components/roomos/setup/haven-setup-wizard"
 import { isSetupMarkedComplete } from "@/lib/roomos/setup-session"
 import {
   discoverDevices,
-  fetchDeviceSettingsDocument,
   fetchSmartPlugStatus,
   saveDeviceSettingsDocument,
   testLights,
@@ -23,6 +22,7 @@ import {
   testThermostat,
   type DiscoveredDevice,
 } from "@/lib/roomos/api-client"
+import { integrationsQueryOptions } from "@/lib/roomos/dashboard-queries"
 import {
   canConnectCategory,
   deviceRowPresentation,
@@ -41,7 +41,7 @@ import {
   defaultSmartPlugDevice,
   defaultThermostatDevice,
 } from "@/lib/roomos/device-settings-schema"
-import { loadDeviceSettingsLocal, saveDeviceSettingsLocal } from "@/lib/roomos/device-settings-persistence"
+import { saveDeviceSettingsLocal } from "@/lib/roomos/device-settings-persistence"
 import {
   getGuide,
   LIGHTS_GUIDES,
@@ -62,8 +62,8 @@ import type {
 import { cn } from "@/lib/utils"
 
 const DISCOVERY_BRAND_LABEL: Record<string, string> = {
-  tapo: "TP-Link Tapo",
-  tplink_kasa: "TP-Link Kasa",
+  tapo: "TP Link Tapo",
+  tplink_kasa: "TP Link Kasa",
   kasa_light: "Kasa / Tapo bulb",
   shelly: "Shelly",
   wemo: "Belkin Wemo",
@@ -106,23 +106,7 @@ export function ConnectionsPageClient() {
   const { user, enabled: authEnabled, session } = useHavenAuth()
 
   const docQuery = useQuery({
-    queryKey: ["roomos", "integrations", user?.id ?? "local"],
-    queryFn: async () => {
-      try {
-        const doc = await fetchDeviceSettingsDocument()
-        return { doc, apiOnline: true as const, authRequired: false as const }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : ""
-        const authRequired = message.includes("Sign in required")
-        const local = loadDeviceSettingsLocal()
-        return {
-          doc: local ?? defaultDeviceSettingsDocument(),
-          apiOnline: false as const,
-          authRequired,
-        }
-      }
-    },
-    staleTime: 30_000,
+    ...integrationsQueryOptions(user?.id),
   })
 
   const doc = dirty && draft ? draft : docQuery.data?.doc ?? null
@@ -305,8 +289,8 @@ export function ConnectionsPageClient() {
       const devices = await discoverDevices({ timeout: 8 })
       setScanned(devices)
       if (devices.length === 0) {
-        toast.message("Scan complete — no devices found", {
-          description: "Make sure devices are powered on and on the same Wi-Fi.",
+        toast.message("Scan complete. no devices found", {
+          description: "Make sure devices are powered on and on the same WiFi.",
         })
       } else {
         toast.success(`Found ${devices.length} device${devices.length === 1 ? "" : "s"}.`)
@@ -412,7 +396,7 @@ export function ConnectionsPageClient() {
       }
       await persistDoc(connected)
       void refreshPlugPower({ ...savedPlug, connected: true, enabled: true })
-      toast.success("Smart plug connected — you should have heard a click.")
+ toast.success("Smart plug connected. you should have heard a click.")
       setExpandedId(null)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Connect failed")
@@ -435,13 +419,26 @@ export function ConnectionsPageClient() {
         toast.error("Start HAVEN API (npm run demo), then try again.")
         return
       }
-      await testLights({ device_id: lights.id, brightness: 60, light_color_hex: "#E8F4FF" })
+      const testResult = await testLights({
+        device_id: lights.id,
+        brightness: 60,
+        light_color_hex: "#E8F4FF",
+      })
+      const pairingPatch: Partial<LightsDevice> = {}
+      if (typeof testResult.hueAppKey === "string" && testResult.hueAppKey) {
+        pairingPatch.hueAppKey = testResult.hueAppKey
+      }
+      if (typeof testResult.nanoleafToken === "string" && testResult.nanoleafToken) {
+        pairingPatch.nanoleafToken = testResult.nanoleafToken
+      }
       const connected: DeviceSettingsDocument = {
         ...saved,
         devices: {
           ...saved.devices,
           lights: saved.devices.lights.map((l) =>
-            l.id === lights.id ? { ...l, connected: true, enabled: true } : l,
+            l.id === lights.id
+              ? { ...l, ...pairingPatch, connected: true, enabled: true }
+              : l,
           ),
         },
       }
@@ -499,7 +496,7 @@ export function ConnectionsPageClient() {
     [doc],
   )
 
-  if (docQuery.isPending || !doc) {
+  if (!doc && docQuery.isPending) {
     return <PreferencesSkeleton />
   }
 
@@ -571,7 +568,7 @@ export function ConnectionsPageClient() {
           <div>
             <h2 className="font-serif text-[1.15rem] font-medium tracking-[-0.02em] text-stone-900">Scan my network</h2>
             <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
-              Find smart plugs and lights on your Wi-Fi automatically — no typing IP addresses.
+              Find smart plugs and lights on your WiFi automatically. No typing IP addresses.
             </p>
           </div>
           <button
@@ -622,7 +619,7 @@ export function ConnectionsPageClient() {
           </ul>
         ) : scanned && scanned.length === 0 ? (
           <p className="mt-4 text-[13px] text-stone-500">
-            Nothing found yet. Power-cycle the device, confirm it's on this Wi-Fi, then scan again.
+            Nothing found yet. Power cycle the device, confirm it's on this WiFi, then scan again.
           </p>
         ) : null}
       </section>

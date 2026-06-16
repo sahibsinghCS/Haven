@@ -75,15 +75,15 @@ export function buildLiveExplainSummary(snapshot: LiveInferenceSnapshot): LiveEx
 
   let verdict: string
   if (uncertain && runner) {
-    verdict = `${primaryLabel} leads at ${shownPct}% — ${roomStateLabel(runner.id)} is close at ${pct(runner.value)}%.`
+    verdict = `${primaryLabel} leads at ${shownPct}%. ${roomStateLabel(runner.id)} is close at ${pct(runner.value)}%.`
   } else if (tier === "low") {
-    verdict = `Low confidence (${shownPct}%) — treat automation cautiously this burst.`
+    verdict = `Low confidence (${shownPct}%). treat automation cautiously this burst.`
   } else if (memoryApplied && Math.abs(smoothingDeltaPct) >= 2) {
     verdict = `${primaryLabel} after room memory and temporal smoothing.`
   } else if (memoryApplied) {
-    verdict = `${primaryLabel} — room memory influenced this burst read.`
+    verdict = `${primaryLabel}. room memory influenced this burst read.`
   } else if (Math.abs(smoothingDeltaPct) >= 2) {
-    verdict = `${primaryLabel} — smoothing adjusted the burst read by ${smoothingDeltaPct > 0 ? "+" : ""}${smoothingDeltaPct}%.`
+    verdict = `${primaryLabel}. smoothing adjusted the burst read by ${smoothingDeltaPct > 0 ? "+" : ""}${smoothingDeltaPct}%.`
   } else {
     verdict = `${primaryLabel} leads this burst at ${shownPct}% confidence.`
   }

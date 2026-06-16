@@ -74,4 +74,4 @@ assert.equal(patched.rooms.find((r) => r.id === "b")?.isActive, true)
 assert.equal(patched.rooms.find((r) => r.id === "b")?.inferenceActive, true)
 assert.equal(patched.rooms.find((r) => r.id === "a")?.isActive, false)
 
-console.log("room-card-utils.test.ts: ok")
+console.log("room card utils.test.ts: ok")

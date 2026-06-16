@@ -3,7 +3,7 @@ import type { LiveInferenceStatus } from "@/hooks/use-live-inference"
 import type { LiveEngineHookStatus } from "@/hooks/use-live-engine"
 import type { LiveInferenceSnapshot } from "@/types/roomos"
 
-/** Operator-facing mode — one label per surface state. */
+/** Operator-facing mode. one label per surface state. */
 export type HavenSystemMode =
   | "camera_off"
   | "setup"
@@ -110,9 +110,9 @@ export const FAILURE_COPY: Record<
   { title: string; description: string; actions: Array<{ step: string; detail?: string }> }
 > = {
   api_offline: {
-    title: "RoomOS API unreachable",
+    title: "Haven unreachable",
     description:
-      "The web UI cannot reach the local FastAPI server. No snapshots are being fabricated — start the backend on this machine.",
+ "The web UI cannot reach the local FastAPI server. No snapshots are being fabricated. start the backend on this machine.",
     actions: [
       { step: "From repo root, run npm run demo", detail: "Starts API + inference stack" },
       { step: "Confirm http://localhost:8000/api/live/status responds" },
@@ -142,7 +142,7 @@ export const FAILURE_COPY: Record<
   engine_error: {
     title: "Inference engine failed",
     description:
-      "The live pipeline exited or refused to start. See the message below — nothing is shown from cache.",
+ "The live pipeline exited or refused to start. See the message below. nothing is shown from cache.",
     actions: [
       { step: "Check terminal logs for the roomos inference worker" },
       { step: "Close apps holding the webcam, then retry" },
@@ -152,19 +152,19 @@ export const FAILURE_COPY: Record<
   camera_error: {
     title: "Camera could not open",
     description:
-      "The phone stream or webcam is in use or unreachable. RoomOS will try the DroidCam virtual webcam when the Wi‑Fi feed is busy.",
+ "The phone stream or webcam is in use or unreachable. Haven will try the DroidCam virtual webcam when the WiFi feed is busy.",
     actions: [
       { step: "Quit the DroidCam Windows client (File → Exit) or pick DroidCam Video in the camera list" },
-      { step: "Confirm the phone app is connected on the same Wi‑Fi as this PC" },
+      { step: "Confirm the phone app is connected on the same WiFi as this PC" },
       { step: "Reload /live and turn the camera on again" },
     ],
   },
   no_data: {
-    title: "API up — no snapshot yet",
+    title: "API up. no snapshot yet",
     description:
-      "Connected to RoomOS but no burst has been published. The camera may still be opening or warming OpenCLIP.",
+      "Connected to Haven but no burst has been published. The camera may still be opening or warming OpenCLIP.",
     actions: [
-      { step: "Wait 15–30s for the first burst on a cold start" },
+ { step: "Wait 15 to 30s for the first burst on a cold start" },
       { step: "Confirm camera permission and device selection" },
       { step: "Check engine_running in /api/live/status" },
     ],
@@ -201,7 +201,7 @@ export function bootPhaseCopy(
     return {
       title: "First burst · OpenCLIP",
       description:
-        "Capturing a 2.5s burst and running the local classifier. Cold start is often 10–25s — not an error.",
+        "Capturing a 2.5s burst and running the local classifier. Cold start is often 10 to 25s. not an error.",
     }
   }
   if (bootPhase === "starting" || engineStatus === "starting") {
@@ -218,7 +218,7 @@ export function bootPhaseCopy(
   }
   return {
     title: "Almost ready",
-    description: "Finishing boot — live read will appear when the first burst lands.",
+ description: "Finishing boot. live read will appear when the first burst lands.",
   }
 }
 

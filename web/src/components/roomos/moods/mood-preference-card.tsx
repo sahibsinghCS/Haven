@@ -134,7 +134,7 @@ export function MoodPreferenceCard({
               checked={deleteData}
               onChange={(e) => setDeleteData(e.target.checked)}
             />
-            Also delete on-device training frames for this mood
+            Also delete on device training frames for this mood
           </label>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>

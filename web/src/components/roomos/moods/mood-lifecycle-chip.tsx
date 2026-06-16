@@ -15,7 +15,7 @@ const LIFECYCLE_META: Record<
   collecting: {
     label: "Collecting",
     tone: "bg-sky-500/10 text-sky-900 ring-sky-500/25",
-    explain: "Camera capture in progress — review bursts before training.",
+ explain: "Camera capture in progress. review bursts before training.",
   },
   training: {
     label: "Training",
@@ -25,12 +25,12 @@ const LIFECYCLE_META: Record<
   error: {
     label: "Needs attention",
     tone: "bg-rose-500/10 text-rose-900 ring-rose-500/25",
-    explain: "Training or ML pipeline reported an error — check captures.",
+    explain: "Training or ML pipeline reported an error. check captures.",
   },
   custom_untrained: {
     label: "Needs captures",
     tone: "bg-amber-500/10 text-amber-900 ring-amber-500/25",
-    explain: "Custom mood — teach the camera and train before live use.",
+    explain: "Custom mood. teach the camera and train before live use.",
   },
   builtin_untrained: {
     label: "Needs training",
@@ -45,7 +45,7 @@ const LIFECYCLE_META: Record<
   inference_hidden: {
     label: "Hidden from live",
     tone: "bg-stone-500/10 text-stone-600 ring-stone-400/25",
-    explain: "Not in the active model bundle — scenes may still apply.",
+    explain: "Not in the active model bundle. scenes may still apply.",
   },
 }
 

@@ -51,7 +51,7 @@ export function useInferenceCameraPreview(
 
   const onStreamError = useCallback(() => {
     setStatus("error")
-    setMessage("Camera preview unavailable — restart the RoomOS API (npm run dev)")
+ setMessage("Camera preview unavailable. restart Haven (npm run dev)")
   }, [])
 
   return { streamSrc, status, message, onStreamLoad, onStreamError }

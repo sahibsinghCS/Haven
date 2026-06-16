@@ -1,4 +1,4 @@
-/** Set when the user clicks Get Started / Open live view — consumed on /live mount. */
+/** Set when the user clicks Get Started / Open live view. consumed on /live mount. */
 
 export const LIVE_START_INTENT_KEY = "roomos_live_start_intent" as const
 

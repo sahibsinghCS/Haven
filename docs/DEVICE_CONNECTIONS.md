@@ -28,14 +28,24 @@ You do **not** need a separate home-automation server for many devices. HAVEN pr
 
 ## Lights
 
-| Brand | Typical connection |
-|-------|-------------------|
-| Philips Hue | Hue Bridge on LAN |
-| LIFX, WiZ, Yeelight | Wi‑Fi; enable LAN/local in app if offered |
-| Govee, Tuya / Smart Life | Often cloud; some models expose a local key |
-| Matter | Via your phone’s Matter controller |
+HAVEN controls lights **locally on your LAN** when the brand supports it. Open **Connections → Lights**, pick your brand, follow the step-by-step card, then **Connect lights**.
 
-Note **room and scene names** from the brand app in Settings so mood automations can target them.
+| Brand | How HAVEN connects | You need |
+|-------|-------------------|----------|
+| **Tuya / Smart Life** | `tinytuya` local API | Device ID + local key from `python -m tinytuya wizard` |
+| **Philips Hue** | Hue Bridge REST (group 0) | Bridge IP + one-time link-button press |
+| **LIFX** | UDP LAN protocol (port 56700) | Bulb IP (Scan my network) |
+| **WiZ** | UDP JSON (port 38899) | Bulb IP (Scan my network) |
+| **Yeelight** | TCP LAN (port 55443) | LAN Control ON in Yeelight app + bulb IP |
+| **Govee** | UDP LAN API (ports 4001–4003) | LAN Control ON per device in Govee Home app + IP |
+| **TP-Link Kasa / Tapo** | `python-kasa` | Bulb IP; Tapo bulbs also need app email/password |
+| **Nanoleaf** | HTTP Open API (port 16021) | Controller IP + one-time power-button pairing |
+| **Matter** | Coming soon | Commission in Apple/Google/Alexa first |
+| **Other** | Notes only | Use Tuya path if the bulb is Smart Life inside |
+
+**Scan my network** on the Connections page runs the same discovery Home Assistant uses (Kasa, WiZ, Yeelight SSDP, LIFX, Govee LAN, Hue bridge, Nanoleaf mDNS).
+
+After connecting, enable **Use in automations** and set brightness/color in **Preferences** per mood.
 
 ## Thermostats (Settings → Test thermostat)
 
@@ -61,6 +71,6 @@ When HAVEN detects a **new room state** (sleep → work, etc.), it reads that st
 
 - **Fan** preference → smart plug on/off  
 - **Temperature** → thermostat setpoint (heat; cool = heat + 2°F)  
-- **Brightness** → lights (Tuya bulbs today; other brands logged until added)
+- **Brightness** → lights (Tuya, Hue, LIFX, WiZ, Yeelight, Govee, Kasa/Tapo, Nanoleaf when connected)
 
 Set `dry_run: false` in actions config (`ROOMOS_ACTIONS_CONFIG=configs/actions.live-devices.yaml`) so changes are real, not simulated.

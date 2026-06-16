@@ -35,7 +35,7 @@ export function plugFields(brand: SmartPlugSettings["brand"]): ConnectionFieldSp
           label: "Name in Haven",
           type: "text",
           placeholder: "Fan, desk lamp, heater…",
-          hint: "Anything you like — shown on this card after you connect.",
+          hint: "Anything you like. shown on this card after you connect.",
         },
         { key: "tapoEmail", label: "Tapo email", type: "email", placeholder: "you@email.com" },
         { key: "tapoPassword", label: "Tapo password", type: "password" },
@@ -124,7 +124,7 @@ const LIGHTS_LOCAL_BRANDS: LightsSettings["brand"][] = [
 
 const hostField = (hint: string, optional = false): ConnectionFieldSpec => ({
   key: "host",
-  label: optional ? "Device IP (optional — Scan fills it)" : "Device IP address",
+  label: optional ? "Device IP (optional. Scan fills it)" : "Device IP address",
   type: "text",
   placeholder: "192.168.1.50",
   hint,
@@ -144,7 +144,7 @@ export function lightsFields(brand: LightsSettings["brand"]): ConnectionFieldSpe
       return [
         { key: "tuyaDeviceId", label: "Tuya device ID", type: "text", mono: true },
         { key: "tuyaLocalKey", label: "Local key", type: "password", mono: true },
-        hostField("Optional — leave blank for Auto", true),
+        hostField("Optional. leave blank for Auto", true),
         nameField,
       ]
     case "philips_hue":
@@ -152,9 +152,9 @@ export function lightsFields(brand: LightsSettings["brand"]): ConnectionFieldSpe
         hostField("Hue bridge IP. Press the round link button, then Connect."),
         {
           key: "hueAppKey",
-          label: "Bridge key (auto-filled after pairing)",
+          label: "Bridge key (auto filled after pairing)",
           type: "password",
-          hint: "Leave blank the first time — HAVEN mints it when you press the link button.",
+ hint: "Leave blank the first time. HAVEN mints it when you press the link button.",
           mono: true,
         },
         nameField,
@@ -164,9 +164,9 @@ export function lightsFields(brand: LightsSettings["brand"]): ConnectionFieldSpe
         hostField("Nanoleaf controller IP."),
         {
           key: "nanoleafToken",
-          label: "Token (auto-filled after pairing)",
+          label: "Token (auto filled after pairing)",
           type: "password",
-          hint: "Leave blank the first time — hold the power button ~6s, then Connect.",
+ hint: "Leave blank the first time. hold the power button ~6s, then Connect.",
           mono: true,
         },
         nameField,
@@ -201,7 +201,7 @@ export function lightsFields(brand: LightsSettings["brand"]): ConnectionFieldSpe
           label: "Room / scene names",
           type: "text",
           placeholder: "Bedroom main, Desk strip…",
-          hint: "Names from the brand's app — used when HAVEN adds direct control for this brand.",
+ hint: "Names from the brand's app. used when HAVEN adds direct control for this brand.",
         },
       ]
   }

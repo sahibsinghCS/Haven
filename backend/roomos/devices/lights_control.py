@@ -343,20 +343,34 @@ def _rgb_to_xy(r: int, g: int, b: int) -> Tuple[float, float]:
 # Nanoleaf (token via power-button hold)
 # --------------------------------------------------------------------------
 def _apply_nanoleaf(config, *, power_on, brightness, hex_color) -> Dict[str, Any]:
+    import httpx
+
     host = str(config.get("host") or "").strip()
     if not host:
         raise ValueError("Nanoleaf needs a host IP. Run 'Scan my network' to find it.")
     token = str(config.get("nanoleafToken") or "").strip()
+    minted = False
+
+    if not token:
+        with httpx.Client(timeout=6.0) as client:
+            resp = client.post(f"http://{host}:16021/api/v1/new")
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+            token = str(data.get("auth_token") or "").strip()
+            if token:
+                minted = True
+            else:
+                raise ValueError(
+                    "Hold the Nanoleaf power button for ~5-7 seconds until the LEDs flash, "
+                    "then click Connect again so HAVEN can mint an access token."
+                )
+
     try:
         from nanoleafapi import Nanoleaf
     except ImportError as e:
         raise ValueError("Nanoleaf support is not installed. From the backend folder: pip install nanoleafapi") from e
-
-    if not token:
-        raise ValueError(
-            "Hold the Nanoleaf power button for ~5-7 seconds until the LEDs flash, "
-            "then click Connect again so HAVEN can mint an access token."
-        )
 
     r, g, b = _hex_to_rgb(hex_color)
     nl = Nanoleaf(host, token)
@@ -370,7 +384,11 @@ def _apply_nanoleaf(config, *, power_on, brightness, hex_color) -> Dict[str, Any
                 nl.set_color((r, g, b))
         except Exception as e:  # noqa: BLE001
             log.debug("Nanoleaf brightness/color failed (%s); power set.", e)
-    return {"driver": "nanoleaf"}
+    result: Dict[str, Any] = {"driver": "nanoleaf"}
+    if minted:
+        result["nanoleafToken"] = token
+        result["note"] = "Paired with Nanoleaf. Save settings to keep the token."
+    return result
 
 
 # --------------------------------------------------------------------------

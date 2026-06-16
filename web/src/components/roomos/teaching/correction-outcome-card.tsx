@@ -46,7 +46,7 @@ function ProbabilityShift({
         })}
       </ul>
       <p className="text-[10px] leading-relaxed text-[color:var(--haven-faint)]">
-        Room memory nudges similar bursts — not a full model retrain unless noted.
+ Room memory nudges similar bursts. not a full model retrain unless noted.
       </p>
     </div>
   )

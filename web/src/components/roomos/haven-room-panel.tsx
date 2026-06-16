@@ -49,14 +49,14 @@ export function HavenRoomPanel({ onRoomChange }: { onRoomChange?: () => void }) 
           </h2>
           <p className="mt-1 text-[13px] leading-relaxed text-[color:var(--haven-muted)]">
             {cloud?.message ??
-              "Connect plug, lights, and thermostat below — saves follow this room id."}
+ "Connect plug, lights, and thermostat below. saves follow this room id."}
           </p>
         </div>
       </div>
 
       <SettingsField
         label="Room ID"
-        hint="Same ID on every device/browser restores your Settings and Preferences (e.g. demo-room, apartment-2)."
+        hint="Same ID on every device/browser restores your Settings and Preferences (e.g. demo room, apartment-2)."
       >
         <SettingsInput
           value={roomId}

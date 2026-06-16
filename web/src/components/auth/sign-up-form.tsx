@@ -25,7 +25,7 @@ export function SignUpForm({ next }: { next: string }) {
           confirming, return here to sign in.
         </AuthAlert>
         <Button asChild className="mt-6 h-11 w-full bg-[color:var(--haven-ink)] text-[color:var(--haven-paper)]">
-          <Link href={`/login${next !== "/live" ? `?next=${encodeURIComponent(next)}` : ""}`}>
+          <Link href={`/login${next !== "/live" ? `?next=${encodeURIComponent(next)}`: ""}`}>
             Back to sign in
           </Link>
         </Button>
@@ -41,7 +41,7 @@ export function SignUpForm({ next }: { next: string }) {
         <p className="text-center text-[13px] text-[color:var(--haven-muted)]">
           Already have an account?{" "}
           <Link
-            href={`/login${next !== "/live" ? `?next=${encodeURIComponent(next)}` : ""}`}
+            href={`/login${next !== "/live" ? `?next=${encodeURIComponent(next)}`: ""}`}
             className="font-semibold text-teal-800 underline-offset-2 hover:underline"
           >
             Sign in

@@ -11,7 +11,7 @@ export function HavenConnectHero() {
       </h1>
       <p className="mt-2 text-[15px] leading-relaxed text-[color:var(--haven-muted)]">
         Fill in three fields and tap <strong className="font-semibold text-[color:var(--haven-ink)]">Connect</strong>.
-        Your plug stays in the Tapo app — HAVEN just talks to it over Wi‑Fi.
+ Your plug stays in the Tapo app. HAVEN just talks to it over WiFi.
       </p>
     </header>
   )

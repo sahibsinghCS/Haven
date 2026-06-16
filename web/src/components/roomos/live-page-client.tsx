@@ -252,7 +252,7 @@ export function LivePageClient() {
             icon={<Power className="size-6 text-zinc-400" />}
             eyebrow={<HavenModeBadge mode="camera_off" size="md" />}
             title="Live view is off"
-            description="Nothing is inferred or uploaded until you turn the camera on. Run guided setup for room, camera, and device checks — or use the power button to go straight to live."
+ description="Nothing is inferred or uploaded until you turn the camera on. Run guided setup for room, camera, and device checks. or use the power button to go straight to live."
             footer={
               <>
                 <HavenStatusChips

@@ -20,4 +20,4 @@ assert.equal(isUncertainRead(dist, "work"), true)
 const clear = { work: 0.82, sleep: 0.1, relaxing: 0.04, gaming: 0.02, away: 0.02 }
 assert.equal(isUncertainRead(clear, "work"), false)
 
-console.log("setup-health.test.ts: ok")
+console.log("setup health.test.ts: ok")

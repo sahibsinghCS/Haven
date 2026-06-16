@@ -22,7 +22,7 @@ export function PrimaryStateOverlay({
   confidence: number
   /** One-line device summary (not color-coded state alone) */
   sceneSummary: string
-  /** Shown when top labels are close — honest mixed read */
+ /** Shown when top labels are close. honest mixed read */
   uncertaintyNote?: string | null
   /** Overrides default local-inference trust copy */
   trustLine?: string

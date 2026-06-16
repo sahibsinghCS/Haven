@@ -56,7 +56,7 @@ export function MoodBurstReviewPanel() {
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
         <SheetHeader className="border-b border-[color:var(--haven-line)] px-5 py-4 text-left">
           <SheetTitle className="haven-display text-lg font-semibold">
-            Review captures — {mood ? roomStateLabel(mood.id) : ""}
+ Review captures. {mood ? roomStateLabel(mood.id) : ""}
           </SheetTitle>
           <SheetDescription className="text-[13px]">
             Delete bad frames or whole bursts before training. Data stays on this device.
@@ -189,7 +189,7 @@ export function MoodBurstReviewPanel() {
               {readyToTrain
                 ? meetsRecommended
                   ? " You meet the recommended amount."
-                  : " Minimum met — more variety (poses, lighting) still helps."
+ : " Minimum met. more variety (poses, lighting) still helps."
                 : " Keep collecting on Live before training."}
             </p>
           ) : null}

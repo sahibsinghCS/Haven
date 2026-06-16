@@ -18,10 +18,14 @@ export const landingLayout = {
    * First section after hero: pulls the narrative forward without crowding the fold.
    */
   sectionYAfterHero:
-    "pb-[clamp(5rem,10vw,8rem)] pt-[clamp(3.5rem,8vw,5.75rem)] sm:pb-[clamp(5.75rem,11vw,8.75rem)] sm:pt-[clamp(4rem,8.5vw,6.5rem)] lg:pb-[clamp(7rem,9vw,8.75rem)] lg:pt-[clamp(4.75rem,6vw,6.25rem)]",
+    "pb-[clamp(5rem,10vw,8rem)] pt-[clamp(4rem,8vw,6rem)] sm:pb-[clamp(5.75rem,11vw,8.75rem)] sm:pt-[clamp(4.5rem,8.5vw,6.75rem)] lg:pb-[clamp(7rem,9vw,8.75rem)] lg:pt-[clamp(5rem,6vw,7rem)]",
   sectionBorder: "border-t border-[color:color-mix(in_oklab,rgba(18,17,15,0.16)_72%,transparent)]",
   scrollMargin: "scroll-mt-28",
 } as const
+
+/** Hero bottom: single opaque ramp into pearl (one layer, no blend modes). */
+export const landingHeroBottomFade =
+  "linear-gradient(180deg, rgba(18,17,16,0) 0%, #1c1a17 14%, #2a2622 28%, #3d3830 40%, #524a40 50%, #6a6156 60%, #857b6d 68%, #a09383 75%, #b8aa98 81%, #cdc0ae 86%, #dfd4c4 90%, #ebe3d6 93%, #f3ede4 96%, #f9f6f1 98%, var(--landing-canvas-pearl) 100%)"
 
 /** Serif display: Fraunces via root layout variable */
 export const landingFontDisplay = "[font-family:var(--landing-display)]"

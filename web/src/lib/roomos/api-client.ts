@@ -12,6 +12,7 @@ import type {
 } from "@/types/roomos"
 import type { LiveFeedbackEvent } from "@/types/feedback-event"
 import type { LivePreferencesEvent } from "@/types/preferences-event"
+import type { RhythmRange, RhythmSummaries, RhythmSummary } from "@/types/rhythm"
 import { ROOM_STATE_ORDER } from "@/types/roomos"
 
 /**
@@ -419,7 +420,7 @@ export async function fetchCameras(
   if (opts?.excludeRoomId) params.set("excludeRoomId", opts.excludeRoomId)
   const qs = params.toString()
   const res = await fetch(
-    `${API_BASE}/api/live/cameras${qs ? `?${qs}` : ""}`,
+    `${API_BASE}/api/live/cameras${qs? `?${qs}`: ""}`,
     { signal, cache: "no-store" },
   )
   if (!res.ok) throw new Error(`cameras ${res.status}`)
@@ -452,7 +453,7 @@ export function livePreviewUrl(): string {
   return LIVE_PREVIEW_URL
 }
 
-/** MJPEG stream — one connection, ~30 FPS; much smoother than polling JPEG blobs. */
+/** MJPEG stream. one connection, ~30 FPS; much smoother than polling JPEG blobs. */
 export function livePreviewMjpegUrl(): string {
   if (typeof window !== "undefined") {
     return "/api/live/preview.mjpeg"
@@ -666,7 +667,7 @@ export async function fetchTransitions(
   if (opts?.uncorrectedOnly) params.set("uncorrected_only", "true")
   const q = params.toString()
   const res = await fetch(
-    `${API_BASE}/api/live/transitions${q ? `?${q}` : ""}`,
+    `${API_BASE}/api/live/transitions${q? `?${q}`: ""}`,
     { signal, cache: "no-store" },
   )
   if (!res.ok) throw new Error(`transitions fetch failed: ${res.status}`)
@@ -704,6 +705,23 @@ export async function fetchTransitions(
       }
     }),
   }
+}
+
+export async function clearAllTransitions(): Promise<{ removed: number }> {
+  const res = await fetch(`${API_BASE}/api/live/transitions`, {
+    method: "DELETE",
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null)
+    const msg =
+      typeof detail?.detail === "string"
+        ? detail.detail
+        : `clear transitions failed: ${res.status}`
+    throw new Error(msg)
+  }
+  const raw = (await res.json()) as Record<string, unknown>
+  return { removed: Number(raw.removed ?? 0) }
 }
 
 export async function correctTransition(
@@ -862,6 +880,9 @@ export async function fetchPreferenceDocument(signal?: AbortSignal): Promise<Pre
     cache: "no-store",
     headers: await havenRequestHeaders(),
   })
+  if (res.status === 401) {
+    throw new Error("Sign in required to load saved preferences.")
+  }
   if (!res.ok) throw new Error(`preferences fetch failed: ${res.status}`)
   const raw: unknown = await res.json()
   const doc = parsePreferenceDocument(raw)
@@ -875,6 +896,9 @@ export async function savePreferenceDocument(doc: PreferenceDocument): Promise<P
     headers: await havenRequestHeaders(),
     body: JSON.stringify(doc),
   })
+  if (res.status === 401) {
+    throw new Error("Sign in required to save preferences.")
+  }
   if (!res.ok) throw new Error(`preferences save failed: ${res.status}`)
   const raw: unknown = await res.json()
   const parsed = parsePreferenceDocument(raw)
@@ -934,7 +958,7 @@ export async function fetchSmartPlugStatus(body: {
   if (body.device_id) params.set("device_id", body.device_id)
   const qs = params.toString()
   const res = await fetch(
-    `${API_BASE}/api/integrations/smart-plug/status${qs ? `?${qs}` : ""}`,
+    `${API_BASE}/api/integrations/smart-plug/status${qs? `?${qs}`: ""}`,
     { headers: await havenRequestHeaders() },
   )
   if (!res.ok) await parseIntegrationError(res, `Plug status failed: ${res.status}`)
@@ -996,17 +1020,30 @@ export async function testLights(body?: {
   device_id?: string
   brightness?: number
   light_color_hex?: string
-}): Promise<{ ok: boolean; executed?: boolean; brand?: string }> {
+}): Promise<{
+  ok: boolean
+  executed?: boolean
+  brand?: string
+  hueAppKey?: string
+  nanoleafToken?: string
+}> {
   const res = await fetch(`${API_BASE}/api/integrations/lights/test`, {
     method: "POST",
     headers: await havenRequestHeaders(),
     body: JSON.stringify({
+      device_id: body?.device_id,
       brightness: body?.brightness ?? 50,
       light_color_hex: body?.light_color_hex ?? "#E8F4FF",
     }),
   })
   if (!res.ok) await parseIntegrationError(res, `Lights test failed: ${res.status}`)
-  return (await res.json()) as { ok: boolean; executed?: boolean; brand?: string }
+  return (await res.json()) as {
+    ok: boolean
+    executed?: boolean
+    brand?: string
+    hueAppKey?: string
+    nanoleafToken?: string
+  }
 }
 
 export async function fetchDeviceActionLog(
@@ -1017,7 +1054,7 @@ export async function fetchDeviceActionLog(
     signal,
     cache: "no-store",
   })
-  if (!res.ok) throw new Error(`device-actions ${res.status}`)
+  if (!res.ok) throw new Error(`device actions ${res.status}`)
   const raw = (await res.json()) as { decisions?: unknown }
   return Array.isArray(raw.decisions)
     ? (raw.decisions as import("@/types/roomos").DeviceActionDecision[])
@@ -1249,6 +1286,37 @@ export async function recordTrainingConsent(accepted: boolean): Promise<{
 }
 
 import type { RoomsStatusResponse } from "@/types/roomos"
+
+export async function fetchRhythmSummary(
+  range: RhythmRange = "week",
+  signal?: AbortSignal,
+): Promise<RhythmSummary> {
+  const tz =
+    typeof Intl !== "undefined"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+      : "UTC"
+  const qs = new URLSearchParams({ range, tz })
+  const res = await fetch(`${API_BASE}/api/rhythm/summary?${qs}`, {
+    signal,
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error(`rhythm summary failed: ${res.status}`)
+  return (await res.json()) as RhythmSummary
+}
+
+export async function fetchRhythmSummaries(signal?: AbortSignal): Promise<RhythmSummaries> {
+  const tz =
+    typeof Intl !== "undefined"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+      : "UTC"
+  const qs = new URLSearchParams({ tz })
+  const res = await fetch(`${API_BASE}/api/rhythm/summaries?${qs}`, {
+    signal,
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error(`rhythm summaries failed: ${res.status}`)
+  return (await res.json()) as RhythmSummaries
+}
 
 export async function fetchRoomsStatus(signal?: AbortSignal): Promise<RoomsStatusResponse> {
   const res = await fetch(`${API_BASE}/api/rooms/status`, { signal, cache: "no-store" })

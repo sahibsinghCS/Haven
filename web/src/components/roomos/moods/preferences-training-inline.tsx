@@ -21,7 +21,7 @@ const PHASE_LABEL: Record<TrainingJobPhase, string> = {
   error: "Training failed",
 }
 
-/** Non-blocking training status for preferences — honest phases, no full-screen overlay. */
+/** Non-blocking training status for preferences. honest phases, no full-screen overlay. */
 export function PreferencesTrainingInline() {
   const jobId = useMoodSessionStore((s) => s.activeTrainingJobId)
   const moodId = useMoodSessionStore((s) => s.activeTrainingMoodId)
@@ -48,7 +48,7 @@ export function PreferencesTrainingInline() {
             Training {moodId ? roomStateLabel(moodId) : "personal model"}
           </h2>
           <p className="mt-1 text-[12.5px] leading-relaxed text-violet-900/85">
-            {PHASE_LABEL[phase ?? "queued"]}. This runs locally — live may briefly pause while
+ {PHASE_LABEL[phase ?? "queued"]}. This runs locally. live may briefly pause while
             weights reload.
           </p>
           <Progress value={(job.progress ?? 0) * 100} className="mt-3 h-1.5 bg-violet-200/60" />

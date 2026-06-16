@@ -38,6 +38,7 @@ import {
   landingBtnPrimaryHero,
   landingFocusRing,
   landingFontDisplay,
+  landingHeroBottomFade,
   LandingContainer,
   LandingEyebrow,
 } from "@/components/landing/landing-primitives"
@@ -60,7 +61,7 @@ const sceneRows = [
   { label: "Target", value: "72F", Icon: Thermometer, tone: "text-teal-200" },
 ] as const
 
-/** One rail: posture + room read — same typography, no clipping, no overlap with scroll */
+/** One rail: posture + room read. same typography, no clipping, no overlap with scroll */
 const heroTelemetry = [
   { label: "Video egress", value: "0", note: "Nothing leaves as video." },
   { label: "Moods", value: "5", note: "One envelope each." },
@@ -116,14 +117,36 @@ export function HeroSection() {
       ref={sectionRef}
       id="hero"
       aria-labelledby="landing-hero-heading"
-      className="relative flex min-h-[100dvh] flex-col justify-center overflow-hidden bg-[#121110] pt-[5rem] pb-28 text-[#fbf7ef] sm:pt-[5.5rem] sm:pb-32 lg:pt-[5rem] lg:pb-24"
+      className="relative flex min-h-[100dvh] flex-col justify-center overflow-x-clip bg-[var(--landing-canvas-pearl)] pt-[5rem] pb-[clamp(7rem,16vh,10rem)] text-[#fbf7ef] sm:pt-[5.5rem] sm:pb-[clamp(8rem,18vh,11rem)] lg:pt-[5rem] lg:pb-[clamp(7.5rem,15vh,10rem)]"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_62%_at_50%_-10%,rgba(255,247,231,0.16),transparent_58%),radial-gradient(ellipse_70%_58%_at_8%_28%,rgba(20,184,166,0.18),transparent_54%),radial-gradient(ellipse_72%_64%_at_92%_76%,rgba(245,158,11,0.12),transparent_58%),linear-gradient(180deg,#11100e_0%,#0e0d0b_32%,#151412_58%,#1c1a17_78%,#23211e_92%,#2a2724_100%)]" />
+      <div
+        className="pointer-events-none absolute inset-0 bg-[#121110]"
+        style={{
+          maskImage: "linear-gradient(180deg, black 0%, black 52%, transparent 100%)",
+          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 52%, transparent 100%)",
+        }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_62%_at_50%_-10%,rgba(255,247,231,0.16),transparent_58%),radial-gradient(ellipse_70%_58%_at_8%_28%,rgba(20,184,166,0.18),transparent_54%),radial-gradient(ellipse_72%_64%_at_92%_76%,rgba(245,158,11,0.12),transparent_58%),linear-gradient(180deg,#11100e_0%,#0e0d0b_32%,#151412_58%,#1c1a17_76%,#24211e_90%,#2a2724_100%)]"
+        style={{
+          maskImage: "linear-gradient(180deg, black 0%, black 48%, transparent 92%)",
+          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 48%, transparent 92%)",
+        }}
+        aria-hidden
+      />
       {!reduceMotion ? (
-        <>
-          <motion.div className="pointer-events-none absolute inset-0 opacity-80" style={{ background: glow }} />
-          <motion.div className="pointer-events-none absolute inset-0 opacity-90 mix-blend-screen" style={{ background: pearl }} />
-        </>
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            maskImage: "linear-gradient(180deg, black 0%, black 46%, transparent 90%)",
+            WebkitMaskImage: "linear-gradient(180deg, black 0%, black 46%, transparent 90%)",
+          }}
+          aria-hidden
+        >
+          <motion.div className="absolute inset-0 opacity-80" style={{ background: glow }} />
+          <motion.div className="absolute inset-0 opacity-90 mix-blend-screen" style={{ background: pearl }} />
+        </div>
       ) : null}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.15]"
@@ -131,26 +154,14 @@ export function HeroSection() {
           backgroundImage:
             "linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)",
           backgroundSize: "72px 72px",
-          maskImage: "radial-gradient(ellipse 80% 64% at 50% 44%, black 0%, transparent 72%)",
+          maskImage: "radial-gradient(ellipse 80% 55% at 50% 38%, black 0%, transparent 68%)",
+          WebkitMaskImage: "radial-gradient(ellipse 80% 55% at 50% 38%, black 0%, transparent 68%)",
         }}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[min(38vh,15rem)] sm:h-[min(36vh,17rem)]"
-        style={{
-          background: `linear-gradient(
-            180deg,
-            transparent 0%,
-            rgba(18, 17, 15, 0.22) 14%,
-            rgba(32, 29, 26, 0.55) 32%,
-            rgba(48, 44, 40, 0.72) 52%,
-            rgba(72, 66, 58, 0.55) 68%,
-            rgba(120, 110, 98, 0.28) 82%,
-            rgba(190, 182, 168, 0.2) 91%,
-            color-mix(in oklab, var(--landing-canvas-pearl) 94%, #c4bbb0) 97%,
-            var(--landing-canvas-pearl) 100%
-          )`,
-        }}
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[clamp(18rem,42vh,28rem)]"
+        style={{ background: landingHeroBottomFade }}
         aria-hidden
       />
 

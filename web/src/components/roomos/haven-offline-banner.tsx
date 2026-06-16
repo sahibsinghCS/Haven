@@ -8,23 +8,28 @@ import { HavenModeBadge } from "@/components/roomos/haven-mode-badge"
 import { HavenOperatorActions } from "@/components/roomos/haven-operator-actions"
 
 const CONTEXT_COPY: Record<
-  "preferences" | "connections" | "settings",
+  "preferences" | "connections" | "settings" | "rhythm",
   { title: string; description: string }
 > = {
   preferences: {
-    title: "Editing browser-only defaults",
+    title: "Editing browser only defaults",
     description:
-      "RoomOS API is offline. Changes save in this browser until the backend is running — nothing syncs to disk.",
+ "Haven is offline. Changes save in this browser until the backend is running. nothing syncs to disk.",
   },
   connections: {
     title: "Device tests need the API",
     description:
-      "Plug and light commands cannot run until the local RoomOS server is up. Form state is kept in the browser.",
+      "Plug and light commands cannot run until Haven is running on this machine. Form state is kept in the browser.",
   },
   settings: {
     title: "Settings stored locally",
     description:
-      "Haven cannot reach RoomOS on this machine. Values persist in the browser until npm run demo is running.",
+      "Cannot reach Haven on this machine. Values persist in the browser until npm run demo is running.",
+  },
+  rhythm: {
+    title: "Rhythm needs the API",
+    description:
+      "Mood time and highlights are read from local inference logs on this machine. Start Haven to load your rhythm.",
   },
 }
 
@@ -32,7 +37,7 @@ export function HavenOfflineBanner({
   context,
   className,
 }: {
-  context: "preferences" | "connections" | "settings"
+  context: "preferences" | "connections" | "settings" | "rhythm"
   className?: string
 }) {
   const copy = CONTEXT_COPY[context]

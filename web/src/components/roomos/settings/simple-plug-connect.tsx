@@ -67,7 +67,7 @@ export function SimplePlugConnect({
             </h2>
             <p className="mt-1 max-w-md text-[14px] leading-relaxed text-[color:var(--haven-muted)]">
               {isTapo
-                ? "Same Tapo login as your phone, plus the plug’s IP. Keep the plug in the Tapo app — don’t remove it."
+ ? "Same Tapo login as your phone, plus the plug’s IP. Keep the plug in the Tapo app. don’t remove it."
                 : "Enter your device details, then connect."}
             </p>
           </div>
@@ -156,7 +156,7 @@ export function SimplePlugConnect({
           {!isTapo ? null : (
             <p className="text-[12px] leading-relaxed text-[color:var(--haven-muted)]">
               On newer Tapo firmware: Tapo app → <strong className="font-medium">Me → Voice Assistant</strong> →
-              turn on <strong className="font-medium">Third-Party Compatibility</strong>. Close the Tapo PC app
+              turn on <strong className="font-medium">Third Party Compatibility</strong>. Close the Tapo PC app
               if connect fails.
             </p>
           )}

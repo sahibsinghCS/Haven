@@ -145,17 +145,17 @@ export function LiveVideoStage({
 
       const runnerPct = Math.round(runnerUp.value * 100)
 
-      return `Mixed read — ${roomStateLabel(runnerUp.id)} is close at ${runnerPct}%. Tap Why below for the breakdown.`
+      return `Mixed read. ${roomStateLabel(runnerUp.id)} is close at ${runnerPct}%. Tap Why below for the breakdown.`
 
     }
 
     if (confidencePct < 55) {
 
-      return `Low confidence (${confidencePct}%) — open Why below before trusting automation.`
+      return `Low confidence (${confidencePct}%). open Why below before trusting automation.`
 
     }
 
-    return "Signals are mixed this burst — check Why below before trusting automation."
+    return "Signals are mixed this burst. check Why below before trusting automation."
 
   }, [uncertain, runnerUp, liveConfidence, confidencePct])
 
@@ -182,9 +182,9 @@ export function LiveVideoStage({
   const inferenceMode = resolveInferenceDisplayMode(modelKind, snapshot.dataSource)
   const trustLine =
     inferenceMode === "replay"
-      ? "Replay source — not reading your webcam this session"
+ ? "Replay source. not reading your webcam this session"
       : inferenceMode === "demo_model"
-        ? "Demo/bootstrap model — live camera, synthetic weights"
+ ? "Demo/bootstrap model. live camera, synthetic weights"
         : undefined
 
 
@@ -330,7 +330,7 @@ export function LiveVideoStage({
       {showDarkWarning ? (
         <div className="pointer-events-auto absolute inset-x-2 top-[4.5rem] z-20 sm:inset-x-4 sm:top-20">
           <p className="rounded-lg border border-rose-400/40 bg-rose-950/95 px-3 py-2 text-center text-[11px] text-rose-50">
-            Camera is dark — close other apps using the webcam or pick another device
+ Camera is dark. close other apps using the webcam or pick another device
           </p>
         </div>
       ) : null}
@@ -361,7 +361,7 @@ export function LiveVideoStage({
             className={cn(
               "!px-3 !py-2.5 sm:!px-4",
               inspectOpen
-                ? "[&_h3]:!text-xl [&_h3]:sm:!text-2xl"
+                ? "[&_h3]:!text xl [&_h3]:sm:!text-2xl"
                 : "[&_h3]:!text-2xl [&_h3]:sm:!text-3xl",
             )}
           />

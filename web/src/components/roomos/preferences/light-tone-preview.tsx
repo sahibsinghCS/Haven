@@ -22,7 +22,7 @@ export function LightTonePreview({ hex, brightness, className }: LightTonePrevie
         <div
           className="absolute inset-0"
           style={{
-            background: `radial-gradient(circle at 28% 22%, rgba(255,255,255,0.7), transparent 55%), linear-gradient(155deg, ${normalized}, #1f1d1c)`,
+            background: `radial gradient(circle at 28% 22%, rgba(255,255,255,0.7), transparent 55%), linear gradient(155deg, ${normalized}, #1f1d1c)`,
             opacity: 0.32 + level * 0.78,
           }}
         />

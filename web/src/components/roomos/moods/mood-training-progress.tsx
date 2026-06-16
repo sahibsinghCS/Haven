@@ -90,7 +90,7 @@ export function MoodTrainingProgress() {
           <p className="mt-4 text-[12px] leading-relaxed text-zinc-400">
             Accuracy {Math.round(job.result.accuracy * 100)}% on hold-out bursts.
             {job.result.clearedFrames > 0
-              ? ` Training complete — ${job.result.clearedFrames} review frames cleared from device.`
+ ? ` Training complete. ${job.result.clearedFrames} review frames cleared from device.`
               : ""}
           </p>
         ) : null}

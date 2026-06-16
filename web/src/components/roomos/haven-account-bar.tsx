@@ -33,7 +33,7 @@ export function HavenAccountBar() {
           "border-amber-500/25 bg-amber-50/90 px-5 py-4 text-[13px] leading-relaxed text-amber-950",
         )}
       >
-        <strong className="font-semibold">Local mode.</strong> Cloud sign-in is off — settings stay on
+        <strong className="font-semibold">Local mode.</strong> Cloud sign in is off. Settings stay on
         this device. Add Supabase keys to <span className="font-mono">web/.env.local</span> to enable
         accounts.
       </section>

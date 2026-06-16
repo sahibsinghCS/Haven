@@ -27,13 +27,8 @@ import { useHavenAuth } from "@/components/auth/haven-auth-provider"
 import { HavenAccountBar } from "@/components/roomos/haven-account-bar"
 import { HavenOfflineBanner } from "@/components/roomos/haven-offline-banner"
 import { RoomsSettingsSection } from "@/components/roomos/rooms-settings-section"
-import {
-  fetchDeviceSettingsDocument,
-  saveDeviceSettingsDocument,
-  testLights,
-  testSmartPlug,
-  testThermostat,
-} from "@/lib/roomos/api-client"
+import { saveDeviceSettingsDocument, testLights, testSmartPlug, testThermostat } from "@/lib/roomos/api-client"
+import { integrationsQueryOptions } from "@/lib/roomos/dashboard-queries"
 import {
   defaultDeviceSettingsDocument,
   defaultLightsDevice,
@@ -41,7 +36,7 @@ import {
   defaultThermostatDevice,
   ensureMinimumDevices,
 } from "@/lib/roomos/device-settings-schema"
-import { loadDeviceSettingsLocal, saveDeviceSettingsLocal } from "@/lib/roomos/device-settings-persistence"
+import { saveDeviceSettingsLocal } from "@/lib/roomos/device-settings-persistence"
 import { getGuide, LIGHTS_GUIDES, THERMOSTAT_GUIDES } from "@/lib/roomos/device-setup-guides"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import type {
@@ -124,23 +119,7 @@ export function SettingsPageClient() {
   const { user, enabled: authEnabled, session } = useHavenAuth()
 
   const docQuery = useQuery({
-    queryKey: ["roomos", "integrations", user?.id ?? "local"],
-    queryFn: async () => {
-      try {
-        const doc = await fetchDeviceSettingsDocument()
-        return { doc, apiOnline: true as const, authRequired: false as const }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : ""
-        const authRequired = message.includes("Sign in required")
-        const local = loadDeviceSettingsLocal()
-        return {
-          doc: local ?? defaultDeviceSettingsDocument(),
-          apiOnline: false as const,
-          authRequired,
-        }
-      }
-    },
-    staleTime: 30_000,
+    ...integrationsQueryOptions(user?.id),
   })
 
   const doc = dirty && draft ? draft : docQuery.data?.doc ?? null
@@ -177,7 +156,7 @@ export function SettingsPageClient() {
           ? user
             ? "Device connections saved to your account"
             : "Device connections saved"
-          : "Saved in this browser — start the API (npm run demo) to sync",
+ : "Saved in this browser. start the API (npm run demo) to sync",
       )
     },
     onError: () => toast.error("Could not save settings"),
@@ -219,7 +198,7 @@ export function SettingsPageClient() {
         throw e
       }
       saveDeviceSettingsLocal(payload)
-      toast.message("Saved in this browser only — start the API (npm run demo) so the test can reach your device.")
+      toast.message("Saved in this browser only. start the API (npm run demo) so the test can reach your device.")
       return { saved: payload, apiOnline: false as const }
     }
   }
@@ -288,7 +267,7 @@ export function SettingsPageClient() {
         state: "on",
       })
       await markDeviceConnected(saved, "smartPlugs", savedPlug.id)
-      toast.success("Connected — your plug should have turned on. Set fan on/off per mood in Preferences.")
+ toast.success("Connected. your plug should have turned on. Set fan on/off per mood in Preferences.")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Plug test failed")
     } finally {
@@ -317,7 +296,7 @@ export function SettingsPageClient() {
       const savedLights = saved.devices.lights[0] ?? lights
       await testLights({ device_id: savedLights.id, brightness: 60, light_color_hex: "#E8F4FF" })
       await markDeviceConnected(saved, "lights", savedLights.id)
-      toast.success("Lights connected — check the bulb.")
+      toast.success("Lights connected. check the bulb.")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Lights test failed")
     } finally {
@@ -368,7 +347,7 @@ export function SettingsPageClient() {
     }
   }
 
-  if (docQuery.isPending || !doc) {
+  if (!doc && docQuery.isPending) {
     return <PreferencesSkeleton />
   }
 
@@ -434,7 +413,7 @@ export function SettingsPageClient() {
         <DeviceConnectionCard
           icon={Lightbulb}
           title="Lights"
-          description="Bulbs, strips, and switches — Hue, LIFX, WiZ, Govee, Matter, and more."
+          description="Bulbs, strips, and switches. Hue, LIFX, WiZ, Govee, Matter, and more."
           enabled={lights.enabled}
           onEnabledChange={(v) => patchDoc((d) => patchPrimaryDevice(d, "lights", { enabled: v }))}
           connected={lights.connected}
@@ -509,7 +488,7 @@ export function SettingsPageClient() {
 
           <SettingsField
             label="Rooms, scenes, or device names"
-            hint="What you called them in the brand’s app — HAVEN maps moods to these labels."
+ hint="What you called them in the brand’s app. HAVEN maps moods to these labels."
           >
             <SettingsTextarea
               value={lights.notes}
@@ -523,7 +502,7 @@ export function SettingsPageClient() {
         <DeviceConnectionCard
           icon={Thermometer}
           title="Thermostat"
-          description="Nest, ecobee, Honeywell Home, Sensi, and other Wi‑Fi thermostats."
+          description="Nest, ecobee, Honeywell Home, Sensi, and other WiFi thermostats."
           enabled={thermostat.enabled}
           onEnabledChange={(v) => patchDoc((d) => patchPrimaryDevice(d, "thermostats", { enabled: v }))}
           connected={thermostat.connected}
@@ -536,7 +515,7 @@ export function SettingsPageClient() {
             thermostat.brand !== "none" && !THERMOSTAT_TEST_BRANDS.includes(thermostat.brand) ? (
               <p className="text-[12px] leading-relaxed text-[color:var(--haven-muted)]">
                 Nest, ecobee, and Honeywell can be tested here once credentials are filled in. This brand
-                is not wired yet — pick a supported brand or use the manufacturer app.
+ is not wired yet. pick a supported brand or use the manufacturer app.
               </p>
             ) : undefined
           }
@@ -623,7 +602,7 @@ export function SettingsPageClient() {
                   }
                 />
               </SettingsField>
-              <SettingsField label="Refresh token" hint="From one-time Google OAuth authorization.">
+              <SettingsField label="Refresh token" hint="From one time Google OAuth authorization.">
                 <SettingsInput
                   type="password"
                   value={thermostat.nestRefreshToken ?? ""}
@@ -647,7 +626,7 @@ export function SettingsPageClient() {
                   className="font-mono text-[13px]"
                 />
               </SettingsField>
-              <SettingsField label="Refresh token" hint="One-time PIN authorization on the developer portal.">
+              <SettingsField label="Refresh token" hint="One time PIN authorization on the developer portal.">
                 <SettingsInput
                   type="password"
                   value={thermostat.ecobeeRefreshToken ?? ""}
@@ -661,7 +640,7 @@ export function SettingsPageClient() {
           )}
 
           {THERMOSTAT_TEST_BRANDS.includes(thermostat.brand) && (
-            <SettingsField label="Test heat setpoint (°F)" hint="Used only for Test connection — moods use Preferences.">
+            <SettingsField label="Test heat setpoint (°F)" hint="Used only for Test connection. moods use Preferences.">
               <SettingsInput
                 type="number"
                 value={thermostat.targetHeatF ?? 70}

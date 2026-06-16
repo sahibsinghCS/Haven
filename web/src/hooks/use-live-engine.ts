@@ -192,7 +192,7 @@ export function useLiveEngineAutostart(enabled = true) {
       } catch (err) {
         if (cancelled) return
         setStatus("error")
-        setMessage(err instanceof Error ? err.message : "Could not reach RoomOS API")
+        setMessage(err instanceof Error ? err.message : "Could not reach Haven")
       }
     })()
 

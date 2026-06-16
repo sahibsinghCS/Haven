@@ -8,7 +8,7 @@ export const ROOM_STATE_ORDER = [
 
 export type KnownRoomStateId = (typeof ROOM_STATE_ORDER)[number]
 
-/** Room states are now dynamic — any registered mood id is valid. */
+/** Room states are now dynamic. any registered mood id is valid. */
 export type RoomStateId = string
 
 /** Built-in moods restorable from the “+ Add mood” flow (gaming excluded). */
@@ -31,7 +31,7 @@ export type RoomStateDistribution = Record<string, number>
 
 export type MoodMlStatus = "untrained" | "collecting" | "training" | "ready" | "error"
 
-/** Documented mood lifecycle — see docs/MOODS-LIFECYCLE.md */
+/** Documented mood lifecycle. see docs/MOODS-LIFECYCLE.md */
 export type MoodLifecycle =
   | "builtin_deleted"
   | "collecting"
@@ -222,7 +222,7 @@ export interface LiveInferenceSnapshot {
   orchestratorMode?: OrchestratorMode
   stream: LiveStreamMeta
   primaryState: RoomStateId
-  /** 0–1 confidence in primaryState */
+ /** 0 to 1 confidence in primaryState */
   primaryConfidence: number
   /** Smoothed probabilities shown in the UI (sum ~1) */
   distribution: RoomStateDistribution
@@ -278,7 +278,7 @@ export type ConnectedDeviceRef = {
   brand: string
 }
 
-/** Arbiter audit entry — why a device command ran or was blocked. */
+/** Arbiter audit entry. why a device command ran or was blocked. */
 export type DeviceActionDecision = {
   at: number
   allowed: boolean

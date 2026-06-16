@@ -95,13 +95,13 @@ export function MoodCollectionOverlay({
               </span>
             </div>
             <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">
-              {frameTotal} frames saved for {roomStateLabel(moodId)} on your device — only these
-              photos train this mood, not the built-in multi-room Sleep/Work dataset.
+ {frameTotal} frames saved for {roomStateLabel(moodId)} on your device. only these
+              photos train this mood, not the built in multi room Sleep/Work dataset.
             </p>
             <Progress value={progress} className="mt-2 h-1.5 bg-white/10" />
             {previewDark ? (
               <p className="mt-2 text-[11px] leading-relaxed text-amber-200/90">
-                Scene looks dark — add light so frames are usable.
+ Scene looks dark. add light so frames are usable.
               </p>
             ) : null}
             {session.skipped ? (
@@ -135,7 +135,7 @@ export function MoodCollectionOverlay({
               {statusData?.readyToTrain
                 ? statusData.meetsRecommended
                   ? " Ready to train the model."
-                  : " Minimum reached — more varied poses help accuracy."
+ : " Minimum reached. more varied poses help accuracy."
                 : ` Need ${Math.max(0, minBursts - burstTotal)} more bursts before training.`}
             </p>
             <div className="flex flex-wrap gap-2">

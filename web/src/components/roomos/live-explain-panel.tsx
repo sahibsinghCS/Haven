@@ -200,7 +200,7 @@ export const LiveExplainPanel = memo(function LiveExplainPanel({
                     ))}
                   </div>
                   <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-                    Burst read is after room-memory blend, before temporal smoothing. Nothing leaves
+                    Burst read is after room memory blend, before temporal smoothing. Nothing leaves
                     this device.
                   </p>
                 </div>

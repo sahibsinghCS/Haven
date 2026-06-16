@@ -17,7 +17,7 @@ import type {
 type LiveSessionStore = {
   /** User wants the inference camera on (power toggle). */
   cameraEnabled: boolean
-  /** Engine was started this session — keep inference WS alive across /live navigation. */
+ /** Engine was started this session. keep inference WS alive across /live navigation. */
   engineWasRunning: boolean
   /** MJPEG preview has delivered at least one frame this session. */
   previewStreamLive: boolean

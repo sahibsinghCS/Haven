@@ -93,11 +93,6 @@ export function LandingNav() {
                     aria-hidden
                   />
                 </span>
-                <span className="min-w-0 leading-none">
-                  <span className="mt-[3px] hidden truncate text-[9px] font-semibold uppercase tracking-[0.26em] text-[color:var(--landing-faint)] sm:block sm:text-[10px]">
-                    Room OS
-                  </span>
-                </span>
               </Link>
             </div>
 

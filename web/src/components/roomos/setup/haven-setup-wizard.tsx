@@ -173,7 +173,7 @@ export function HavenSetupWizard({
         <div className="space-y-4 text-center">
           <Radio className="mx-auto size-8 text-teal-300" aria-hidden />
           <p className="text-sm leading-relaxed text-zinc-300">
-            Start the inference camera — the first burst may take 15–30 seconds while OpenCLIP
+ Start the inference camera. the first burst may take 15 to 30 seconds while OpenCLIP
             loads.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">

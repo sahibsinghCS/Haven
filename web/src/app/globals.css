@@ -369,13 +369,13 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .haven-enter {
-    animation: haven-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: haven-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .haven-enter-delay-1 {
-    animation-delay: 60ms;
+    animation-delay: 30ms;
   }
   .haven-enter-delay-2 {
-    animation-delay: 120ms;
+    animation-delay: 60ms;
   }
 }
 

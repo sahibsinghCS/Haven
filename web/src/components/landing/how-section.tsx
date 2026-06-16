@@ -29,7 +29,7 @@ const pipeline = [
     glyph: "○",
     accent: "from-teal-600/90 to-teal-500/50",
     ring: "ring-teal-600/35",
-    body: "Video, motion, and scene context from your room camera — interpreted on this machine.",
+ body: "Video, motion, and scene context from your room camera. interpreted on this machine.",
     aside: "No exotic hardware pitch, just context done locally.",
   },
   {
@@ -71,18 +71,10 @@ export function HowSection() {
       id="how-it-works"
       labelledBy="how-heading"
       rhythm="afterHero"
-      className="!border-t-0 -mt-[clamp(1.25rem,4vw,2.75rem)]"
+      className="!border-t-0 bg-[var(--landing-canvas-pearl)]"
     >
       <div
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(178deg,transparent_0px,color-mix(in_oklab,var(--landing-canvas-pearl)_38%,transparent)_4rem,color-mix(in_oklab,var(--landing-canvas-pearl)_78%,transparent)_7.25rem,var(--landing-canvas-pearl)_10.5rem,var(--landing-canvas-pearl)_22%,var(--landing-canvas)_48%,var(--landing-canvas-mist)_88%,var(--landing-canvas-deep)_100%)]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[min(12rem,22vh)] bg-[linear-gradient(180deg,color-mix(in_oklab,var(--landing-ink)_12%,transparent)_0%,color-mix(in_oklab,var(--landing-ink)_4%,transparent)_38%,transparent_100%)]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--landing-line-strong)] to-transparent opacity-70"
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(178deg,var(--landing-canvas-pearl)_0%,var(--landing-canvas)_42%,var(--landing-canvas-mist)_88%,var(--landing-canvas-deep)_100%)]"
         aria-hidden
       />
 

@@ -15,7 +15,7 @@ export function LiveRationaleList({
   if (!rationale.length) {
     return (
       <p className={cn("text-[12px] leading-relaxed text-zinc-500", className)}>
-        No rationale bullets for this burst yet — the model is still warming up or the
+ No rationale bullets for this burst yet. the model is still warming up or the
         backend did not attach explainers.
       </p>
     )

@@ -83,7 +83,7 @@ export const LivePresenceRail = memo(function LivePresenceRail({
             aria-current={isActive ? "true" : undefined}
             aria-label={
               isActive
-                ? `${room.name}, active room. ${roomRoleLabel(role)}${mood ? `, ${roomStateLabel(mood)}` : ""}`
+                ? `${room.name}, active room. ${roomRoleLabel(role)}${mood ? `, ${roomStateLabel(mood)}`: ""}`
                 : `Switch to ${room.name}`
             }
           >

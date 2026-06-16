@@ -17,12 +17,15 @@ import { MoodPreferenceCard } from "@/components/roomos/moods/mood-preference-ca
 import { PreferencesTrainingInline } from "@/components/roomos/moods/preferences-training-inline"
 import { HavenOfflineBanner } from "@/components/roomos/haven-offline-banner"
 import { HavenSurfaceState } from "@/components/roomos/haven-surface-state"
-import { TeachingLoopSummary } from "@/components/roomos/teaching/teaching-loop-summary"
 import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
 import { useMoods } from "@/hooks/use-moods"
 import { Button } from "@/components/ui/button"
 import { Form } from "@/components/ui/form"
-import { fetchDeviceSettingsDocument, fetchPreferenceDocument, savePreferenceDocument } from "@/lib/roomos/api-client"
+import { savePreferenceDocument } from "@/lib/roomos/api-client"
+import {
+  integrationsQueryOptions,
+  preferencesQueryOptions,
+} from "@/lib/roomos/dashboard-queries"
 import {
   defaultDeviceSettingsDocument,
   parseDeviceSettingsDocument,
@@ -75,7 +78,7 @@ function ensureMoodInForm(
 
 export function PreferencesPageClient() {
   const [moodFilter, setMoodFilter] = useState<MoodFilter>("all")
-  const { user } = useHavenAuth()
+  const { user, enabled: authEnabled, session } = useHavenAuth()
   const presets = useRoomOsPreferencesStore((s) => s.presets)
   const activePresetId = useRoomOsPreferencesStore((s) => s.activePresetId)
   const hydrate = useRoomOsPreferencesStore((s) => s.hydrate)
@@ -106,33 +109,11 @@ export function PreferencesPageClient() {
   }, [])
 
   const docQuery = useQuery({
-    queryKey: ["roomos", "preferences", user?.id ?? "local"],
-    queryFn: async ({ signal }) => {
-      try {
-        const doc = await fetchPreferenceDocument(signal)
-        return { doc, apiOnline: true as const }
-      } catch {
-        return loadPreferencesFallback()
-      }
-    },
-    staleTime: 60_000,
-    retry: 1,
+    ...preferencesQueryOptions(user?.id),
   })
 
   const integrationsQuery = useQuery({
-    queryKey: ["roomos", "integrations", user?.id ?? "local"],
-    queryFn: async () => {
-      try {
-        const doc = await fetchDeviceSettingsDocument()
-        return { doc, apiOnline: true as const }
-      } catch {
-        return {
-          doc: loadDeviceSettingsLocal() ?? defaultDeviceSettingsDocument(),
-          apiOnline: false as const,
-        }
-      }
-    },
-    staleTime: 30_000,
+    ...integrationsQueryOptions(user?.id),
   })
 
   const integrationsDoc = useMemo(() => {
@@ -194,8 +175,8 @@ export function PreferencesPageClient() {
     [form, integrationsDoc],
   )
 
-  const moodsStillLoading = moodsQuery.isPending && moodsQuery.data === undefined
-  const prefsStillLoading = presets === null && docQuery.data === undefined && docQuery.isPending
+  const moodsStillLoading = moodsQuery.isLoading
+  const prefsStillLoading = !presets && docQuery.isLoading
 
   if (prefsStillLoading || moodsStillLoading) {
     return <PreferencesSkeleton />
@@ -208,7 +189,7 @@ export function PreferencesPageClient() {
         tone="error"
         role="alert"
         title="Preferences are not set up yet"
-        description="Could not load a preset from this device or the local API. Refresh the page or check that the RoomOS backend is running."
+        description="Could not load a preset from this device or the local API. Refresh the page or check that Haven is running."
         className="mx-auto my-8"
       />
     )
@@ -224,7 +205,7 @@ export function PreferencesPageClient() {
         description={
           moodsQuery.error instanceof Error
             ? moodsQuery.error.message
-            : "The local RoomOS API may be offline. Start the backend and refresh."
+            : "Haven may be offline on this machine. Start the backend and refresh."
         }
         className="mx-auto my-8"
       />
@@ -236,17 +217,26 @@ export function PreferencesPageClient() {
   const visibleMoods = allMoods.filter((m) => moodLifecycleFilter(m, moodFilter))
 
   const apiOnline = docQuery.data?.apiOnline ?? true
+  const authRequired = docQuery.data?.authRequired ?? false
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 pb-28">
       <div className={roomosUi.pageEnterStagger1}>
-        <TeachingLoopSummary />
-      </div>
-
-      <div className={roomosUi.pageEnterStagger2}>
         <PreferencesTrainingInline />
       </div>
-      {!apiOnline ? <HavenOfflineBanner context="preferences" /> : null}
+      {authRequired && authEnabled && !session ? (
+        <p
+          className={cn(
+            roomosUi.prefsCallout,
+            "border-rose-500/25 bg-rose-50/90 px-4 py-3 text-[13px] leading-relaxed text-rose-950",
+          )}
+          role="alert"
+        >
+          Sign in to sync preferences with your account. Edits on this page stay in the browser until you
+          log in.
+        </p>
+      ) : null}
+      {!apiOnline && !authRequired ? <HavenOfflineBanner context="preferences" /> : null}
 
       {!hasConnectedDevices ? (
         <section className="rounded-[1.75rem] border border-dashed border-[color:var(--haven-line-strong)] bg-white/50 p-8 text-center">
@@ -285,11 +275,11 @@ export function PreferencesPageClient() {
                 buildPreferenceDocument(nextPresets, activeId),
               )
               toast.success("Preferences saved", {
-                description: "Synced to the local RoomOS backend.",
+                description: "Synced to Haven on this device.",
               })
             } catch {
               toast.success("Preferences saved", {
-                description: "Stored locally — backend was unreachable.",
+ description: "Stored locally. backend was unreachable.",
               })
             }
           })}
@@ -328,7 +318,7 @@ export function PreferencesPageClient() {
             </div>
             {visibleMoods.length === 0 ? (
               <p className="text-center text-[13px] text-[color:var(--haven-muted)]">
-                No moods in this filter — try another tab or teach a mood on Live.
+ No moods in this filter. try another tab or teach a mood on Live.
               </p>
             ) : null}
           </section>
@@ -368,8 +358,10 @@ export function PreferencesPageClient() {
                   {isDirty
                     ? "Save to update the active preset. Reset to discard."
                     : apiOnline
-                      ? "Saved in this browser and on the local RoomOS API."
-                      : "Saved in this browser until the API is running."}
+                      ? "Saved in this browser and on Haven on this device."
+                      : authRequired && authEnabled && !session
+                        ? "Saved in this browser until you sign in."
+                        : "Saved in this browser until the API is running."}
                 </p>
               </div>
             </div>

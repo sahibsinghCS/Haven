@@ -47,7 +47,7 @@ export interface SmartPlugSettings {
   merossEmail?: string
   merossPassword?: string
   shellyGen?: string
-  /** Tapo app account (P110M and newer plugs use KLAP — same login as the mobile app). */
+ /** Tapo app account (P110M and newer plugs use KLAP. same login as the mobile app). */
   tapoEmail?: string
   tapoPassword?: string
 }
@@ -68,7 +68,7 @@ export interface LightsSettings {
   nanoleafToken?: string
   /** Govee cloud API key (LAN control uses host only). */
   goveeApiKey?: string
-  /** Tapo/Kasa bulb login — same account as the mobile app (KLAP). */
+ /** Tapo/Kasa bulb login. same account as the mobile app (KLAP). */
   tapoEmail?: string
   tapoPassword?: string
 }

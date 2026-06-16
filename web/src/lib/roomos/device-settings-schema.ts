@@ -277,7 +277,7 @@ export function parseDeviceSettingsDocument(raw: unknown): DeviceSettingsDocumen
   })
 }
 
-/** Legacy settings page — ensure one editable row per category. */
+/** Legacy settings page. ensure one editable row per category. */
 export function ensureMinimumDevices(doc: DeviceSettingsDocument): DeviceSettingsDocument {
   const next = structuredClone(doc)
   if (next.devices.smartPlugs.length === 0) {

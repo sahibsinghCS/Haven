@@ -55,7 +55,7 @@ function useFormField() {
   return {
     id,
     name: fieldContext.name,
-    formItemId: id ? `${id}-form-item` : undefined,
+    formItemId: id ? `${id}-form item` : undefined,
     formDescriptionId: id ? `${id}-form-item-description` : undefined,
     formMessageId: id ? `${id}-form-item-message` : undefined,
     ...fieldState,

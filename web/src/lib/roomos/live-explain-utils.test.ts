@@ -54,4 +54,4 @@ assert.equal(empty.burstPct, null)
 assert.equal(empty.hasRationale, false)
 assert.equal(empty.uncertain, true)
 
-console.log("live-explain-utils.test.ts: ok")
+console.log("live explain utils.test.ts: ok")

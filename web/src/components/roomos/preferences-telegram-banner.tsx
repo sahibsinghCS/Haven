@@ -78,7 +78,7 @@ export function PreferencesTelegramBanner({
             ))}
           </ul>
           <p className="mt-2 text-[10px] text-zinc-500">
-            Saved to <code className="rounded bg-black/30 px-1">data/preferences.json</code> — open
+            Saved to <code className="rounded bg-black/30 px-1">data/preferences.json</code>. Open
             /preferences to edit more.
           </p>
         </div>

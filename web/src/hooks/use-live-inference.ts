@@ -148,7 +148,7 @@ export function useLiveInference(enabled = true): UseLiveInferenceResult {
         if (cancelled) return
         setStatus((s) => (s === "live" ? s : "error"))
         setMessage(
-          `Cannot reach RoomOS API at ${API_BASE}. From repo root run: npm run demo`,
+          `Cannot reach Haven at ${API_BASE}. From repo root run: npm run demo`,
         )
       },
       onClose: (e) => {
@@ -171,9 +171,9 @@ export function useLiveInference(enabled = true): UseLiveInferenceResult {
         setMessage(
           err instanceof Error
             ? err.message.includes("fetch")
-              ? `RoomOS API is not running (${API_BASE}). From repo root: npm run demo`
+              ? `Haven is not running (${API_BASE}). From repo root: npm run demo`
               : err.message
-            : "Could not reach the RoomOS API. Run: npm run demo",
+            : "Could not reach Haven. Run: npm run demo",
         )
       }
     }

@@ -48,7 +48,7 @@ export async function havenRequestHeaders(extra?: HeadersInit): Promise<HeadersI
 
 /** @deprecated Use async havenRequestHeaders() */
 export function setHavenAccessToken(_token: string | null) {
-  /* no-op — session cookies are the source of truth */
+ /* no-op. session cookies are the source of truth */
 }
 
 /** @deprecated Use async havenRequestHeaders() */

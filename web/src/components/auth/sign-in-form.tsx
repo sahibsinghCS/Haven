@@ -26,7 +26,7 @@ export function SignInForm({ next, authError }: { next: string; authError?: stri
         <p className="text-center text-[13px] text-[color:var(--haven-muted)]">
           New here?{" "}
           <Link
-            href={`/login/sign-up${next !== "/live" ? `?next=${encodeURIComponent(next)}` : ""}`}
+            href={`/login/sign-up${next !== "/live" ? `?next=${encodeURIComponent(next)}`: ""}`}
             className="font-semibold text-teal-800 underline-offset-2 hover:underline"
           >
             Create an account

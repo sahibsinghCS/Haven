@@ -157,7 +157,7 @@ export const LiveInspectDrawer = memo(function LiveInspectDrawer({
                   </>
                 ) : (
                   <p className="text-[12px] leading-relaxed text-zinc-500">
-                    No room-memory blend on this burst — the read is straight from the local
+                    No room memory blend on this burst. The read is straight from the local
                     classifier.
                   </p>
                 )}

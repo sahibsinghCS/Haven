@@ -1,23 +1,23 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { ArrowRight, CheckCircle2, Loader2, RefreshCw, ThumbsUp } from "lucide-react"
+import { useCallback, useMemo, useState } from "react"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { ArrowRight, CheckCircle2, Loader2, RefreshCw, ThumbsUp, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { CorrectionOutcomeCard } from "@/components/roomos/teaching/correction-outcome-card"
-import { TeachingLoopSummary } from "@/components/roomos/teaching/teaching-loop-summary"
 import { useMoods } from "@/hooks/use-moods"
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import {
+  clearAllTransitions,
   correctTransition,
   fetchTransitions,
   transitionFrameUrl,
   type FeedbackResponse,
   type StateTransitionItem,
-} from "@/lib/roomos/api-client"
-import { roomStateLabel } from "@/lib/roomos/state-meta"
+} from "@/lib/roomos/api-client"import { roomStateLabel } from "@/lib/roomos/state-meta"
 import { ROOM_STATE_ORDER, type RoomStateId } from "@/types/roomos"
 
 function displayLabel(label: string): string {
@@ -32,7 +32,7 @@ function isResolvableLabel(label: string, knownIds: readonly string[]): label is
 const cardShell =
   "rounded-[1.35rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_96%,transparent)] shadow-[var(--haven-shadow-card)] ring-1 ring-[color:var(--haven-edge-light)]"
 
-/** Full frame visible — matches Live preview (contain), not a center crop. */
+/** Full frame visible. matches Live preview (contain), not a center crop. */
 const evidenceFrameClass =
   "h-full w-full object-contain object-center"
 const evidenceShellClass =
@@ -54,49 +54,46 @@ export function TransitionReviewPanel({
   compact?: boolean
 }) {
   const { data: moodsData } = useMoods()
-  const [items, setItems] = useState<StateTransitionItem[]>([])
-  const [pending, setPending] = useState(0)
-  const [enabled, setEnabled] = useState(true)
-  const [reason, setReason] = useState<string | undefined>()
-  const [loading, setLoading] = useState(true)
   const [correctingId, setCorrectingId] = useState<string | null>(null)
-  const [tab, setTab] = useState<ReviewTab>("pending")
-  const [lastOutcome, setLastOutcome] = useState<FeedbackResponse | null>(null)
+  const [clearing, setClearing] = useState(false)
+  const [tab, setTab] = useState<ReviewTab>("pending")  const [lastOutcome, setLastOutcome] = useState<FeedbackResponse | null>(null)
+
+  const transitionsQuery = useQuery({
+    queryKey: ["roomos", "transitions", compact ? "compact" : "full", tab],
+    queryFn: () =>
+      fetchTransitions({
+        limit: compact ? 6 : 40,
+        uncorrectedOnly: tab === "pending",
+      }),
+    staleTime: 30_000,
+    refetchInterval: pollMs,
+    placeholderData: keepPreviousData,
+  })
+
+  const enabled = transitionsQuery.isError
+    ? false
+    : (transitionsQuery.data?.enabled ?? true)
+  const reason = transitionsQuery.isError
+    ? transitionsQuery.error instanceof Error
+      ? transitionsQuery.error.message
+      : "API unavailable"
+    : transitionsQuery.data?.reason
+  const pending = transitionsQuery.data?.pendingReview ?? 0
+  const total = transitionsQuery.data?.total ?? 0
+  const loading = transitionsQuery.isLoading && !transitionsQuery.data  const items = useMemo(() => {
+    const list = transitionsQuery.data?.transitions ?? []
+    return tab === "reviewed" ? list.filter((t) => t.corrected) : list
+  }, [transitionsQuery.data?.transitions, tab])
+
+  const refresh = useCallback(() => {
+    void transitionsQuery.refetch()
+  }, [transitionsQuery])
 
   const correctionIds = useMemo(() => {
     const fromMoods = moodsData?.moods.map((m) => m.id) ?? []
     const merged = new Set<string>([...ROOM_STATE_ORDER, ...fromMoods])
     return [...merged]
   }, [moodsData?.moods])
-
-  const refresh = useCallback(async () => {
-    try {
-      const data = await fetchTransitions({
-        limit: compact ? 6 : 40,
-        uncorrectedOnly: tab === "pending",
-      })
-      setEnabled(data.enabled)
-      setReason(data.reason)
-      setPending(data.pendingReview ?? 0)
-      const list =
-        tab === "reviewed"
-          ? data.transitions.filter((t) => t.corrected)
-          : data.transitions
-      setItems(list)
-    } catch (err) {
-      setEnabled(false)
-      setReason(err instanceof Error ? err.message : "API unavailable")
-      setItems([])
-    } finally {
-      setLoading(false)
-    }
-  }, [compact, tab])
-
-  useEffect(() => {
-    void refresh()
-    const id = window.setInterval(() => void refresh(), pollMs)
-    return () => window.clearInterval(id)
-  }, [refresh, pollMs])
 
   async function relabel(transition: StateTransitionItem, to: RoomStateId) {
     if (correctingId) return
@@ -127,12 +124,35 @@ export function TransitionReviewPanel({
     }
   }
 
-  if (!enabled) {
-    const hint =
+  async function clearAll() {
+    if (clearing || total === 0) return
+    const label =
+      tab === "pending" && pending > 0
+        ? `Delete all ${pending} switch${pending === 1 ? "" : "es"} waiting for review? This cannot be undone.`
+        : `Delete all ${total} saved switch${total === 1 ? "" : "es"}? This cannot be undone.`
+    if (!window.confirm(label)) return
+    setClearing(true)
+    try {
+      const result = await clearAllTransitions()
+      setLastOutcome(null)
+      toast.success("Switch history cleared", {
+        description: `Removed ${result.removed} saved switch${result.removed === 1 ? "" : "es"} from this device.`,
+      })
+      await refresh()
+    } catch (err) {
+      toast.error("Could not clear switches", {
+        description: err instanceof Error ? err.message : "Check API is running.",
+      })
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  if (!enabled) {    const hint =
       reason === "transitions_disabled"
         ? "Transition logging is turned off in inference config."
         : reason === "engine_off"
-          ? "Could not read saved switch history — is the RoomOS API running?"
+          ? "Could not read saved switch history. is the Haven backend running?"
           : (reason ?? "Switch history is not available yet.")
     return (
       <div className={cn(roomosUi.prefsCallout, "p-4 text-sm", panelMuted)}>
@@ -151,10 +171,7 @@ export function TransitionReviewPanel({
 
   return (
     <div className={cn(compact ? "space-y-3" : "mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-6")}>
-      {!compact ? <TeachingLoopSummary /> : null}
-
-      {lastOutcome && !compact ? (
-        <CorrectionOutcomeCard result={lastOutcome} variant="light" />
+      {lastOutcome && !compact ? (        <CorrectionOutcomeCard result={lastOutcome} variant="light" />
       ) : null}
 
       <header className={cn(!compact && "flex flex-wrap items-end justify-between gap-3")}>
@@ -236,9 +253,27 @@ export function TransitionReviewPanel({
           >
             <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
           </button>
+          {!compact && total > 0 ? (
+            <button
+              type="button"
+              onClick={() => void clearAll()}
+              disabled={clearing}
+              className={cn(
+                roomosUi.focusRingLight,
+                "inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-rose-300/80 bg-rose-50/90 px-2.5 py-1 text-[11px] font-semibold text-rose-900 hover:bg-rose-50",
+                clearing && "opacity-60",
+              )}
+            >
+              {clearing ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Trash2 className="size-3.5" aria-hidden />
+              )}
+              Clear all
+            </button>
+          ) : null}
         </div>
       </header>
-
       {loading && items.length === 0 ? (
         <p className={cn("flex items-center gap-2 text-sm", panelMuted)}>
           <Loader2 className="size-4 animate-spin" /> Loading switches…
@@ -246,7 +281,7 @@ export function TransitionReviewPanel({
       ) : items.length === 0 ? (
         <p className={cn(cardShell, "haven-lede px-4 py-8 text-center", panelMuted)}>
           {tab === "reviewed"
-            ? "No reviewed switches yet — mark a few on the To review tab."
+            ? "No reviewed switches yet. mark a few on the To review tab."
             : "No switches waiting. Stay on Live camera until the primary state changes."}
         </p>
       ) : (
@@ -335,7 +370,7 @@ function TransitionCard({
           Evidence at switch
         </p>
         <p className="mt-1 text-[11px] text-[color:var(--haven-muted)]">
-          Full camera view at the switch — same framing as Live preview.
+ Full camera view at the switch. same framing as Live preview.
         </p>
         <div className={cn("mt-2", evidenceShellClass, compact ? "max-h-44" : "max-h-[min(28rem,70vh)]")}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -365,7 +400,7 @@ function TransitionCard({
                     ? "border-[color:var(--haven-accent)] ring-1 ring-[color:var(--haven-accent)]/25"
                     : "border-[color:var(--haven-line)] opacity-80 hover:opacity-100",
                 )}
-                aria-label={`Frame ${idx}${idx === 1 ? " — start of burst" : idx === lastFrame ? " — end of burst" : ""}`}
+ aria-label={`Frame ${idx}${idx === 1 ? ". start of burst" : idx === lastFrame ? ". end of burst" : ""}`}
               >
                 <span
                   className={cn(
@@ -422,10 +457,10 @@ function TransitionCard({
                 ) : (
                   <ThumbsUp className="size-3.5" aria-hidden />
                 )}
-                Yes — {roomStateLabel(predicted)}
+ Yes. {roomStateLabel(predicted)}
               </button>
               <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--haven-faint)]">
-                No — it should have switched to
+ No. it should have switched to
               </p>
               <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Correct switch target">
                 {correctionIds
@@ -454,7 +489,7 @@ function TransitionCard({
           ) : (
             <>
               <p className={cn("text-[12px]", panelMuted)}>
-                Unknown prediction — pick the activity that matches the frames above.
+ Unknown prediction. pick the activity that matches the frames above.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {correctionIds.map((state) => (
@@ -483,10 +518,10 @@ function TransitionCard({
             <p>
               You marked this as{" "}
               <span className={cn("font-semibold", panelInk)}>{displayLabel(t.correctedLabel)}</span>
-              . Room memory uses this burst for similar scenes — retrain is separate.
+ . Room memory uses this burst for similar scenes. retrain is separate.
             </p>
           ) : (
-            <p>Reviewed — saved to on-device memory.</p>
+            <p>Reviewed. Saved to on device memory.</p>
           )}
         </div>
       )}

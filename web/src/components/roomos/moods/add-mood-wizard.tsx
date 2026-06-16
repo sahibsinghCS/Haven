@@ -193,7 +193,7 @@ export function AddMoodWizard({
               <div className="border-b border-[color:var(--haven-line)] px-6 py-5">
                 <DialogHeader className="text-left">
                   <DialogTitle className="haven-display text-xl font-semibold">
-                    Teach the camera — {createdMood?.displayName}
+ Teach the camera. {createdMood?.displayName}
                   </DialogTitle>
                   <DialogDescription className="text-[13px] leading-relaxed">
                     Act out this mood in front of the camera. Frames stay on this device and
@@ -232,7 +232,7 @@ export function AddMoodWizard({
                 ) : (
                   <p className="rounded-xl border border-[color:var(--haven-line)] bg-stone-50/80 px-3 py-2.5 text-[12.5px] leading-relaxed text-[color:var(--haven-muted)]">
                     Capture runs until you hit at least 12 bursts (20 recommended), or the timer
-                    ends. Only your on-device frames train this mood — not the built-in multi-room
+                    ends. Only your on device frames train this mood, not the built in multi room
                     photos.
                   </p>
                 )}

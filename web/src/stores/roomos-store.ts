@@ -60,10 +60,20 @@ async function syncDocumentToApi(presets: PreferencePreset[], activePresetId: st
   await savePreferenceDocument(buildPreferenceDocument(presets, activePresetId))
 }
 
+const boot = (() => {
+  const disk = loadRoomOsPreferences()
+  if (!disk) {
+    return { presets: null as PreferencePreset[] | null, activePresetId: null as string | null, hasHydrated: false }
+  }
+  const presets = migratePresetsFromStorage(disk.presets)
+  const activePresetId = normalizeActiveId(disk.activePresetId, presets)
+  return { presets, activePresetId, hasHydrated: true }
+})()
+
 export const useRoomOsPreferencesStore = create<RoomOsPreferencesState>((set, get) => ({
-  presets: null,
-  activePresetId: null,
-  hasHydrated: false,
+  presets: boot.presets,
+  activePresetId: boot.activePresetId,
+  hasHydrated: boot.hasHydrated,
 
   hydrate: (doc) => {
     const presets = migratePresetsFromStorage(doc.presets)
@@ -92,14 +102,14 @@ export const useRoomOsPreferencesStore = create<RoomOsPreferencesState>((set, ge
   },
 }))
 
-/** @deprecated Use activePresetId — alias for components mid-migration */
+/** @deprecated Use activePresetId. alias for components mid-migration */
 export function useSelectedPresetId(): string | null {
   return useRoomOsPreferencesStore((s) => s.activePresetId)
 }
 
 export const useRoomOsAmbientStore = create<{
   primaryState: RoomStateId | null
-  /** Last mood seen on Live — soft ambient tint on light dashboard pages */
+ /** Last mood seen on Live. soft ambient tint on light dashboard pages */
   lastAmbientMood: RoomStateId | null
   setPrimaryState: (state: RoomStateId | null) => void
   cameraRefreshNonce: number

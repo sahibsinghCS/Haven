@@ -81,7 +81,7 @@ export function LiveCameraSelect({
           setCurrentLabel(st.inference_source)
         }
       } catch {
-        /* API not up yet — full scan on open will surface errors */
+ /* API not up yet. full scan on open will surface errors */
       }
     })()
     return () => {
@@ -119,7 +119,7 @@ export function LiveCameraSelect({
       }
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Could not list cameras — is the API running?",
+ err instanceof Error ? err.message : "Could not list cameras. is the API running?",
       )
     } finally {
       setLoading(false)
@@ -152,7 +152,7 @@ export function LiveCameraSelect({
       if (cam) {
         setCurrentLabel(formatCameraDeviceLabel(cam.label))
       }
-      toast.success("Camera switched — reconnecting preview…")
+ toast.success("Camera switched. reconnecting preview…")
       bumpCameraRefresh()
       onChanged?.()
       onSelectValue?.(value)
@@ -220,7 +220,7 @@ export function LiveCameraSelect({
           ) : null}
           {noneAvailable ? (
             <p className="px-2 py-3 text-[11px] leading-relaxed text-zinc-500">
-              No cameras found — plug in a USB webcam and tap rescan.
+ No cameras found. plug in a USB webcam and tap rescan.
             </p>
           ) : null}
           {cameras.map((cam) => {
@@ -240,10 +240,10 @@ export function LiveCameraSelect({
                   <span>{label}</span>
                   <span className="text-[10px] font-normal text-zinc-500">
                     {!cam.available
-                      ? "Not available — try another device"
+ ? "Not available. try another device"
                       : cam.kind === "droidcam" || cam.kind === "droidcam_auto"
                         ? cam.kind === "droidcam_auto"
-                          ? "Next free phone on Wi‑Fi (one per room)"
+ ? "Next free phone on WiFi (one per room)"
                           : "Phone stream · HTTP"
                         : dark
                           ? `Index ${cam.index} · very dark`

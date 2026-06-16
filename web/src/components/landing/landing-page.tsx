@@ -114,9 +114,6 @@ export function LandingPage() {
                 >
                   Haven
                 </span>
-                <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.3em] text-[color:var(--landing-faint)]">
-                  Room OS
-                </span>
               </span>
             </Link>
             <p className="mt-6 max-w-[26rem] text-pretty text-[14px] leading-[1.7] text-[color:var(--landing-muted)]">

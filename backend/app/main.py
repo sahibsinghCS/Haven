@@ -21,6 +21,7 @@ from .api import integrations as integrations_api
 from .api import live as live_api
 from .api import moods as moods_api
 from .api import preferences as preferences_api
+from .api import rhythm as rhythm_api
 from .api import rooms as rooms_api
 from .api import settings as settings_api
 from .auth_service import auth_configured, verify_access_token
@@ -36,6 +37,7 @@ _AUTH_OPTIONAL_PREFIXES = (
     "/api/health",
     "/api/auth/",
     "/api/live/",
+    "/api/rhythm/",
     "/api/rooms/",
     "/docs",
     "/openapi.json",
@@ -189,3 +191,4 @@ app.include_router(integrations_api.router)
 app.include_router(settings_api.router)
 app.include_router(moods_api.router)
 app.include_router(moods_api.training_router)
+app.include_router(rhythm_api.router)

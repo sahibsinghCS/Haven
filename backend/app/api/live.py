@@ -310,6 +310,20 @@ def list_transitions(
     }
 
 
+@router.delete("/transitions")
+def clear_transitions() -> dict[str, Any]:
+    """Delete all saved label switches and their frame evidence on this device."""
+    journal = state.transition_journal()
+    if journal is None:
+        raise HTTPException(status_code=409, detail="Transition journal is disabled.")
+    removed = journal.clear_all()
+    return {
+        "status": "cleared",
+        "removed": removed,
+        **journal.status_payload(),
+    }
+
+
 @router.get("/transitions/{transition_id}/frames/{frame_index}.jpg")
 def transition_frame(transition_id: str, frame_index: int) -> Response:
     journal = state.transition_journal()

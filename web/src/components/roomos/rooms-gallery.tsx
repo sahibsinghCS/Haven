@@ -74,7 +74,7 @@ function OrchestrationStrip({
   const enabled = rooms.filter((r) => r.enabled)
   const inferring = rooms.find((r) => r.inferenceActive)
   const activeName =
-    rooms.find((r) => r.id === activeRoomId)?.name ?? inferring?.name ?? "—"
+ rooms.find((r) => r.id === activeRoomId)?.name ?? inferring?.name ?? ". "
   const graceTotal = Math.max(1, graceDurationSec)
   const gracePct =
     graceRemainingSec != null
@@ -92,14 +92,14 @@ function OrchestrationStrip({
       hint:
         mode === "active"
           ? `${activeName} · full burst`
-          : "Someone home — one room infers",
+ : "Someone home. one room infers",
     },
     {
       id: "grace",
       label: "Grace",
       hint:
         mode === "grace"
-          ? `Walkway lights · scanning other rooms${graceRemainingSec != null ? ` · ${Math.ceil(graceRemainingSec)}s` : ""}`
+          ? `Walkway lights · scanning other rooms${graceRemainingSec!= null? ` · ${Math.ceil(graceRemainingSec)}s`: ""}`
           : "Brief hold before away",
     },
     {
@@ -165,7 +165,7 @@ function OrchestrationStrip({
                   active ? "text-zinc-200" : "text-zinc-600",
                 )}
               >
-                {active ? seg.hint : "—"}
+ {active ? seg.hint : ". "}
               </p>
               {active && seg.id === "grace" && gracePct != null ? (
                 <div

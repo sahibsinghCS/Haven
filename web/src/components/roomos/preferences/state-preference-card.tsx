@@ -154,7 +154,7 @@ export function StatePreferenceCard({
                           <Plug className="size-[1.05rem]" strokeWidth={1.85} />
                         ) : (
                           <Fan
-                            className={cn("size-[1.05rem]", field.value && "motion-safe:animate-spin")}
+                            className={cn("size-[1.05rem]", field.value && "motion safe:animate spin")}
                             style={field.value ? { animationDuration: "3.4s" } : undefined}
                             strokeWidth={1.85}
                           />
@@ -165,7 +165,7 @@ export function StatePreferenceCard({
                           {device.label}
                         </FormLabel>
                         <FormDescription className="text-[12px] leading-relaxed text-[color:var(--haven-muted)]">
-                          On/off only — relay smart plugs cannot dim.
+ On/off only. relay smart plugs cannot dim.
                         </FormDescription>
                       </div>
                     </div>

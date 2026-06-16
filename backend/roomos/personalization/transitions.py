@@ -214,6 +214,21 @@ class TransitionJournal:
                     break
             self._persist_index_locked()
 
+    def clear_all(self) -> int:
+        """Remove every saved switch and screenshot evidence. Returns count cleared."""
+        import shutil
+
+        with self._lock:
+            removed = len(self._entries)
+            self._entries = []
+            self.events_path.write_text("", encoding="utf-8")
+            self._persist_index_locked()
+        if self.screenshot_dir.exists():
+            shutil.rmtree(self.screenshot_dir, ignore_errors=True)
+        ensure_dir(self.screenshot_dir)
+        log.info("Cleared %d transition(s) from %s", removed, self.root_dir)
+        return removed
+
     def status_payload(self) -> dict[str, Any]:
         with self._lock:
             entries = list(self._entries)

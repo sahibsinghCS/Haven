@@ -72,7 +72,7 @@ function modelChecks(engine: LiveEngineStatus | null): SetupCheck[] {
         status: kind === "bootstrap" ? "warn" : "pass",
         detail:
           kind === "bootstrap"
-            ? "Demo/bootstrap model loaded — train on your room for trustworthy reads."
+            ? "Demo/bootstrap model loaded. train on your room for trustworthy reads."
             : `Model ready (${kind}).`,
       },
     ]
@@ -102,7 +102,7 @@ function deviceConflictCheck(
       id: "device_conflicts",
       label: "Device command conflicts",
       status: "pass",
-      detail: "No recent arbiter blocks — scenes, automation, and tests are not fighting.",
+      detail: "No recent arbiter blocks. scenes, automation, and tests are not fighting.",
     }
   }
   return {
@@ -128,7 +128,7 @@ export async function evaluateSetupHealth(signal?: AbortSignal): Promise<SetupHe
       id: "api",
       label: "HAVEN API",
       status: "fail",
-      detail: "Cannot reach the API — run npm run demo from the repo root.",
+ detail: "Cannot reach the API. run npm run demo from the repo root.",
     })
   }
 
@@ -150,7 +150,7 @@ export async function evaluateSetupHealth(signal?: AbortSignal): Promise<SetupHe
           id: "rooms",
           label: "Rooms",
           status: "fail",
-          detail: "No rooms yet — add at least one space with a camera.",
+ detail: "No rooms yet. add at least one space with a camera.",
         })
       } else {
         const enabled = rooms.rooms.filter((r) => r.enabled)
@@ -184,7 +184,7 @@ export async function evaluateSetupHealth(signal?: AbortSignal): Promise<SetupHe
           id: "camera",
           label: "Camera",
           status: "fail",
-          detail: "No usable cameras found — plug in a webcam or open DroidCam, then rescan.",
+ detail: "No usable cameras found. plug in a webcam or open DroidCam, then rescan.",
         })
       } else if (needsPick) {
         checks.push({
@@ -200,7 +200,7 @@ export async function evaluateSetupHealth(signal?: AbortSignal): Promise<SetupHe
           label: "Camera",
           status: dark ? "warn" : "pass",
           detail: dark
-            ? "Camera responds but looks very dark — close other apps using the webcam."
+ ? "Camera responds but looks very dark. close other apps using the webcam."
             : `${available.length} camera${available.length === 1 ? "" : "s"} available.`,
         })
       }
@@ -209,7 +209,7 @@ export async function evaluateSetupHealth(signal?: AbortSignal): Promise<SetupHe
         id: "camera",
         label: "Camera",
         status: "fail",
-        detail: "Camera scan failed — is the API running?",
+        detail: "Camera scan failed. is the API running?",
       })
     }
   }
@@ -229,7 +229,7 @@ export async function evaluateSetupHealth(signal?: AbortSignal): Promise<SetupHe
         id: "devices",
         label: "Smart devices",
         status: "skip",
-        detail: "Optional — connect plugs, lights, or thermostats on Connections.",
+ detail: "Optional. connect plugs, lights, or thermostats on Connections.",
       })
     } else if (connected === 0) {
       checks.push({
@@ -246,7 +246,7 @@ export async function evaluateSetupHealth(signal?: AbortSignal): Promise<SetupHe
         label: "Smart devices",
         status: unassigned ? "warn" : "pass",
         detail: unassigned
-          ? `${connected} connected — assign devices to rooms so scenes stay intentional.`
+ ? `${connected} connected. assign devices to rooms so scenes stay intentional.`
           : `${connected} device${connected === 1 ? "" : "s"} connected.`,
       })
     }
