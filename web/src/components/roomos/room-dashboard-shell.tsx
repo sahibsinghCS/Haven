@@ -354,12 +354,16 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
               ),
         )}
       >
-        {breadcrumb ? (
+        {breadcrumb && !isLive ? (
           <p className={cn("mb-6 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--haven-faint)]", roomosUi.pageEnter)}>
             Haven <span className="mx-1.5 text-[color:var(--haven-line-strong)]">/</span> {breadcrumb}
           </p>
         ) : null}
-        <div className={cn(!isLive && roomosUi.pageEnterStagger1)}>{children}</div>
+        {isLive ? (
+          children
+        ) : (
+          <div className={cn(roomosUi.pageEnterStagger1)}>{children}</div>
+        )}
       </main>
     </div>
   )

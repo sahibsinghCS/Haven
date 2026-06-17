@@ -51,6 +51,45 @@ def _load_camera_prefs() -> tuple[Optional[int | str], Optional[str]]:
     return source, str(backend) if backend else None
 
 
+def _save_camera_prefs(source: int | str, backend: str) -> None:
+    _CAMERA_PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"source": source, "backend": backend}
+    _CAMERA_PREFS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _prefs_prefer_phone_stream(
+    source: Optional[int | str], backend: Optional[str]
+) -> bool:
+    if source is None:
+        return False
+    if is_auto_video_source(source):
+        return True
+    return is_phone_stream_url(source)
+
+
+def _reconcile_webcam_zero_with_prefs(doc: RoomDocument) -> bool:
+    """When rooms.json still points at webcam 0 but prefs have DroidCam, use prefs."""
+    saved_source, saved_backend = _load_camera_prefs()
+    if not _prefs_prefer_phone_stream(saved_source, saved_backend):
+        return False
+    changed = False
+    for room in doc.rooms:
+        if not room.enabled:
+            continue
+        if isinstance(room.camera.source, int) and room.camera.source == 0:
+            room.camera = RoomCamera(
+                source=saved_source,  # type: ignore[arg-type]
+                backend=saved_backend or "auto",
+            )
+            log.info(
+                "Reconciled room %s camera: webcam 0 -> %r (from camera_selection.json)",
+                room.id,
+                saved_source,
+            )
+            changed = True
+    return changed
+
+
 class RoomsStore:
     def __init__(self, path: Path | None = None) -> None:
         self._path = path or _ROOMS_PATH
@@ -61,7 +100,13 @@ class RoomsStore:
         if self._path.is_file():
             try:
                 raw = json.loads(self._path.read_text(encoding="utf-8"))
-                return RoomDocument.from_dict(raw)
+                doc = RoomDocument.from_dict(raw)
+                if _reconcile_webcam_zero_with_prefs(doc):
+                    self._path.parent.mkdir(parents=True, exist_ok=True)
+                    self._path.write_text(
+                        json.dumps(doc.to_dict(), indent=2), encoding="utf-8"
+                    )
+                return doc
             except (OSError, json.JSONDecodeError) as e:
                 log.warning("Could not read %s: %s — migrating", self._path, e)
         return self._migrate_from_legacy()
@@ -196,6 +241,11 @@ class RoomsStore:
             if device_ids is not None:
                 room.device_ids = list(device_ids)
             self._save_unlocked(self._doc)
+            if (
+                room_id == self._doc.active_room_id
+                and (source is not None or backend is not None)
+            ):
+                _save_camera_prefs(room.camera.source, room.camera.backend)
             return room
 
     def delete_room(self, room_id: str) -> bool:

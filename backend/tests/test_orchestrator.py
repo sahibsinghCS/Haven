@@ -85,7 +85,22 @@ def test_rooms_store_rejects_duplicate_camera(rooms_path: Path) -> None:
 
 
 def test_rooms_store_allows_multiple_droidcam_auto(tmp_path: Path) -> None:
-    store = RoomsStore(path=tmp_path / "rooms.json")
+    rooms_path = tmp_path / "rooms.json"
+    rooms_path.write_text(
+        json.dumps(
+            {
+                "rooms": [],
+                "activeRoomId": None,
+                "orchestrator": {
+                    "mode": "away",
+                    "graceStartedAt": None,
+                    "graceDurationSec": 60,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = RoomsStore(path=rooms_path)
     store.add_room(name="Phone A", source="droidcam:auto", backend="auto")
     store.add_room(name="Phone B", source="droidcam:auto", backend="auto")
     auto_rooms = [r for r in store.list_rooms() if r.camera.source == "droidcam:auto"]
