@@ -109,7 +109,6 @@ export function integrationsQueryOptions(userId?: string | null) {
     queryKey: integrationsQueryKey(userId),
     queryFn: () => fetchIntegrationsQuery(userId),
     staleTime: DASHBOARD_STALE_MS,
-    initialData: integrationsInitialData(),
   } as const
 }
 
@@ -118,7 +117,6 @@ export function preferencesQueryOptions(userId?: string | null) {
     queryKey: preferencesQueryKey(userId),
     queryFn: () => fetchPreferencesQuery(userId),
     staleTime: DASHBOARD_STALE_MS,
-    initialData: preferencesInitialData(),
     retry: 1,
   } as const
 }

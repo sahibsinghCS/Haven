@@ -1,8 +1,9 @@
 import Link from "next/link"
 import { Suspense } from "react"
 
-import { SignInForm } from "@/components/auth/sign-in-form"
+import { AuthFormSkeleton } from "@/components/auth/auth-form-skeleton"
 import { AuthCard } from "@/components/auth/auth-card"
+import { SignInForm } from "@/components/auth/sign-in-form"
 import { Button } from "@/components/ui/button"
 import { isSupabaseAuthEnabled } from "@/lib/supabase/env"
 
@@ -38,13 +39,7 @@ export default async function LoginPage({
   }
 
   return (
-    <Suspense
-      fallback={
-        <AuthCard title="Sign in" description="Loading…">
-          <div className="h-32 animate-pulse rounded-xl bg-stone-100/80" />
-        </AuthCard>
-      }
-    >
+    <Suspense fallback={<AuthFormSkeleton />}>
       <SignInWithNext next={next} authError={authError} />
     </Suspense>
   )

@@ -1,15 +1,17 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
+import { HavenLogoBadge } from "@/components/brand/haven-logo"
 import {
   landingBtnPrimaryNav,
   landingFocusRing,
+  landingFontDisplay,
   landingLayout,
 } from "@/components/landing/landing-primitives"
 import { Magnetic } from "@/components/landing/landing-text"
+import { havenAppHref } from "@/lib/roomos/app-entry"
 import { LANDING_APP_ENTRY_KEY, getUserHasOpenedApp } from "@/lib/roomos/landing-app-entry"
 import { markLiveStartIntent } from "@/lib/roomos/live-session-start"
 import { cn } from "@/lib/utils"
@@ -73,25 +75,20 @@ export function LandingNav() {
                   landingFocusRing,
                 )}
               >
+                <HavenLogoBadge
+                  variant="mark"
+                  size="sm"
+                  priority
+                  badgeClassName="size-8 shrink-0 px-1.5 sm:size-9"
+                  className="transition-transform duration-200 ease-out group-hover:scale-[1.02]"
+                />
                 <span
                   className={cn(
-                    "relative flex h-8 shrink-0 items-center justify-center overflow-hidden rounded-[0.65rem] px-2 sm:h-9 sm:px-2.5",
-                    "bg-[linear-gradient(152deg,#242220_0%,#121110_48%,#0a0908_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-12px_rgba(0,0,0,0.45)] ring-1 ring-white/14",
+                    landingFontDisplay,
+                    "hidden text-[12px] font-semibold uppercase tracking-[0.24em] text-[color:var(--landing-ink)] sm:inline",
                   )}
                 >
-                  <span className="pointer-events-none absolute inset-[1px] rounded-[0.55rem] bg-gradient-to-br from-white/10 to-transparent opacity-80 sm:rounded-[0.6rem]" aria-hidden />
-                  <Image
-                    src="/haven-logo.png"
-                    alt=""
-                    width={424}
-                    height={391}
-                    className="relative z-[1] h-[22px] w-auto sm:h-[26px]"
-                    priority
-                  />
-                  <span
-                    className="pointer-events-none absolute -bottom-0.5 -right-0.5 size-[5px] rounded-full border border-white/25 bg-teal-500 shadow-[0_0_0_2px_rgba(253,252,250,0.92)] sm:size-1.5"
-                    aria-hidden
-                  />
+                  Haven
                 </span>
               </Link>
             </div>
@@ -121,7 +118,7 @@ export function LandingNav() {
               ) : null}
               <Magnetic strength={0.24} radius={90}>
                 <Link
-                  href="/live?start=1"
+                  href={havenAppHref("/live?start=1")}
                   onClick={() => markLiveStartIntent()}
                   data-cursor="hover"
                   className={cn(

@@ -11,11 +11,11 @@ export type LiveSkeletonVariant = "idle" | "booting" | "error"
 
 const SKELETON_WASH: Record<LiveSkeletonVariant, string> = {
   idle:
-    "radial gradient(ellipse_85%_70%_at_50%_38%,rgba(113,113,122,0.1)_0%,transparent_55%),radial gradient(ellipse_120%_90%_at_50%_120%,rgba(0,0,0,0.5),transparent_60%)",
+    "radial-gradient(ellipse 85% 70% at 50% 38%, rgba(113,113,122,0.1) 0%, transparent 55%), radial-gradient(ellipse 120% 90% at 50% 120%, rgba(0,0,0,0.5), transparent 60%)",
   booting:
-    "radial gradient(ellipse_85%_70%_at_50%_38%,rgba(15,118,110,0.16)_0%,transparent_55%),radial gradient(ellipse_120%_90%_at_50%_120%,rgba(0,0,0,0.5),transparent_60%)",
+    "radial-gradient(ellipse 85% 70% at 50% 38%, rgba(15,118,110,0.16) 0%, transparent 55%), radial-gradient(ellipse 120% 90% at 50% 120%, rgba(0,0,0,0.5), transparent 60%)",
   error:
-    "radial gradient(ellipse_85%_70%_at_50%_38%,rgba(244,63,94,0.08)_0%,transparent_55%),radial gradient(ellipse_120%_90%_at_50%_120%,rgba(0,0,0,0.5),transparent_60%)",
+    "radial-gradient(ellipse 85% 70% at 50% 38%, rgba(244,63,94,0.08) 0%, transparent 55%), radial-gradient(ellipse 120% 90% at 50% 120%, rgba(0,0,0,0.5), transparent 60%)",
 }
 
 export function LiveStageSkeleton({

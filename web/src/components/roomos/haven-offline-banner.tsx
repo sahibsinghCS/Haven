@@ -14,7 +14,7 @@ const CONTEXT_COPY: Record<
   preferences: {
     title: "Editing browser only defaults",
     description:
- "Haven is offline. Changes save in this browser until the backend is running. nothing syncs to disk.",
+      "Haven is offline. Changes save in this browser until the backend is running. Nothing syncs to disk.",
   },
   connections: {
     title: "Device tests need the API",
@@ -46,13 +46,13 @@ export function HavenOfflineBanner({
     <div
       className={cn(
         roomosUi.prefsCallout,
-        "border-stone-400/30 bg-stone-100/90 px-4 py-4 sm:px-5",
+        "border-amber-500/30 bg-[color-mix(in_oklab,#fffbeb_88%,#fffefb_12%)] px-4 py-4 sm:px-5",
         className,
       )}
       role="status"
     >
       <div className="flex flex-wrap items-start gap-3">
-        <WifiOff className="mt-0.5 size-4 shrink-0 text-stone-600" aria-hidden />
+        <WifiOff className="mt-0.5 size-4 shrink-0 text-amber-800/80" aria-hidden />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <HavenModeBadge mode="api_offline" size="md" className="!tracking-[0.12em]" />

@@ -1,13 +1,16 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { motion, useReducedMotion } from "framer-motion"
 import Link from "next/link"
+import { LogOut } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 
+import { signOutAction } from "@/app/(auth)/actions"
 import { useHavenAuth } from "@/components/auth/haven-auth-provider"
+import { HavenLogoBadge } from "@/components/brand/haven-logo"
+import { havenNavIsland } from "@/components/roomos/haven-primitives"
 import { LiveCameraSelect } from "@/components/roomos/live-camera-select"
 import { LiveSessionBridge } from "@/components/roomos/live-session-bridge"
 import { cn } from "@/lib/utils"
@@ -23,14 +26,26 @@ const nav = [
   { href: "/live", label: "Live" },
   { href: "/review", label: "Review" },
   { href: "/rhythm", label: "Rhythm" },
-  { href: "/preferences", label: "Moods / Preferences" },
+  { href: "/preferences", label: "Moods", wideLabel: "Moods / Preferences" },
   { href: "/connections", label: "Connections" },
 ] as const
+
+const BREADCRUMB_LABEL: Record<string, string> = {
+  "/review": "Review",
+  "/rhythm": "Rhythm",
+  "/preferences": "Moods / Preferences",
+  "/connections": "Connections",
+}
+
+function userInitial(email: string | undefined): string {
+  const ch = email?.trim().charAt(0).toUpperCase()
+  return ch && /[A-Z0-9]/i.test(ch) ? ch : "?"
+}
 
 export function RoomDashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const queryClient = useQueryClient()
-  const { user } = useHavenAuth()
+  const { user, loading: authLoading, enabled: authEnabled } = useHavenAuth()
   const userId = user?.id ?? null
   const primaryState = useRoomOsAmbientStore((s) => s.primaryState)
   const lastAmbientMood = useRoomOsAmbientStore((s) => s.lastAmbientMood)
@@ -80,24 +95,25 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("resize", measure)
   }, [activeKey])
 
+  const breadcrumb = !isLive ? BREADCRUMB_LABEL[pathname] : null
+  const moodAccent = ambientMood ? roomStateAccent(ambientMood) : null
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isLive)
+    return () => {
+      document.documentElement.classList.remove("dark")
+    }
+  }, [isLive])
+
   return (
     <div
       className={cn(
         "relative flex flex-1 flex-col overflow-x-clip",
         isLive
-          ? "h-svh max-h-svh overflow-hidden bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100"
-          : "haven-app haven-grain min-h-full text-[color:var(--haven-ink)]",
+          ? "dark h-svh max-h-svh overflow-hidden bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100"
+          : "haven-app haven-grain surface-grain surface-pearl-bg min-h-full text-[color:var(--haven-ink)]",
       )}
       data-haven-mood={!isLive && ambientMood ? ambientMood : undefined}
-      style={
-        isLive
-          ? undefined
-          : {
-              backgroundColor: "#f7f4ee",
-              backgroundImage:
-                "radial-gradient(ellipse 90% 60% at 50% -10%, rgba(255,253,250,0.96), transparent 55%), radial-gradient(ellipse 60% 45% at 92% 12%, rgba(167,243,208,0.18), transparent 55%), radial-gradient(ellipse 50% 45% at 4% 75%, rgba(253,230,138,0.14), transparent 55%), linear-gradient(180deg, #fdfcfa 0%, #f7f4ee 38%, #ebe6dc 100%)",
-            }
-      }
     >
       <div
         className={cn(
@@ -113,8 +129,11 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
       />
       {!isLive && ambientMood ? (
         <div
-          className="pointer-events-none fixed -top-24 left-1/2 z-0 h-[320px] w-[min(900px,95vw)] -translate-x-1/2 rounded-full blur-3xl transition-opacity duration-700"
-          style={{ background: `radial-gradient(ellipse, var(--haven-ambient) 0%, transparent 68%)` }}
+          className="pointer-events-none fixed -top-28 left-1/2 z-0 h-[min(380px,55vh)] w-[min(960px,98vw)] -translate-x-1/2 rounded-full blur-3xl transition-all duration-500 ease-out"
+          style={{
+            background: `radial-gradient(ellipse, var(--haven-ambient) 0%, transparent 70%)`,
+            opacity: reduceMotion ? 0.35 : 0.55,
+          }}
           aria-hidden
         />
       ) : null}
@@ -159,49 +178,24 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
         ) : null}
         <div
           className={cn(
-            "relative mx-auto flex w-full items-center justify-between gap-4",
+            "relative mx-auto grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-3",
             isLive ? "max-w-none px-4 sm:px-5" : "max-w-6xl px-4 sm:px-6",
           )}
         >
+          <div className="flex min-w-0 justify-start">
           <Link
             href="/"
             aria-label="Haven home"
             className={cn(
-              "group inline-flex min-w-0 items-center gap-2.5 rounded-xl py-1 pl-1 pr-2",
+              "group inline-flex shrink-0 items-center gap-2 rounded-xl py-1 pl-1 pr-2",
               "transition-[background-color] duration-200 ease-out",
               isLive
                 ? cn(roomosUi.focusRingDark, "hover:bg-white/[0.04]")
                 : cn(roomosUi.focusRingLight, "hover:bg-stone-900/[0.04]"),
             )}
           >
-            <span
-              className={cn(
-                "relative flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-[0.7rem] px-2.5 ring-1",
-                isLive
-                  ? "bg-[linear-gradient(152deg,#2a2826_0%,#141312_48%,#0a0908_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-12px_rgba(0,0,0,0.5)] ring-white/12"
-                  : "bg-[linear-gradient(152deg,#242220_0%,#121110_48%,#0a0908_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_22px_-12px_rgba(0,0,0,0.45)] ring-white/14",
-              )}
-            >
-              <span className="pointer-events-none absolute inset-[1px] rounded-[0.6rem] bg-gradient-to-br from-white/10 to-transparent opacity-80" aria-hidden />
-              <Image
-                src="/haven-logo.png"
-                alt=""
-                width={424}
-                height={391}
-                className="relative z-[1] h-[26px] w-auto"
-                priority
-              />
-              <span
-                className={cn(
-                  "pointer-events-none absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full border border-white/25 bg-teal-500",
-                  isLive
-                    ? "shadow-[0_0_0_2px_rgba(9,9,11,0.95)]"
-                    : "shadow-[0_0_0_2px_rgba(247,243,235,0.95)]",
-                )}
-                aria-hidden
-              />
-            </span>
-            <span className="min-w-0 leading-none">
+            <HavenLogoBadge variant="mark" size="sm" priority badgeClassName="size-9 shrink-0 px-1.5" />
+            <span className="hidden min-w-0 leading-none lg:block">
               <span
                 className={cn(
                   "mt-[3px] block truncate text-[10px] font-semibold uppercase tracking-[0.26em]",
@@ -212,16 +206,16 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
               </span>
             </span>
           </Link>
+          </div>
 
-          <div className="flex shrink-0 items-center gap-2">
           <nav
             ref={navWrapRef}
             aria-label="Primary"
             className={cn(
-              "relative flex shrink-0 items-center gap-0.5 rounded-full border p-0.5 sm:gap-1 sm:p-1",
+              "relative flex w-max max-w-full shrink-0 items-center justify-center gap-0.5 p-0.5 sm:gap-0.5 sm:p-1",
               isLive
-                ? "border-white/[0.1] bg-zinc-950/58 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] supports-[backdrop-filter]:bg-zinc-950/46"
-                : "border-stone-900/[0.1] bg-white/85 shadow-[inset_0_1px_0_0_rgba(255,255,255,1),0_10px_28px_-22px_rgba(15,23,42,0.18)] backdrop-blur-md",
+                ? "rounded-full border border-white/[0.1] bg-zinc-950/58 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),0_12px_40px_-18px_rgba(0,0,0,0.65)] supports-[backdrop-filter]:bg-zinc-950/46"
+                : havenNavIsland,
             )}
           >
             {indicator ? (
@@ -255,7 +249,7 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
                   onFocus={() => prefetchRoute(item.href)}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "relative z-[1] whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-semibold tracking-tight transition-colors duration-200 sm:px-4",
+                    "relative z-[1] whitespace-nowrap rounded-full px-2.5 py-2 text-[11px] font-semibold tracking-tight transition-colors duration-200 sm:px-3 sm:text-[12px] lg:px-3.5 lg:text-[13px] min-h-9",
                     isLive ? roomosUi.focusRingDark : roomosUi.focusRingLight,
                     isLive
                       ? active
@@ -266,11 +260,82 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
                         : "text-[color:var(--haven-muted)] hover:text-[color:var(--haven-ink)]",
                   )}
                 >
-                  {item.label}
+                  {"wideLabel" in item && item.wideLabel ? (
+                    <>
+                      <span className="xl:hidden">{item.label}</span>
+                      <span className="hidden xl:inline">{item.wideLabel}</span>
+                    </>
+                  ) : (
+                    item.label
+                  )}
                 </Link>
               )
             })}
           </nav>
+
+          <div className="flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
+          {authEnabled ? (
+            authLoading ? (
+              <div
+                className={cn(
+                  "h-9 w-24 shrink-0 rounded-full border",
+                  isLive ? "border-white/10 bg-white/[0.04]" : "border-stone-900/10 bg-white/60",
+                  "haven-shimmer",
+                )}
+                aria-hidden
+              />
+            ) : user ? (
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-0.5 sm:gap-2 sm:pl-1.5",
+                  isLive
+                    ? "border-white/10 bg-white/[0.04]"
+                    : "border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_88%,transparent)] shadow-[var(--haven-shadow-card)]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "hidden max-w-[8rem] truncate text-[12px] font-medium xl:inline",
+                    isLive ? "text-zinc-400" : "text-[color:var(--haven-muted)]",
+                  )}
+                  title={user.email ?? undefined}
+                >
+                  {user.email}
+                </span>
+                <span
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ring-2 ring-offset-1",
+                    isLive
+                      ? "bg-white/10 text-zinc-100 ring-white/20 ring-offset-zinc-950"
+                      : cn(
+                          "bg-teal-800 text-white",
+                          moodAccent
+                            ? "ring-[color:var(--haven-ambient)] ring-offset-[color:var(--haven-canvas)]"
+                            : "ring-teal-700/30 ring-offset-[color:var(--haven-canvas)]",
+                        ),
+                  )}
+                  aria-hidden
+                >
+                  {userInitial(user.email)}
+                </span>
+                <form action={signOutAction}>
+                  <button
+                    type="submit"
+                    className={cn(
+                      "inline-flex size-9 min-h-9 min-w-9 items-center justify-center rounded-full border transition-colors",
+                      isLive
+                        ? "border-white/10 text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
+                        : "border-stone-900/10 text-[color:var(--haven-muted)] hover:bg-stone-900/[0.04] hover:text-[color:var(--haven-ink)]",
+                      isLive ? roomosUi.focusRingDark : roomosUi.focusRingLight,
+                    )}
+                    aria-label="Sign out"
+                  >
+                    <LogOut className="size-3.5" aria-hidden />
+                  </button>
+                </form>
+              </div>
+            ) : null
+          ) : null}
           {isLive ? <LiveCameraSelect /> : null}
           </div>
         </div>
@@ -289,7 +354,12 @@ export function RoomDashboardShell({ children }: { children: React.ReactNode }) 
               ),
         )}
       >
-        {children}
+        {breadcrumb ? (
+          <p className={cn("mb-6 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--haven-faint)]", roomosUi.pageEnter)}>
+            Haven <span className="mx-1.5 text-[color:var(--haven-line-strong)]">/</span> {breadcrumb}
+          </p>
+        ) : null}
+        <div className={cn(!isLive && roomosUi.pageEnterStagger1)}>{children}</div>
       </main>
     </div>
   )

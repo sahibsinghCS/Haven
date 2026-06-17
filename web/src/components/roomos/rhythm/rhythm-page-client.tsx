@@ -10,7 +10,8 @@ import { HavenSurfaceState } from "@/components/roomos/haven-surface-state"
 import { MoodTimeBars } from "@/components/roomos/rhythm/mood-time-bars"
 import { RhythmDailyChart } from "@/components/roomos/rhythm/rhythm-daily-chart"
 import { RhythmHighlights } from "@/components/roomos/rhythm/rhythm-highlights"
-import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
+import { HavenDashboardSkeleton } from "@/components/roomos/haven-loading-states"
+import { HavenPageHeader, havenCard, havenNavIsland } from "@/components/roomos/haven-primitives"
 import { useMoods } from "@/hooks/use-moods"
 import { fetchRhythmSummaries } from "@/lib/roomos/api-client"
 import { DASHBOARD_STALE_MS } from "@/lib/roomos/dashboard-queries"
@@ -31,8 +32,7 @@ const RANGES: { id: RhythmRange; label: string }[] = [
   { id: "month", label: "Month" },
 ]
 
-const cardShell =
-  "rounded-[1.35rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_96%,transparent)] shadow-[var(--haven-shadow-card)] ring-1 ring-[color:var(--haven-edge-light)]"
+const cardShell = havenCard
 
 export function RhythmPageClient() {
   const [range, setRange] = useState<RhythmRange>("week")
@@ -60,7 +60,7 @@ export function RhythmPageClient() {
   const apiError = rhythmQuery.isError
 
   if (initialLoading) {
-    return <PreferencesSkeleton />
+    return <HavenDashboardSkeleton />
   }
 
   if (apiError) {
@@ -200,65 +200,59 @@ function RhythmHeader({
   disabled?: boolean
 }) {
   return (
-    <header className={cn("flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between", roomosUi.pageEnter)}>
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--haven-faint)]">
-          Insights
-        </p>
-        <h1 className="haven-display mt-1 text-[clamp(1.75rem,4vw,2.25rem)] font-semibold leading-tight text-[color:var(--haven-ink)]">
-          Rhythm
-        </h1>
-        <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-[color:var(--haven-muted)]">
-          How your moods add up over time — sleep patterns, focus blocks, and estimated savings from
-          automations.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div
-          className="inline-flex rounded-full border border-stone-900/[0.1] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,1)]"
-          role="tablist"
-          aria-label="Time range"
-        >
-          {RANGES.map((r) => {
-            const active = range === r.id
-            return (
-              <button
-                key={r.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                disabled={disabled}
-                className={cn(
-                  "rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
-                  roomosUi.focusRingLight,
-                  active
-                    ? "bg-[linear-gradient(168deg,#1d1c1a_0%,#0d0c0b_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
-                    : "text-[color:var(--haven-muted)] hover:text-[color:var(--haven-ink)]",
-                  disabled && "opacity-60",
-                )}
-                onClick={() => onRangeChange(r.id)}
-              >
-                {r.label}
-              </button>
-            )
-          })}
-        </div>
-        {onRefresh ? (
-          <button
-            type="button"
-            aria-label="Refresh rhythm data"
-            disabled={refreshing}
-            className={cn(
-              "inline-flex size-9 items-center justify-center rounded-full border border-stone-300/90 bg-white/90 text-stone-700 shadow-sm",
-              roomosUi.focusRingLight,
-            )}
-            onClick={onRefresh}
+    <HavenPageHeader
+      className={roomosUi.pageEnter}
+      eyebrow="Insights"
+      title="Rhythm"
+      lede="How your moods add up over time — sleep patterns, focus blocks, and estimated savings from automations."
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            className={cn(havenNavIsland, "inline-flex p-0.5")}
+            role="tablist"
+            aria-label="Time range"
           >
-            <RefreshCw className={cn("size-4", refreshing && "animate-spin")} aria-hidden />
-          </button>
-        ) : null}
-      </div>
-    </header>
+            {RANGES.map((r) => {
+              const active = range === r.id
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  disabled={disabled}
+                  className={cn(
+                    "rounded-full px-3.5 py-2 text-[13px] font-semibold transition-colors min-h-9",
+                    roomosUi.focusRingLight,
+                    active
+                      ? "bg-[linear-gradient(168deg,#1d1c1a_0%,#0d0c0b_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+                      : "text-[color:var(--haven-muted)] hover:text-[color:var(--haven-ink)]",
+                    disabled && "opacity-60",
+                  )}
+                  onClick={() => onRangeChange(r.id)}
+                >
+                  {r.label}
+                </button>
+              )
+            })}
+          </div>
+          {onRefresh ? (
+            <button
+              type="button"
+              aria-label="Refresh rhythm data"
+              disabled={refreshing}
+              className={cn(
+                "inline-flex size-9 min-h-9 min-w-9 items-center justify-center rounded-full border border-[color:var(--haven-line-strong)]",
+                "bg-[color-mix(in_oklab,#fffefb_92%,transparent)] text-[color:var(--haven-muted)] shadow-sm",
+                roomosUi.focusRingLight,
+              )}
+              onClick={onRefresh}
+            >
+              <RefreshCw className={cn("size-4", refreshing && "animate-spin")} aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      }
+    />
   )
 }

@@ -22,19 +22,11 @@ import {
   LandingEyebrow,
   LandingSectionShell,
 } from "@/components/landing/landing-primitives"
+import { havenAppHref } from "@/lib/roomos/app-entry"
+import { LEGACY_MOOD_DEFAULTS } from "@/lib/roomos/preferences-schema"
 import { ROOM_STATE_LABEL, ROOM_STATE_LANDING_SKIN } from "@/lib/roomos/state-meta"
 import { cn } from "@/lib/utils"
 import { ROOM_STATE_ORDER, type KnownRoomStateId } from "@/types/roomos"
-
-const PREVIEW: Record<
-  KnownRoomStateId,
-  { hex: string; brightness: number; temp: number; fan: boolean }
-> = {
-  sleep: { hex: "#4f46e5", brightness: 22, temp: 68, fan: false },
-  work: { hex: "#38bdf8", brightness: 82, temp: 72, fan: true },
-  relaxing: { hex: "#14b8a6", brightness: 44, temp: 73, fan: true },
-  away: { hex: "#a8a29e", brightness: 18, temp: 69, fan: false },
-}
 
 export function PreferencesPreviewSection() {
   const reduceMotion = useReducedMotion()
@@ -74,7 +66,7 @@ export function PreferencesPreviewSection() {
             </motion.p>
             <motion.div variants={headLine} className="mt-8 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
               <Link
-                href="/preferences"
+                href={havenAppHref("/preferences")}
                 className={cn(landingBtnPrimaryMd, landingFocusRing, "inline-flex w-fit items-center gap-2")}
               >
                 <SlidersHorizontal className="size-4 opacity-90" strokeWidth={2} aria-hidden />
@@ -91,7 +83,6 @@ export function PreferencesPreviewSection() {
             </motion.div>
         </motion.div>
 
-        {/* Product tiles: grid keeps cards wide enough so labels never clip */}
         <motion.div
           className="mt-11 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 xl:gap-5"
           variants={tileStagger}
@@ -100,7 +91,7 @@ export function PreferencesPreviewSection() {
           viewport={landingViewport.section}
         >
           {ROOM_STATE_ORDER.map((id, i) => {
-            const row = PREVIEW[id]
+            const row = LEGACY_MOOD_DEFAULTS[id as KnownRoomStateId]
             const skin = ROOM_STATE_LANDING_SKIN[id]
             return (
               <motion.article
@@ -131,7 +122,7 @@ export function PreferencesPreviewSection() {
                   <div
                     className="relative mx-auto size-14 shrink-0 rounded-2xl border border-white/80 shadow-[inset_0_2px_8px_rgba(255,255,255,0.55)] sm:mx-0"
                     style={{
-                      background: `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.65), transparent), ${row.hex}`,
+                      background: `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.65), transparent), ${row.lightColorHex}`,
                     }}
                   />
                   <div className="min-w-0 flex-1 space-y-3">
@@ -157,11 +148,11 @@ export function PreferencesPreviewSection() {
                     <div className="flex min-w-0 flex-col gap-2 text-[13px] leading-tight text-[color:var(--landing-muted)] sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1">
                       <span className="inline-flex min-w-0 shrink-0 items-center gap-1.5 tabular-nums">
                         <Thermometer className="size-3.5 shrink-0 text-teal-800/65" strokeWidth={1.75} aria-hidden />
-                        {row.temp}°F
+                        {row.temperatureF}°F
                       </span>
                       <span className="inline-flex min-w-0 items-center gap-1.5">
                         <Fan className="size-3.5 shrink-0 text-sky-800/60" strokeWidth={1.75} aria-hidden />
-                        <span className="truncate">{row.fan ? "Air on" : "Still"}</span>
+                        <span className="truncate">{row.fanOn ? "Air on" : "Still"}</span>
                       </span>
                     </div>
                   </div>

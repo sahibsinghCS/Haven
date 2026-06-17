@@ -3,7 +3,14 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { getSupabasePublicConfig } from "@/lib/supabase/env"
 
-const PROTECTED_PREFIXES = ["/live", "/review", "/preferences", "/connections", "/settings"]
+const PROTECTED_PREFIXES = [
+  "/live",
+  "/review",
+  "/rhythm",
+  "/preferences",
+  "/connections",
+  "/settings",
+]
 
 const AUTH_PAGES = ["/login"]
 

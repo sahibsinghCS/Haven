@@ -1,14 +1,13 @@
 "use client"
 
 import { useMemo } from "react"
+import { motion, useReducedMotion } from "framer-motion"
 
+import { havenCard } from "@/components/roomos/haven-primitives"
 import { roomStateLandingSkin, roomStateLabel } from "@/lib/roomos/state-meta"
 import { formatRhythmDuration } from "@/lib/roomos/rhythm-format"
 import type { RhythmDailyBreakdown } from "@/types/rhythm"
 import { cn } from "@/lib/utils"
-
-const cardShell =
-  "rounded-[1.35rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_96%,transparent)] shadow-[var(--haven-shadow-card)] ring-1 ring-[color:var(--haven-edge-light)]"
 
 function dayLabel(isoDate: string): string {
   const d = new Date(`${isoDate}T12:00:00`)
@@ -22,6 +21,7 @@ export function RhythmDailyChart({
   days: RhythmDailyBreakdown[]
   moodOrder: string[]
 }) {
+  const reduceMotion = useReducedMotion()
   const orderedMoods = useMemo(() => {
     const seen = new Set<string>()
     const order: string[] = []
@@ -47,7 +47,7 @@ export function RhythmDailyChart({
   const maxTotal = Math.max(...days.map((d) => d.totalSec), 1)
 
   return (
-    <section className={cn(cardShell, "px-5 py-6 sm:px-6")} aria-label="Daily rhythm">
+    <section className={cn(havenCard, "px-5 py-6 sm:px-6")} aria-label="Daily rhythm">
       <h2 className="haven-display text-[1.2rem] font-semibold text-[color:var(--haven-ink)]">
         Daily breakdown
       </h2>
@@ -56,7 +56,7 @@ export function RhythmDailyChart({
       </p>
 
       <div className="mt-6 flex items-end justify-between gap-2 sm:gap-3">
-        {days.map((day) => {
+        {days.map((day, dayIndex) => {
           const heightPct = day.totalSec > 0 ? (day.totalSec / maxTotal) * 100 : 4
           const segments = orderedMoods
             .map((id) => ({ id, sec: day.moods[id] ?? 0 }))
@@ -72,9 +72,15 @@ export function RhythmDailyChart({
                 style={{ height: "9rem" }}
                 title={formatRhythmDuration(day.totalSec)}
               >
-                <div
+                <motion.div
                   className="flex w-full flex-col justify-end"
-                  style={{ height: `${Math.max(4, heightPct)}%` }}
+                  initial={reduceMotion ? false : { height: "4%" }}
+                  animate={{ height: `${Math.max(4, heightPct)}%` }}
+                  transition={
+                    reduceMotion
+                      ? { duration: 0 }
+                      : { duration: 0.55, delay: dayIndex * 0.05, ease: [0.22, 1, 0.36, 1] }
+                  }
                 >
                   {segments.map((seg) => {
                     const pct = day.totalSec > 0 ? (seg.sec / day.totalSec) * 100 : 0
@@ -88,7 +94,7 @@ export function RhythmDailyChart({
                       />
                     )
                   })}
-                </div>
+                </motion.div>
               </div>
               <span className="max-w-full truncate text-center text-[10px] font-medium text-[color:var(--haven-faint)]">
                 {dayLabel(day.date)}

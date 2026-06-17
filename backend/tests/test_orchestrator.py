@@ -84,6 +84,14 @@ def test_rooms_store_rejects_duplicate_camera(rooms_path: Path) -> None:
     assert len(store.list_rooms()) == 5
 
 
+def test_rooms_store_allows_multiple_droidcam_auto(tmp_path: Path) -> None:
+    store = RoomsStore(path=tmp_path / "rooms.json")
+    store.add_room(name="Phone A", source="droidcam:auto", backend="auto")
+    store.add_room(name="Phone B", source="droidcam:auto", backend="auto")
+    auto_rooms = [r for r in store.list_rooms() if r.camera.source == "droidcam:auto"]
+    assert len(auto_rooms) == 2
+
+
 def test_orchestrator_enters_grace_on_away(rooms_path: Path) -> None:
     store = RoomsStore(path=rooms_path)
     store.update_orchestrator(mode="active")

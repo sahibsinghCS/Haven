@@ -17,6 +17,7 @@ import {
   saveSetupStep,
   type SetupWizardStep,
 } from "@/lib/roomos/setup-session"
+import { havenPanel } from "@/components/roomos/haven-primitives"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { useLiveSessionStore } from "@/stores/live-session-store"
 import { cn } from "@/lib/utils"
@@ -73,7 +74,7 @@ export function HavenSetupWizard({
   const shellClass =
     variant === "live"
       ? cn(roomosUi.liveOverlayGlass, "border-teal-500/25 shadow-2xl")
-      : cn(roomosUi.prefsCallout, "border-stone-200/90 shadow-[var(--haven-shadow-card)]")
+      : cn(havenPanel, "p-0")
 
   return (
     <div
@@ -85,7 +86,7 @@ export function HavenSetupWizard({
         <p
           className={cn(
             "text-[11px] font-semibold uppercase tracking-[0.22em]",
-            variant === "live" ? "text-zinc-500" : "text-stone-500",
+            variant === "live" ? "text-zinc-500" : "text-[color:var(--haven-faint)]",
           )}
         >
           Guided setup
@@ -93,8 +94,8 @@ export function HavenSetupWizard({
         <h2
           id="haven-setup-title"
           className={cn(
-            "mt-1 font-serif text-xl font-medium tracking-[-0.02em] sm:text-2xl",
-            variant === "live" ? "text-zinc-50" : "text-stone-900",
+            "mt-1 haven-page-title text-xl sm:text-2xl",
+            variant === "live" ? "text-zinc-50" : "text-[color:var(--haven-ink)]",
           )}
         >
           Get Haven ready for live inference
@@ -102,7 +103,7 @@ export function HavenSetupWizard({
         <p
           className={cn(
             "mt-2 text-sm leading-relaxed",
-            variant === "live" ? "text-zinc-400" : "text-stone-600",
+            variant === "live" ? "text-zinc-400" : "text-[color:var(--haven-muted)]",
           )}
         >
           Connect cameras, assign devices, then go live when everything looks right.
@@ -126,7 +127,7 @@ export function HavenSetupWizard({
             </Button>
           </div>
           {!canAdvanceFromRoom ? (
-            <p className={cn("text-[11px]", variant === "live" ? "text-zinc-500" : "text-stone-500")}>
+            <p className={cn("text-[11px]", variant === "live" ? "text-zinc-500" : "text-[color:var(--haven-faint)]")}>
               Connect at least one camera to continue.
             </p>
           ) : null}
@@ -140,14 +141,14 @@ export function HavenSetupWizard({
               "rounded-xl border px-4 py-3 text-[13px] leading-relaxed",
               variant === "live"
                 ? "border-white/10 bg-black/25 text-zinc-300"
-                : "border-stone-200/80 bg-white/70 text-stone-700",
+                : "border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_88%,transparent)] text-[color:var(--haven-muted)]",
             )}
           >
             Assign each device to the room where it lives. Only the{" "}
             <span className="font-medium">active room</span> follows live mood scenes.
           </div>
           <RoomsSettingsSection devicesDoc={devicesDoc} variant={variant === "live" ? "dark" : "light"} />
-          <p className={cn("text-[12px]", variant === "live" ? "text-zinc-500" : "text-stone-500")}>
+          <p className={cn("text-[12px]", variant === "live" ? "text-zinc-500" : "text-[color:var(--haven-faint)]")}>
             Need to add or test hardware?{" "}
             <Link href="/connections" className="font-medium text-teal-400 underline-offset-2 hover:underline">
               Open Connections

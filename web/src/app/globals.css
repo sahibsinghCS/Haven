@@ -117,6 +117,73 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Shared Haven pearl surface tokens (landing + app alias from here) */
+:root {
+  --surface-canvas-pearl: #fdfcfa;
+  --surface-canvas: #f7f4ee;
+  --surface-canvas-mist: #ebe6dc;
+  --surface-canvas-deep: #ddd6cb;
+  --surface-canvas-shade: #cec6bb;
+  --surface-elevated: #fffefb;
+  --surface-elevated-soft: rgba(255, 253, 248, 0.92);
+  --surface-ink: #121110;
+  --surface-ink-soft: #2e2b27;
+  --surface-muted: #5c574e;
+  --surface-faint: #8f887d;
+  --surface-line: rgba(18, 17, 15, 0.098);
+  --surface-line-strong: rgba(18, 17, 15, 0.162);
+  --surface-edge-light: rgba(255, 255, 255, 0.945);
+  --surface-accent: #0f766e;
+  --surface-accent-soft: rgba(15, 118, 110, 0.11);
+  --surface-accent-mist: rgba(15, 118, 110, 0.06);
+  --haven-brand-cream: #f5f3ee;
+  --haven-brand-teal: #0b4a4c;
+  --haven-brand-teal-deep: #063638;
+  --surface-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --surface-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.98);
+  --surface-shadow-inset-floor: inset 0 -1px 0 rgba(18, 17, 15, 0.048);
+  --surface-shadow-card:
+    var(--surface-shadow-inset), var(--surface-shadow-inset-floor), 0 1px 2px rgba(18, 17, 15, 0.036),
+    0 10px 26px -10px rgba(22, 20, 18, 0.078), 0 32px 64px -30px rgba(22, 20, 18, 0.092),
+    0 0 44px -22px rgba(15, 118, 110, 0.042);
+  --surface-shadow-float:
+    var(--surface-shadow-inset), var(--surface-shadow-inset-floor), 0 2px 6px rgba(18, 17, 15, 0.042),
+    0 18px 42px -12px rgba(22, 20, 18, 0.1), 0 48px 96px -34px rgba(22, 20, 18, 0.108),
+    0 0 52px -22px rgba(15, 118, 110, 0.055);
+  --surface-shadow-elevated:
+    var(--surface-shadow-inset), var(--surface-shadow-inset-floor), 0 4px 12px rgba(18, 17, 15, 0.046),
+    0 28px 58px -16px rgba(22, 20, 18, 0.118), 0 72px 120px -42px rgba(22, 20, 18, 0.098),
+    0 0 60px -26px rgba(15, 118, 110, 0.048);
+  --surface-pearl-bg-image:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(255, 253, 250, 0.96), transparent 55%),
+    radial-gradient(ellipse 60% 45% at 92% 12%, rgba(167, 243, 208, 0.18), transparent 55%),
+    radial-gradient(ellipse 50% 45% at 4% 75%, rgba(253, 230, 138, 0.14), transparent 55%),
+    linear-gradient(180deg, var(--surface-canvas-pearl) 0%, var(--surface-canvas) 38%, var(--surface-canvas-mist) 100%);
+}
+
+.surface-pearl-bg {
+  background-color: var(--surface-canvas);
+  background-image: var(--surface-pearl-bg-image);
+}
+
+.surface-grain::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.45;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.032'/%3E%3C/svg%3E");
+  background-size: 140px 140px;
+}
+
+@media (prefers-reduced-transparency: no-preference) {
+  .landing-grain.surface-grain::after,
+  .haven-grain.surface-grain::after {
+    opacity: 0.45;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -159,35 +226,25 @@
 /* Sonner toasts — charcoal / glass (see components/ui/sonner.tsx) */
 /* Haven marketing — premium light palette & materials (scoped via .landing) */
 .landing {
-  /* Canvas — luminous pearl with deliberate tonal range (not one ivory wash) */
-  --landing-canvas-pearl: #fdfcfa;
-  --landing-canvas: #f7f4ee;
-  --landing-canvas-mist: #ebe6dc;
-  --landing-canvas-deep: #ddd6cb;
-  --landing-canvas-shade: #cec6bb;
-
-  /* Content surfaces — clearer lift from canvas */
-  --landing-surface: #fffefb;
+  --landing-canvas-pearl: var(--surface-canvas-pearl);
+  --landing-canvas: var(--surface-canvas);
+  --landing-canvas-mist: var(--surface-canvas-mist);
+  --landing-canvas-deep: var(--surface-canvas-deep);
+  --landing-canvas-shade: var(--surface-canvas-shade);
+  --landing-surface: var(--surface-elevated);
   --landing-elevated: rgba(255, 254, 251, 0.96);
-  --landing-surface-soft: rgba(255, 253, 248, 0.9);
-
-  /* Typography — stronger charcoal ladder for flagship hierarchy */
-  --landing-ink: #121110;
-  --landing-ink-soft: #2e2b27;
-  --landing-muted: #5c574e;
-  --landing-faint: #8f887d;
-
-  /* Structure — precise edges (luxury = crisp separation, not heavy strokes) */
-  --landing-line: rgba(18, 17, 15, 0.098);
-  --landing-line-strong: rgba(18, 17, 15, 0.162);
-  --landing-edge-light: rgba(255, 255, 255, 0.945);
-
-  /* Accents — restrained teal for ambient intelligence */
-  --landing-accent: #0f766e;
-  --landing-accent-soft: rgba(15, 118, 110, 0.11);
-  --landing-accent-mist: rgba(15, 118, 110, 0.06);
-
-  --landing-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --landing-surface-soft: var(--surface-elevated-soft);
+  --landing-ink: var(--surface-ink);
+  --landing-ink-soft: var(--surface-ink-soft);
+  --landing-muted: var(--surface-muted);
+  --landing-faint: var(--surface-faint);
+  --landing-line: var(--surface-line);
+  --landing-line-strong: var(--surface-line-strong);
+  --landing-edge-light: var(--surface-edge-light);
+  --landing-accent: var(--surface-accent);
+  --landing-accent-soft: var(--surface-accent-soft);
+  --landing-accent-mist: var(--surface-accent-mist);
+  --landing-display: var(--surface-display);
 
   /**
    * Shadows — layered “paper + lift” system: specular inset, contact, diffuse, ambient.
@@ -252,26 +309,22 @@
 
 /* Haven app shell — light "warm pearl" surfaces shared by Preferences and other internal light pages. */
 .haven-app {
-  --haven-canvas-pearl: #fdfcfa;
-  --haven-canvas: #f7f4ee;
-  --haven-canvas-mist: #ebe6dc;
-  --haven-canvas-deep: #ddd6cb;
-
-  --haven-surface: #fffefb;
-  --haven-surface-soft: rgba(255, 253, 248, 0.92);
-
-  --haven-ink: #121110;
-  --haven-ink-soft: #2e2b27;
-  --haven-paper: #fffefb;
-  --haven-muted: #5c574e;
-  --haven-faint: #8f887d;
-
-  --haven-line: rgba(18, 17, 15, 0.1);
-  --haven-line-strong: rgba(18, 17, 15, 0.16);
-  --haven-edge-light: rgba(255, 255, 255, 0.94);
-
-  --haven-accent: #0f766e;
-  --haven-accent-soft: rgba(15, 118, 110, 0.11);
+  --haven-canvas-pearl: var(--surface-canvas-pearl);
+  --haven-canvas: var(--surface-canvas);
+  --haven-canvas-mist: var(--surface-canvas-mist);
+  --haven-canvas-deep: var(--surface-canvas-deep);
+  --haven-surface: var(--surface-elevated);
+  --haven-surface-soft: var(--surface-elevated-soft);
+  --haven-ink: var(--surface-ink);
+  --haven-ink-soft: var(--surface-ink-soft);
+  --haven-paper: var(--surface-elevated);
+  --haven-muted: var(--surface-muted);
+  --haven-faint: var(--surface-faint);
+  --haven-line: var(--surface-line);
+  --haven-line-strong: var(--surface-line-strong);
+  --haven-edge-light: var(--surface-edge-light);
+  --haven-accent: var(--surface-accent);
+  --haven-accent-soft: var(--surface-accent-soft);
 
   --haven-shadow-card:
     inset 0 1px 0 rgba(255, 255, 255, 0.96), inset 0 -1px 0 rgba(18, 17, 15, 0.04),
@@ -377,6 +430,29 @@
   .haven-enter-delay-2 {
     animation-delay: 60ms;
   }
+  .haven-scan-pulse {
+    animation: haven-scan-pulse 2s ease-in-out infinite;
+  }
+  .haven-list-stagger > * {
+    animation: haven-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .haven-list-stagger > *:nth-child(1) { animation-delay: 40ms; }
+  .haven-list-stagger > *:nth-child(2) { animation-delay: 70ms; }
+  .haven-list-stagger > *:nth-child(3) { animation-delay: 100ms; }
+  .haven-list-stagger > *:nth-child(4) { animation-delay: 130ms; }
+  .haven-list-stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .haven-list-stagger > *:nth-child(6) { animation-delay: 190ms; }
+  .haven-list-stagger > *:nth-child(7) { animation-delay: 220ms; }
+  .haven-list-stagger > *:nth-child(8) { animation-delay: 250ms; }
+}
+
+@keyframes haven-scan-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--haven-accent) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 10px transparent;
+  }
 }
 
 .haven-shimmer {
@@ -451,54 +527,10 @@
   }
 }
 
-@keyframes landing-aurora {
-  0% {
-    transform: translate3d(-6%, 0, 0) rotate(0deg);
-  }
-  50% {
-    transform: translate3d(6%, -2%, 0) rotate(0.4deg);
-  }
-  100% {
-    transform: translate3d(-6%, 0, 0) rotate(0deg);
-  }
-}
-
-@keyframes landing-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
-@keyframes landing-horizon-drift {
-  0%,
-  100% {
-    opacity: 0.78;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 @media (prefers-reduced-motion: no-preference) {
-  .landing-horizon-drift {
-    animation: landing-horizon-drift 8s ease-in-out infinite;
-    will-change: transform, opacity;
-  }
   .landing-breathe {
     animation: landing-breathe 9s ease-in-out infinite;
     will-change: transform, opacity;
-  }
-  .landing-aurora {
-    animation: landing-aurora 24s ease-in-out infinite;
-    will-change: transform;
-  }
-  .landing-float {
-    animation: landing-float 7s ease-in-out infinite;
-    will-change: transform;
   }
 }
 

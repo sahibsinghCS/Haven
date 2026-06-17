@@ -2,9 +2,11 @@
 
 import Link from "next/link"
 
+import { ChapterSeam } from "@/components/landing/chapter-seam"
 import { FinalCtaSection } from "@/components/landing/final-cta-section"
 import { HeroSection } from "@/components/landing/hero-section"
 import { HowSection } from "@/components/landing/how-section"
+import { LandingChapterRail } from "@/components/landing/landing-chapter-rail"
 import { LandingNav } from "@/components/landing/landing-nav"
 import {
   landingFocusRing,
@@ -18,6 +20,7 @@ import { PreferencesPreviewSection } from "@/components/landing/preferences-prev
 import { PrivacySection } from "@/components/landing/privacy-section"
 import { ScrollProgress } from "@/components/landing/scroll-progress"
 import { cn } from "@/lib/utils"
+import { havenAppHref } from "@/lib/roomos/app-entry"
 
 const footerColumns: {
   title: string
@@ -35,8 +38,8 @@ const footerColumns: {
   {
     title: "Open the app",
     items: [
-      { label: "Live view", href: "/live" },
-      { label: "Preferences", href: "/preferences" },
+      { label: "Live view", href: havenAppHref("/live?start=1") },
+      { label: "Preferences", href: havenAppHref("/preferences") },
     ],
   },
   {
@@ -55,9 +58,11 @@ export function LandingPage() {
   return (
     <div className="landing landing-grain relative min-h-full overflow-x-clip text-[color:var(--landing-ink)]">
       <ScrollProgress />
+      <LandingChapterRail />
       <LandingNav />
       <main id="main" className="relative">
         <HeroSection />
+        <ChapterSeam chapter="02" label="System" />
         <HowSection />
         <MoodsSection />
         <PrivacySection />

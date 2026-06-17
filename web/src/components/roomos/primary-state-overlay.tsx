@@ -66,13 +66,13 @@ export function PrimaryStateOverlay({
         <div className="relative">
           <div className="flex items-center gap-2.5">
             <span
-              className="relative flex size-2 items-center justify-center"
+              className="relative flex size-3 items-center justify-center"
               aria-hidden
             >
               {!reduceMotion ? (
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400/55 motion-reduce:animate-none" />
+                <span className={cn("absolute inline-flex size-full animate-ping rounded-full opacity-55 motion-reduce:animate-none", accent.glow)} />
               ) : null}
-              <span className="relative inline-flex size-2 rounded-full bg-emerald-400/95" />
+              <span className={cn("relative inline-flex size-3 rounded-full ring-2 ring-white/20", accent.bar)} />
             </span>
             <p
               id="roomos-primary-state-label"

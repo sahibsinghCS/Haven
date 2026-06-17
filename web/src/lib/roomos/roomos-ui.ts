@@ -53,18 +53,16 @@ export const roomosUi = {
 
 /** Left accent: visible on light preference cards */
 const PREFERENCE_ACCENT_LEFT: Record<KnownRoomStateId, string> = {
-  sleep: "before:bg-[linear gradient(180deg,rgba(99,102,241,0.85)_0%,rgba(99,102,241,0.18)_100%)]",
-  gaming:
-    "before:bg-[linear gradient(180deg,rgba(139,92,246,0.85)_0%,rgba(139,92,246,0.18)_100%)]",
-  work: "before:bg-[linear gradient(180deg,rgba(14,165,233,0.85)_0%,rgba(14,165,233,0.18)_100%)]",
+  sleep: "before:bg-[linear-gradient(180deg,rgba(99,102,241,0.85)_0%,rgba(99,102,241,0.18)_100%)]",
+  work: "before:bg-[linear-gradient(180deg,rgba(14,165,233,0.85)_0%,rgba(14,165,233,0.18)_100%)]",
   relaxing:
-    "before:bg-[linear gradient(180deg,rgba(20,184,166,0.85)_0%,rgba(20,184,166,0.18)_100%)]",
-  away: "before:bg-[linear gradient(180deg,rgba(120,113,108,0.7)_0%,rgba(120,113,108,0.16)_100%)]",
+    "before:bg-[linear-gradient(180deg,rgba(20,184,166,0.85)_0%,rgba(20,184,166,0.18)_100%)]",
+  away: "before:bg-[linear-gradient(180deg,rgba(120,113,108,0.7)_0%,rgba(120,113,108,0.16)_100%)]",
 }
 
 /** Generic warm accent for user-created moods. */
 const PREFERENCE_ACCENT_LEFT_CUSTOM =
-  "before:bg-[linear gradient(180deg,rgba(217,119,6,0.8)_0%,rgba(217,119,6,0.16)_100%)]"
+  "before:bg-[linear-gradient(180deg,rgba(217,119,6,0.8)_0%,rgba(217,119,6,0.16)_100%)]"
 
 export function preferenceCardShell(stateId: RoomStateId) {
   const accent =

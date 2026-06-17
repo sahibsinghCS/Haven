@@ -101,7 +101,10 @@ function CameraConnectForm({
             : "border-stone-200/80 bg-white/80 text-stone-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]",
         )}
       >
-        Pick a webcam or phone camera, then connect. Add another card for each extra feed.
+        Pick a webcam or DroidCam feed. For multiple phones, open DroidCam on each device, tap{" "}
+        <span className="font-semibold">Rescan</span>, then choose{" "}
+        <span className="font-semibold">Phone camera (auto-discover)</span> on every room card — Haven
+        assigns the next free phone to each room automatically.
       </div>
 
       <div className="space-y-2">
@@ -351,7 +354,8 @@ export function LiveCamerasSection({
           isDark ? "text-zinc-500" : "text-stone-600",
         )}
       >
-        One card per webcam or phone. Tap a room name to rename it.
+        One card per camera feed. Each DroidCam phone needs its own card — rescan after opening
+        the app on every phone, then pick a different stream per room.
       </p>
 
       {rooms.length === 0 && drafts.length === 0 ? (

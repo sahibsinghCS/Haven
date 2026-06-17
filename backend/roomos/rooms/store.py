@@ -117,6 +117,9 @@ class RoomsStore:
     def _camera_source_taken(
         self, source: int | str, *, skip_room_id: Optional[str] = None
     ) -> bool:
+        # ``droidcam:auto`` / ``auto`` resolve to the next free phone per room at runtime.
+        if is_auto_video_source(source):
+            return False
         for room in self._doc.rooms:
             if skip_room_id and room.id == skip_room_id:
                 continue

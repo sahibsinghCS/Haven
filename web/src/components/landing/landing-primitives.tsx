@@ -24,17 +24,13 @@ export const landingLayout = {
   scrollMargin: "scroll-mt-28",
 } as const
 
-/** Hero bottom: compact ramp into pearl (fewer stops = less muddy band). */
-export const landingHeroBottomFade =
-  "linear-gradient(180deg, rgba(18,17,16,0) 0%, #1c1a17 22%, #4a443c 52%, #a89b8a 78%, var(--landing-canvas-pearl) 100%)"
-
 /** Serif display: Fraunces via root layout variable */
 export const landingFontDisplay = "[font-family:var(--landing-display)]"
 
 /**
  * Primary elevated surface: cards, hero fragments (layered gradient + warm shadow + light rim).
  */
-export const landingGlass = cn(
+export const landingCard = cn(
   "rounded-[1.35rem]",
   "border border-[color:var(--landing-line-strong)]",
   "bg-[linear-gradient(172deg,rgba(255,254,253,1)_0%,rgba(252,248,242,0.99)_36%,rgba(245,239,230,0.97)_68%,rgba(236,228,216,0.95)_100%)]",
@@ -143,7 +139,7 @@ export const LandingSectionShell = forwardRef(function LandingSectionShell(
       id={id}
       aria-labelledby={labelledBy}
       className={cn(
-        "relative",
+        "relative [content-visibility:auto] [contain-intrinsic-size:auto_480px]",
         landingLayout.scrollMargin,
         landingLayout.sectionBorder,
         rhythm === "afterHero" ? landingLayout.sectionYAfterHero : landingLayout.sectionY,

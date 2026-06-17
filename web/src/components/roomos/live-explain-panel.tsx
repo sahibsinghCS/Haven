@@ -18,7 +18,7 @@ import { roomosUi } from "@/lib/roomos/roomos-ui"
 import type { LiveInferenceSnapshot } from "@/types/roomos"
 
 const TIER_CHIP = {
-  high: "border-emerald-400/35 bg-emerald-950/40 text-emerald-100",
+  high: "border-teal-400/35 bg-teal-950/40 text-teal-100",
   medium: "border-amber-400/35 bg-amber-950/35 text-amber-100",
   low: "border-rose-400/35 bg-rose-950/40 text-rose-100",
 } as const

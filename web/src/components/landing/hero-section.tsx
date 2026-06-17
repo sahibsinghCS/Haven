@@ -11,23 +11,11 @@ import {
   useSpring,
   useTransform,
 } from "framer-motion"
-import {
-  Activity,
-  ArrowRight,
-  Briefcase,
-  ChevronDown,
-  DoorOpen,
-  Gamepad2,
-  Lightbulb,
-  LockKeyhole,
-  Moon,
-  Palmtree,
-  Shield,
-  Sparkles,
-  Thermometer,
-  Wind,
-} from "lucide-react"
+import { ArrowRight } from "lucide-react"
 
+import { ChapterSeamLink } from "@/components/landing/chapter-seam"
+import { HavenLogo } from "@/components/brand/haven-logo"
+import { HeroSceneCard } from "@/components/landing/hero-scene-card"
 import {
   landingDuration,
   landingFadeLift,
@@ -38,30 +26,15 @@ import {
   landingBtnPrimaryHero,
   landingFocusRing,
   landingFontDisplay,
-  landingHeroBottomFade,
   LandingContainer,
   LandingEyebrow,
 } from "@/components/landing/landing-primitives"
 import { AmbientCursor } from "@/components/landing/ambient-cursor"
 import { Magnetic, SplitText } from "@/components/landing/landing-text"
+import { havenAppHref } from "@/lib/roomos/app-entry"
 import { markLiveStartIntent } from "@/lib/roomos/live-session-start"
 import { cn } from "@/lib/utils"
 
-const moodStrip = [
-  { id: "sleep", label: "Sleep", Icon: Moon },
-  { id: "gaming", label: "Gaming", Icon: Gamepad2 },
-  { id: "work", label: "Work", Icon: Briefcase, active: true },
-  { id: "relax", label: "Relax", Icon: Palmtree },
-  { id: "away", label: "Away", Icon: DoorOpen },
-] as const
-
-const sceneRows = [
-  { label: "Light field", value: "74%", Icon: Lightbulb, tone: "text-amber-200" },
-  { label: "Airflow", value: "gentle", Icon: Wind, tone: "text-sky-200" },
-  { label: "Target", value: "72F", Icon: Thermometer, tone: "text-teal-200" },
-] as const
-
-/** One rail: posture + room read. same typography, no clipping, no overlap with scroll */
 const heroTelemetry = [
   { label: "Video egress", value: "0", note: "Nothing leaves as video." },
   { label: "Moods", value: "5", note: "One envelope each." },
@@ -91,12 +64,15 @@ export function HeroSection() {
   const roomLift = useTransform(scrollYProgress, [0, 1], [0, 42])
   const roomRotate = useTransform(scrollYProgress, [0, 1], [0, -1.8])
   const continueOpacity = useTransform(scrollYProgress, [0, 0.18], [1, 0])
+
   const copyStagger = useMemo(() => landingStaggerParent(reduceMotion, 0.08, 0.08), [reduceMotion])
   const copyLine = useMemo(() => landingFadeUp(reduceMotion, { y: 22, duration: landingDuration.hero }), [reduceMotion])
   const visualReveal = useMemo(
     () => landingFadeLift(reduceMotion, { y: 36, scale: 0.982, duration: landingDuration.hero }),
     [reduceMotion],
   )
+
+  const liveHref = havenAppHref("/live?start=1")
 
   useEffect(() => {
     if (reduceMotion) return
@@ -116,33 +92,22 @@ export function HeroSection() {
       ref={sectionRef}
       id="hero"
       aria-labelledby="landing-hero-heading"
-      className="relative flex min-h-[100dvh] flex-col overflow-x-clip bg-[#121110] pt-[5rem] text-[#fbf7ef] sm:pt-[5.5rem] lg:pt-[5rem]"
+      className="relative flex min-h-[min(100dvh,920px)] flex-col overflow-x-clip bg-[#121110] pt-[5rem] text-[#fbf7ef] sm:pt-[5.5rem] lg:min-h-[100dvh] lg:pt-[5rem]"
     >
       <div
         className="pointer-events-none absolute inset-0 bg-[#121110]"
         style={{
-          maskImage: "linear-gradient(180deg, black 0%, black 78%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 78%, transparent 100%)",
+          maskImage: "linear-gradient(180deg, black 0%, black 88%, transparent 100%)",
+          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 88%, transparent 100%)",
         }}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_62%_at_50%_-10%,rgba(255,247,231,0.16),transparent_58%),radial-gradient(ellipse_70%_58%_at_8%_28%,rgba(20,184,166,0.18),transparent_54%),radial-gradient(ellipse_72%_64%_at_92%_76%,rgba(245,158,11,0.12),transparent_58%),linear-gradient(180deg,#11100e_0%,#0e0d0b_32%,#151412_58%,#1c1a17_76%,#24211e_90%,#2a2724_100%)]"
-        style={{
-          maskImage: "linear-gradient(180deg, black 0%, black 74%, transparent 98%)",
-          WebkitMaskImage: "linear-gradient(180deg, black 0%, black 74%, transparent 98%)",
-        }}
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_62%_at_50%_-10%,rgba(255,247,231,0.16),transparent_58%),radial-gradient(ellipse_70%_58%_at_8%_28%,rgba(20,184,166,0.18),transparent_54%),radial-gradient(ellipse_72%_64%_at_92%_76%,rgba(245,158,11,0.12),transparent_58%),linear-gradient(180deg,#11100e_0%,#0e0d0b_32%,#151412_58%,#1c1a17_76%,#24211e_90%,#121110_100%)]"
         aria-hidden
       />
       {!reduceMotion ? (
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            maskImage: "linear-gradient(180deg, black 0%, black 72%, transparent 92%)",
-            WebkitMaskImage: "linear-gradient(180deg, black 0%, black 72%, transparent 92%)",
-          }}
-          aria-hidden
-        >
+        <div className="pointer-events-none absolute inset-0" aria-hidden>
           <motion.div className="absolute inset-0 opacity-80" style={{ background: glow }} />
           <motion.div className="absolute inset-0 opacity-90 mix-blend-screen" style={{ background: pearl }} />
         </div>
@@ -158,10 +123,11 @@ export function HeroSection() {
         }}
         aria-hidden
       />
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[clamp(9rem,20vh,13rem)]"
-        style={{ background: landingHeroBottomFade }}
+      <HavenLogo
+        variant="mark"
+        size="hero"
         aria-hidden
+        className="pointer-events-none absolute -right-[min(8vw,4rem)] top-[18%] z-[1] opacity-[0.07] mix-blend-screen blur-[0.5px] lg:right-[8%] lg:top-[14%] lg:opacity-[0.09]"
       />
 
       <motion.div
@@ -178,18 +144,13 @@ export function HeroSection() {
             <motion.div variants={copyLine} className="flex flex-wrap items-center gap-3">
               <span className="font-mono text-[12px] font-semibold tabular-nums text-teal-200/70">01</span>
               <span className="h-3 w-px bg-white/18" aria-hidden />
-              <LandingEyebrow className="m-0 text-teal-50/70">
-                Private ambient intelligence
-              </LandingEyebrow>
+              <LandingEyebrow className="m-0 text-teal-50/70">Private ambient intelligence</LandingEyebrow>
             </motion.div>
 
             <motion.h1
               id="landing-hero-heading"
               variants={copyLine}
-              className={cn(
-                landingFontDisplay,
-                "mt-7 max-w-[18ch] text-balance text-[#fff9ed]",
-              )}
+              className={cn(landingFontDisplay, "mt-7 max-w-[18ch] text-balance text-[#fff9ed]")}
             >
               <SplitText
                 as="span"
@@ -236,7 +197,7 @@ export function HeroSection() {
             >
               <Magnetic strength={0.28} radius={140}>
                 <Link
-                  href="/live?start=1"
+                  href={liveHref}
                   onClick={() => markLiveStartIntent()}
                   data-cursor="hover"
                   className={cn(
@@ -245,9 +206,16 @@ export function HeroSection() {
                     "group/cta relative isolate overflow-hidden w-full border-white/12 bg-[linear-gradient(168deg,#fff7ea_0%,#d7c6ad_46%,#8b7a63_100%)] text-[#15120e] shadow-[0_18px_52px_-18px_rgba(245,222,179,0.45),inset_0_1px_0_rgba(255,255,255,0.72)] ring-white/28 sm:w-auto",
                   )}
                 >
-                  <span className="pointer-events-none absolute inset-0 -translate-x-full bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.55)_50%,transparent_100%)] transition-transform duration-700 ease-out group-hover/cta:translate-x-full" aria-hidden />
+                  <span
+                    className="pointer-events-none absolute inset-0 -translate-x-full bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.55)_50%,transparent_100%)] transition-transform duration-700 ease-out group-hover/cta:translate-x-full"
+                    aria-hidden
+                  />
                   <span className="relative">Open live view</span>
-                  <ArrowRight className="relative size-[1.05rem] transition-transform duration-300 group-hover/cta:translate-x-0.5" strokeWidth={2} aria-hidden />
+                  <ArrowRight
+                    className="relative size-[1.05rem] transition-transform duration-300 group-hover/cta:translate-x-0.5"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
                 </Link>
               </Magnetic>
               <Magnetic strength={0.22} radius={120}>
@@ -273,103 +241,7 @@ export function HeroSection() {
             className="relative z-[1] lg:col-span-7"
             style={reduceMotion ? undefined : { y: roomLift, rotate: roomRotate }}
           >
-            <div className="landing-breathe pointer-events-none absolute -inset-8 rounded-[3rem] bg-[radial-gradient(ellipse_at_center,rgba(20,184,166,0.28),transparent_62%)] blur-2xl" />
-            <div className="relative mx-auto max-w-[44rem] overflow-hidden rounded-[2.25rem] border border-white/[0.12] bg-[linear-gradient(150deg,rgba(255,255,255,0.11),rgba(255,255,255,0.035)_36%,rgba(255,255,255,0.02))] p-2 shadow-[0_46px_120px_-44px_rgba(0,0,0,0.88),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl">
-              <div className="overflow-hidden rounded-[1.8rem] border border-white/[0.08] bg-[#0e0c0a] shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
-                <div className="flex h-12 items-center gap-3 border-b border-white/[0.07] bg-white/[0.045] px-4">
-                  <div className="flex gap-1.5" aria-hidden>
-                    <span className="size-2 rounded-full bg-white/18" />
-                    <span className="size-2 rounded-full bg-white/12" />
-                    <span className="size-2 rounded-full bg-white/10" />
-                  </div>
-                  <p className="min-w-0 flex-1 truncate text-center text-[12px] font-semibold tracking-[-0.01em] text-stone-200/90">
-                    Haven scene engine
-                  </p>
-                  <span className="rounded-full border border-teal-300/18 bg-teal-300/[0.08] px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-teal-100/72">
-                    Local
-                  </span>
-                </div>
-
-                <div className="relative min-h-[430px] overflow-hidden sm:min-h-[500px]">
-                  <div className="absolute inset-0 bg-[linear-gradient(165deg,#f6efe2_0%,#d5c4aa_42%,#6e7f73_78%,#15120f_100%)]" />
-                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_65%_55%_at_42%_34%,rgba(255,255,255,0.86),transparent_58%),radial-gradient(ellipse_64%_48%_at_72%_70%,rgba(20,184,166,0.34),transparent_60%),radial-gradient(ellipse_52%_45%_at_18%_82%,rgba(245,158,11,0.24),transparent_56%)]" />
-                  <div className="absolute inset-x-[-10%] bottom-[-8%] h-[46%] rounded-[50%] bg-[radial-gradient(ellipse_at_center,rgba(10,8,6,0.5),transparent_66%)]" />
-
-                  <div className="absolute left-[8%] top-[11%] w-[min(84%,29rem)] rounded-[2rem] border border-white/58 bg-white/[0.72] p-5 text-stone-950 shadow-[0_34px_90px_-38px_rgba(0,0,0,0.54),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl sm:left-[9%] sm:p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-stone-500">
-                          Current read
-                        </p>
-                        <h2 className={cn(landingFontDisplay, "mt-2 text-[2rem] font-semibold tracking-[-0.045em] sm:text-[2.35rem]")}>
-                          Work / Studying
-                        </h2>
-                        <p className="mt-2 max-w-[21rem] text-[12.5px] leading-relaxed text-stone-600">
-                          Ambient posture favors clarity: high field light, softened glare, gentle air.
-                        </p>
-                      </div>
-                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-teal-900/12 bg-teal-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-teal-900">
-                        <Sparkles className="size-3" aria-hidden />
-                        87%
-                      </span>
-                    </div>
-
-                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                      {sceneRows.map((row) => (
-                        <div
-                          key={row.label}
-                          className="rounded-2xl border border-stone-200/90 bg-white/72 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)]"
-                        >
-                          <row.Icon className={cn("size-4", row.tone === "text-amber-200" ? "text-amber-700" : row.tone === "text-sky-200" ? "text-sky-700" : "text-teal-700")} strokeWidth={1.8} />
-                          <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-stone-500">
-                            {row.label}
-                          </p>
-                          <p className="mt-1 text-[14px] font-semibold tracking-[-0.01em] text-stone-950">
-                            {row.value}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="absolute bottom-[19%] right-[6%] w-[min(72%,18rem)] rounded-[1.5rem] border border-white/16 bg-[#11100e]/86 p-4 text-stone-100 shadow-[0_26px_70px_-34px_rgba(0,0,0,0.8)] backdrop-blur-xl">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-teal-100/72">
-                        <Shield className="size-3.5" aria-hidden />
-                        Privacy boundary
-                      </span>
-                      <LockKeyhole className="size-4 text-teal-100/70" aria-hidden />
-                    </div>
-                    <p className="mt-3 text-[12px] leading-relaxed text-stone-300/84">
-                      Raw signal stays in the room. The interface exposes confidence, not a feed.
-                    </p>
-                  </div>
-
-                  <div className="absolute bottom-5 left-5 right-5 rounded-[1.35rem] border border-white/[0.12] bg-[#0c0a08]/78 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="mr-1 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">
-                        <Activity className="size-3.5 text-teal-200/70" aria-hidden />
-                        Moods
-                      </span>
-                      {moodStrip.map((mood) => (
-                        <span
-                          key={mood.id}
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10.5px] font-semibold",
-                            "active" in mood && mood.active
-                              ? "border-teal-200/34 bg-teal-200/[0.12] text-teal-50 shadow-[0_0_24px_rgba(45,212,191,0.13)]"
-                              : "border-white/[0.09] bg-white/[0.04] text-stone-400",
-                          )}
-                        >
-                          <mood.Icon className="size-3" strokeWidth={2} aria-hidden />
-                          {mood.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <HeroSceneCard />
           </motion.div>
         </LandingContainer>
       </motion.div>
@@ -378,39 +250,37 @@ export function HeroSection() {
         variants={copyLine}
         initial="hidden"
         animate="show"
-        className="relative z-10 w-full pb-[clamp(1.25rem,3vh,2rem)]"
+        className="relative z-10 mt-auto w-full pb-6"
       >
         <LandingContainer>
-          <div>
-            <p className="mb-3 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.28em] text-stone-500 sm:mb-4 sm:text-left">
-              At a glance
-            </p>
-            <div className="rounded-[1.2rem] border border-white/[0.1] bg-gradient-to-b from-white/[0.08] to-white/[0.03] p-px shadow-[0_24px_70px_-40px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:rounded-[1.35rem]">
-              <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[1.12rem] bg-white/[0.12] sm:grid-cols-4 lg:grid-cols-7">
-                {heroTelemetry.map((cell) => (
-                  <div
-                    key={cell.label}
-                    className="relative flex min-h-[6.75rem] flex-col justify-between gap-2 bg-[#141210]/95 px-3.5 py-4 sm:min-h-[7rem] sm:px-4 sm:py-4"
-                  >
-                    <p className="font-mono text-[10px] font-semibold uppercase leading-snug tracking-[0.2em] text-stone-500">
-                      {cell.label}
+          <p className="mb-3 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.28em] text-stone-500 sm:mb-4 sm:text-left">
+            At a glance
+          </p>
+          <div className="rounded-[1.2rem] border border-white/[0.1] bg-gradient-to-b from-white/[0.08] to-white/[0.03] p-px shadow-[0_24px_70px_-40px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:rounded-[1.35rem] md:backdrop-blur-xl">
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[1.12rem] bg-white/[0.12] sm:grid-cols-4 lg:grid-cols-7">
+              {heroTelemetry.map((cell) => (
+                <div
+                  key={cell.label}
+                  className="relative flex min-h-[6.75rem] flex-col justify-between gap-2 bg-[#141210]/95 px-3.5 py-4 sm:min-h-[7rem] sm:px-4 sm:py-4"
+                >
+                  <p className="font-mono text-[10px] font-semibold uppercase leading-snug tracking-[0.2em] text-stone-500">
+                    {cell.label}
+                  </p>
+                  <div>
+                    <p
+                      className={cn(
+                        landingFontDisplay,
+                        "text-[1.35rem] font-semibold leading-[1.15] tracking-[-0.03em] text-[#fff7ea] sm:text-[1.5rem]",
+                      )}
+                    >
+                      {cell.value}
                     </p>
-                    <div>
-                      <p
-                        className={cn(
-                          landingFontDisplay,
-                          "text-[1.35rem] font-semibold leading-[1.15] tracking-[-0.03em] text-[#fff7ea] sm:text-[1.5rem]",
-                        )}
-                      >
-                        {cell.value}
-                      </p>
-                      {cell.note ? (
-                        <p className="mt-1.5 text-[11px] leading-snug text-stone-500/90">{cell.note}</p>
-                      ) : null}
-                    </div>
+                    {cell.note ? (
+                      <p className="mt-1.5 text-[11px] leading-snug text-stone-500/90">{cell.note}</p>
+                    ) : null}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -418,20 +288,7 @@ export function HeroSection() {
             className="mt-5 flex justify-center sm:mt-6"
             style={reduceMotion ? undefined : { opacity: continueOpacity }}
           >
-            <a
-              href="#how-it-works"
-              className={cn(
-                "group inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.06] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.22em] text-stone-200/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-[color,transform,background-color] duration-300 hover:bg-white/[0.1] hover:text-white motion-safe:hover:-translate-y-px",
-                landingFocusRing,
-              )}
-            >
-              <span className="relative flex size-1.5" aria-hidden>
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-teal-200/50 motion-reduce:hidden" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-teal-200/90" />
-              </span>
-              Continue
-              <ChevronDown className="size-3.5 opacity-70 transition-transform duration-300 group-hover:translate-y-0.5" strokeWidth={2.25} aria-hidden />
-            </a>
+            <ChapterSeamLink />
           </motion.div>
         </LandingContainer>
       </motion.div>

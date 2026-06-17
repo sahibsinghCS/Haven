@@ -11,45 +11,13 @@ import {
   TrendingUp,
 } from "lucide-react"
 
+import { HavenStatCard } from "@/components/roomos/haven-primitives"
 import {
   formatClockLabel,
   formatRhythmDuration,
   sleepConsistencyLabel,
 } from "@/lib/roomos/rhythm-format"
 import type { RhythmHighlights } from "@/types/rhythm"
-import { cn } from "@/lib/utils"
-
-const cardShell =
-  "rounded-[1.35rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_96%,transparent)] shadow-[var(--haven-shadow-card)] ring-1 ring-[color:var(--haven-edge-light)]"
-
-function HighlightCard({
-  icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  detail?: string
-}) {
-  return (
-    <div className={cn(cardShell, "flex flex-col gap-3 px-4 py-4 sm:px-5 sm:py-5")}>
-      <div className="flex items-center gap-2 text-[color:var(--haven-faint)]">
-        <span className="flex size-8 items-center justify-center rounded-xl bg-[color:var(--haven-accent-soft)] text-teal-800">
-          {icon}
-        </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">{label}</span>
-      </div>
-      <p className="haven-display text-[1.35rem] font-semibold leading-tight text-[color:var(--haven-ink)]">
-        {value}
-      </p>
-      {detail ? (
-        <p className="text-[12px] leading-relaxed text-[color:var(--haven-muted)]">{detail}</p>
-      ) : null}
-    </div>
-  )
-}
 
 export function RhythmHighlights({ highlights }: { highlights: RhythmHighlights }) {
   const sleepTime = formatClockLabel(highlights.usualSleepStart)
@@ -64,16 +32,18 @@ export function RhythmHighlights({ highlights }: { highlights: RhythmHighlights 
   const cards: Array<{
     key: string
     icon: React.ReactNode
-    label: string
+    eyebrow: string
     value: string
-    detail?: string
+    hint?: string
+    delta?: string
+    deltaTone?: "neutral" | "teal" | "amber" | "rose"
   }> = [
     {
       key: "sleep",
       icon: <Moon className="size-4" aria-hidden />,
-      label: "Usual sleep start",
+      eyebrow: "Usual sleep start",
       value: sleepTime ?? "—",
-      detail:
+      hint:
         highlights.sleepStartSamples > 0
           ? `${highlights.sleepStartSamples} sample${highlights.sleepStartSamples === 1 ? "" : "s"}`
           : consistency ?? "Need more sleep blocks in Live",
@@ -81,29 +51,31 @@ export function RhythmHighlights({ highlights }: { highlights: RhythmHighlights 
     {
       key: "savings",
       icon: <DollarSign className="size-4" aria-hidden />,
-      label: "Est. savings",
+      eyebrow: "Est. savings",
       value: `$${highlights.estimatedSavingsUsd.toFixed(2)}`,
-      detail:
+      hint:
         highlights.automationsRun > 0
           ? `${highlights.automationsRun} automation${highlights.automationsRun === 1 ? "" : "s"}`
           : savingsDetail,
+      delta: highlights.estimatedSavingsUsd > 0 ? "This week" : undefined,
+      deltaTone: "teal",
     },
     {
       key: "switches",
       icon: <Shuffle className="size-4" aria-hidden />,
-      label: "Mood switches",
+      eyebrow: "Mood switches",
       value: String(highlights.moodSwitches),
-      detail: "Times Haven changed your detected mood",
+      hint: "Times Haven changed your detected mood",
     },
     {
       key: "deep",
       icon: <Brain className="size-4" aria-hidden />,
-      label: "Deep work",
+      eyebrow: "Deep work",
       value:
         highlights.deepWorkBlocks > 0
           ? `${highlights.deepWorkBlocks} block${highlights.deepWorkBlocks === 1 ? "" : "s"}`
           : "—",
-      detail:
+      hint:
         highlights.deepWorkMinutes > 0
           ? `${Math.round(highlights.deepWorkMinutes)} min in 45+ min focus runs`
           : "45+ minute work stretches",
@@ -111,55 +83,81 @@ export function RhythmHighlights({ highlights }: { highlights: RhythmHighlights 
     {
       key: "away",
       icon: <BedDouble className="size-4" aria-hidden />,
-      label: "Away",
+      eyebrow: "Away",
       value: highlights.awayHours > 0 ? `${highlights.awayHours.toFixed(1)}h` : "—",
-      detail: "Desk empty or camera off gaps excluded",
+      hint: "Desk empty or camera off gaps excluded",
     },
     {
       key: "wind",
       icon: <Timer className="size-4" aria-hidden />,
-      label: "Wind-down",
+      eyebrow: "Wind-down",
       value:
         highlights.windDownMinutes != null
           ? `${Math.round(highlights.windDownMinutes)} min`
           : "—",
-      detail: "Relaxing → sleep when both appear",
+      hint: "Relaxing → sleep when both appear",
     },
     {
       key: "confidence",
       icon: <TrendingUp className="size-4" aria-hidden />,
-      label: "Avg confidence",
+      eyebrow: "Avg confidence",
       value:
         highlights.avgConfidence != null
           ? `${Math.round(highlights.avgConfidence * 100)}%`
           : "—",
-      detail:
+      hint:
         highlights.uncertainPercent != null
           ? `${highlights.uncertainPercent}% low-confidence frames`
           : undefined,
+      delta:
+        highlights.avgConfidence != null && highlights.avgConfidence >= 0.7
+          ? "Strong reads"
+          : highlights.avgConfidence != null
+            ? "Mixed reads"
+            : undefined,
+      deltaTone:
+        highlights.avgConfidence != null && highlights.avgConfidence >= 0.7 ? "teal" : "amber",
     },
     {
       key: "consistency",
       icon: <Activity className="size-4" aria-hidden />,
-      label: "Sleep rhythm",
+      eyebrow: "Sleep rhythm",
       value: consistency ?? "—",
-      detail: sleepTime ? `Median start ${sleepTime}` : "Track sleep in Live",
+      hint: sleepTime ? `Median start ${sleepTime}` : "Track sleep in Live",
     },
   ]
+
+  const heroKeys = new Set(["sleep", "savings", "switches"])
+  const heroCards = cards.filter((c) => heroKeys.has(c.key))
+  const restCards = cards.filter((c) => !heroKeys.has(c.key))
 
   return (
     <section aria-label="Rhythm highlights">
       <h2 className="haven-display mb-4 text-[1.2rem] font-semibold text-[color:var(--haven-ink)]">
         Highlights
       </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map((c) => (
-          <HighlightCard
+      <div className="grid gap-3 sm:grid-cols-3">
+        {heroCards.map((c) => (
+          <HavenStatCard
             key={c.key}
-            icon={c.icon}
-            label={c.label}
+            eyebrow={c.eyebrow}
             value={c.value}
-            detail={c.detail}
+            hint={c.hint}
+            delta={c.delta}
+            deltaTone={c.deltaTone}
+          />
+        ))}
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 haven-list-stagger">
+        {restCards.map((c) => (
+          <HavenStatCard
+            key={c.key}
+            eyebrow={c.eyebrow}
+            value={c.value}
+            hint={c.hint}
+            delta={c.delta}
+            deltaTone={c.deltaTone}
+            className="!py-4"
           />
         ))}
       </div>

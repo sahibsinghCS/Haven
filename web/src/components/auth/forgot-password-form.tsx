@@ -8,8 +8,9 @@ import { requestPasswordReset, type AuthActionState } from "@/app/(auth)/actions
 import { AuthAlert } from "@/components/auth/auth-alert"
 import { AuthCard } from "@/components/auth/auth-card"
 import { AuthFormField, authInputClassName } from "@/components/auth/auth-form-field"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { havenBtnPrimary } from "@/components/roomos/haven-primitives"
+import { cn } from "@/lib/utils"
 
 const initialState: AuthActionState = {}
 
@@ -43,14 +44,10 @@ export function ForgotPasswordForm() {
               className={authInputClassName()}
             />
           </AuthFormField>
-          <Button
-            type="submit"
-            disabled={pending}
-            className="h-11 w-full bg-[color:var(--haven-ink)] text-[color:var(--haven-paper)]"
-          >
+          <button type="submit" disabled={pending} className={cn(havenBtnPrimary, "w-full")}>
             {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
             {pending ? "Sending…" : "Send reset link"}
-          </Button>
+          </button>
         </form>
       )}
     </AuthCard>

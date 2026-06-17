@@ -249,7 +249,7 @@ export function LiveQuickCorrection({
         ) : (
           <ThumbsUp className="size-4" aria-hidden />
         )}
-        <span className={cn("size-2 rounded-full shrink-0", primaryAccent.bar)} aria-hidden />
+        <span className={cn("size-3.5 shrink-0 rounded-full ring-2 ring-white/15", primaryAccent.bar)} aria-hidden />
  Yes. {roomStateLabel(primary)}
       </button>
 
@@ -283,7 +283,7 @@ export function LiveQuickCorrection({
               ) : isSaved ? (
                 <CheckCircle2 className="size-3.5 text-teal-200" aria-hidden />
               ) : (
-                <span className={cn("size-2 rounded-full", accent.bar)} aria-hidden />
+                <span className={cn("size-3.5 shrink-0 rounded-full ring-2 ring-white/10", accent.bar)} aria-hidden />
               )}
               {roomStateLabel(state)}
             </button>

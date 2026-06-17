@@ -27,6 +27,10 @@ export const metadata: Metadata = {
   },
   description:
     "Adaptive room intelligence: local inference, coherent scenes, and environments that refine from how you adjust them.",
+  icons: {
+    icon: [{ url: "/brand/icon-32.png", sizes: "32x32", type: "image/png" }],
+    apple: [{ url: "/brand/icon-180.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({
@@ -40,7 +44,7 @@ export default function RootLayout({
     <html
       lang="en"
       data-scroll-behavior="smooth"
-      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} dark h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="relative bg-background text-foreground flex min-h-full flex-col">
         <AppProviders supabase={supabase}>{children}</AppProviders>

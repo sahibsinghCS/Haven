@@ -101,6 +101,7 @@ export function LiveCameraSelect({
       if (pickerOnly && forNewRoom && !selected) {
         const autoPick =
           data.cameras.find((c) => c.kind === "droidcam_auto") ??
+          data.cameras.find((c) => c.kind === "droidcam" && c.available) ??
           data.cameras.find((c) => c.available)
         if (autoPick) {
           const value = cameraValue(autoPick)
@@ -240,12 +241,12 @@ export function LiveCameraSelect({
                   <span>{label}</span>
                   <span className="text-[10px] font-normal text-zinc-500">
                     {!cam.available
- ? "Not available. try another device"
-                      : cam.kind === "droidcam" || cam.kind === "droidcam_auto"
-                        ? cam.kind === "droidcam_auto"
- ? "Next free phone on WiFi (one per room)"
-                          : "Phone stream · HTTP"
-                        : dark
+                      ? "Not available · try Rescan"
+                      : cam.kind === "droidcam"
+                        ? `Phone stream · ${String(cam.source).replace(/^https?:\/\//, "").split("/")[0]}`
+                        : cam.kind === "droidcam_auto"
+                          ? "Next free phone on Wi‑Fi — use on every room"
+                          : dark
                           ? `Index ${cam.index} · very dark`
                           : `Index ${cam.index} · ${cam.backend}`}
                   </span>

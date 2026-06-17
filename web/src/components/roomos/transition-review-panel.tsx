@@ -17,7 +17,8 @@ import {
   transitionFrameUrl,
   type FeedbackResponse,
   type StateTransitionItem,
-} from "@/lib/roomos/api-client"import { roomStateLabel } from "@/lib/roomos/state-meta"
+} from "@/lib/roomos/api-client"
+import { roomStateLabel } from "@/lib/roomos/state-meta"
 import { ROOM_STATE_ORDER, type RoomStateId } from "@/types/roomos"
 
 function displayLabel(label: string): string {
@@ -56,7 +57,8 @@ export function TransitionReviewPanel({
   const { data: moodsData } = useMoods()
   const [correctingId, setCorrectingId] = useState<string | null>(null)
   const [clearing, setClearing] = useState(false)
-  const [tab, setTab] = useState<ReviewTab>("pending")  const [lastOutcome, setLastOutcome] = useState<FeedbackResponse | null>(null)
+  const [tab, setTab] = useState<ReviewTab>("pending")
+  const [lastOutcome, setLastOutcome] = useState<FeedbackResponse | null>(null)
 
   const transitionsQuery = useQuery({
     queryKey: ["roomos", "transitions", compact ? "compact" : "full", tab],
@@ -80,7 +82,8 @@ export function TransitionReviewPanel({
     : transitionsQuery.data?.reason
   const pending = transitionsQuery.data?.pendingReview ?? 0
   const total = transitionsQuery.data?.total ?? 0
-  const loading = transitionsQuery.isLoading && !transitionsQuery.data  const items = useMemo(() => {
+  const loading = transitionsQuery.isLoading && !transitionsQuery.data
+  const items = useMemo(() => {
     const list = transitionsQuery.data?.transitions ?? []
     return tab === "reviewed" ? list.filter((t) => t.corrected) : list
   }, [transitionsQuery.data?.transitions, tab])
@@ -148,7 +151,8 @@ export function TransitionReviewPanel({
     }
   }
 
-  if (!enabled) {    const hint =
+  if (!enabled) {
+    const hint =
       reason === "transitions_disabled"
         ? "Transition logging is turned off in inference config."
         : reason === "engine_off"
@@ -171,7 +175,8 @@ export function TransitionReviewPanel({
 
   return (
     <div className={cn(compact ? "space-y-3" : "mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-6")}>
-      {lastOutcome && !compact ? (        <CorrectionOutcomeCard result={lastOutcome} variant="light" />
+      {lastOutcome && !compact ? (
+        <CorrectionOutcomeCard result={lastOutcome} variant="light" />
       ) : null}
 
       <header className={cn(!compact && "flex flex-wrap items-end justify-between gap-3")}>

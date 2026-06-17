@@ -97,7 +97,11 @@ export function StatePreferenceCard({
 
       <header className="relative flex flex-col gap-5 border-b border-[color:var(--haven-line)] pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0 space-y-2">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
+            <span
+              className={cn("size-4 shrink-0 rounded-full ring-2 ring-offset-2 ring-offset-[color-mix(in_oklab,#fffefb_90%,transparent)]", skin.bar, "ring-[color:var(--haven-line-strong)]")}
+              aria-hidden
+            />
             <span className="font-mono text-[11px] font-semibold tabular-nums text-[color:var(--haven-faint)]">
               {moodNumber(stateId, moodIndex)}
             </span>

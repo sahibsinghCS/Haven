@@ -9,8 +9,9 @@ import { AuthAlert } from "@/components/auth/auth-alert"
 import { AuthCard } from "@/components/auth/auth-card"
 import { AuthFormField, authInputClassName } from "@/components/auth/auth-form-field"
 import { PasswordField } from "@/components/auth/password-field"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { havenBtnPrimary } from "@/components/roomos/haven-primitives"
+import { cn } from "@/lib/utils"
 
 const initialState: AuthActionState = {}
 
@@ -58,14 +59,10 @@ export function SignInForm({ next, authError }: { next: string; authError?: stri
             Forgot password?
           </Link>
         </div>
-        <Button
-          type="submit"
-          disabled={pending}
-          className="h-11 w-full bg-[color:var(--haven-ink)] text-[color:var(--haven-paper)]"
-        >
+        <button type="submit" disabled={pending} className={cn(havenBtnPrimary, "w-full")}>
           {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
           {pending ? "Signing in…" : "Sign in"}
-        </Button>
+        </button>
       </form>
     </AuthCard>
   )

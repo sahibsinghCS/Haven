@@ -1,12 +1,12 @@
 "use client"
 
+import { havenCard } from "@/components/roomos/haven-primitives"
 import { roomStateLabel, roomStateLandingSkin } from "@/lib/roomos/state-meta"
 import { formatRhythmDuration } from "@/lib/roomos/rhythm-format"
 import type { RhythmMoodSlice } from "@/types/rhythm"
 import { cn } from "@/lib/utils"
 
-const cardShell =
-  "rounded-[1.35rem] border border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_96%,transparent)] shadow-[var(--haven-shadow-card)] ring-1 ring-[color:var(--haven-edge-light)]"
+const cardShell = havenCard
 
 export function MoodTimeBars({
   moods,

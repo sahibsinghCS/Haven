@@ -17,7 +17,8 @@ import { MoodPreferenceCard } from "@/components/roomos/moods/mood-preference-ca
 import { PreferencesTrainingInline } from "@/components/roomos/moods/preferences-training-inline"
 import { HavenOfflineBanner } from "@/components/roomos/haven-offline-banner"
 import { HavenSurfaceState } from "@/components/roomos/haven-surface-state"
-import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
+import { HavenDashboardSkeleton } from "@/components/roomos/haven-loading-states"
+import { HavenPageHeader } from "@/components/roomos/haven-primitives"
 import { useMoods } from "@/hooks/use-moods"
 import { Button } from "@/components/ui/button"
 import { Form } from "@/components/ui/form"
@@ -44,6 +45,7 @@ import {
   type PreferenceMatrixFormValues,
 } from "@/lib/roomos/preferences-schema"
 import { usePreferencesWsRefresh } from "@/hooks/use-preferences-ws-refresh"
+import { useClientHydrated } from "@/hooks/use-client-hydrated"
 import { loadRoomOsPreferences } from "@/lib/roomos/preferences-persistence"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { useRoomOsPreferencesStore } from "@/stores/roomos-store"
@@ -78,6 +80,7 @@ function ensureMoodInForm(
 
 export function PreferencesPageClient() {
   const [moodFilter, setMoodFilter] = useState<MoodFilter>("all")
+  const hydrated = useClientHydrated()
   const { user, enabled: authEnabled, session } = useHavenAuth()
   const presets = useRoomOsPreferencesStore((s) => s.presets)
   const activePresetId = useRoomOsPreferencesStore((s) => s.activePresetId)
@@ -178,8 +181,8 @@ export function PreferencesPageClient() {
   const moodsStillLoading = moodsQuery.isLoading
   const prefsStillLoading = !presets && docQuery.isLoading
 
-  if (prefsStillLoading || moodsStillLoading) {
-    return <PreferencesSkeleton />
+  if (!hydrated || prefsStillLoading || moodsStillLoading) {
+    return <HavenDashboardSkeleton />
   }
 
   if (!presets?.length || !activePresetId || !activePreset) {
@@ -285,13 +288,12 @@ export function PreferencesPageClient() {
           })}
         >
           <section aria-labelledby="moods-heading" className="flex flex-col gap-6">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="haven-eyebrow">Device scenes</p>
-                <h1 id="moods-heading" className="haven-page-title mt-1 text-[color:var(--haven-ink)]">
-                  Moods / Preferences
-                </h1>
-                <p className="haven-lede mt-2 max-w-lg text-[color:var(--haven-muted)]">
+            <HavenPageHeader
+              id="moods-heading"
+              eyebrow="Device scenes"
+              title="Moods / Preferences"
+              lede={
+                <>
                   Device scenes per mood. Teaching the camera and reviewing switches happen on{" "}
                   <Link href="/live" className="font-semibold text-teal-800 underline-offset-2 hover:underline">
                     Live
@@ -301,11 +303,11 @@ export function PreferencesPageClient() {
                     Review
                   </Link>
                   .
-                </p>
-              </div>
-            </div>
+                </>
+              }
+            />
             <MoodFilterBar moods={allMoods} value={moodFilter} onChange={setMoodFilter} />
-            <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
+            <div className="haven-list-stagger grid gap-5 lg:grid-cols-2 lg:gap-6">
               {visibleMoods.map((mood) => (
                 <MoodPreferenceCard
                   key={mood.id}
@@ -317,9 +319,20 @@ export function PreferencesPageClient() {
               {moodFilter === "all" ? <AddMoodWizard onMoodCreated={handleMoodCreated} /> : null}
             </div>
             {visibleMoods.length === 0 ? (
-              <p className="text-center text-[13px] text-[color:var(--haven-muted)]">
- No moods in this filter. try another tab or teach a mood on Live.
-              </p>
+              <HavenSurfaceState
+                variant="light"
+                tone="empty"
+                title="No moods in this filter"
+                description="Try another tab or teach a mood on Live."
+                footer={
+                  <Link
+                    href="/live"
+                    className={cn(roomosUi.havenPrimaryBtn, "rounded-full px-5 py-2.5 text-[13px] font-semibold text-white")}
+                  >
+                    Open Live
+                  </Link>
+                }
+              />
             ) : null}
           </section>
 

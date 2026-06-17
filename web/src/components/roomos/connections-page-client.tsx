@@ -1,20 +1,25 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Lightbulb, Plug, Plus, Radar, Thermometer } from "lucide-react"
+import { LayoutGrid, Lightbulb, Plug, Plus, Radar, Thermometer } from "lucide-react"
 import { toast } from "sonner"
 
 import { useHavenAuth } from "@/components/auth/haven-auth-provider"
 import { ConnectionDeviceRow } from "@/components/roomos/connections/connection-device-row"
 import { ConnectionSetupPanel } from "@/components/roomos/connections/connection-setup-panel"
-import { HavenAccountBar } from "@/components/roomos/haven-account-bar"
+import { LiveCamerasSection } from "@/components/roomos/live-cameras-section"
+import { RoomsSettingsSection } from "@/components/roomos/rooms-settings-section"
+import { HavenDashboardSkeleton } from "@/components/roomos/haven-loading-states"
 import { HavenOfflineBanner } from "@/components/roomos/haven-offline-banner"
-import { PreferencesSkeleton } from "@/components/roomos/roomos-loading-states"
+import { HavenPageHeader, HavenStatCard, havenCard, havenInsetPanel, havenNavIsland } from "@/components/roomos/haven-primitives"
+import { HavenSurfaceState } from "@/components/roomos/haven-surface-state"
 import { HavenSetupWizard } from "@/components/roomos/setup/haven-setup-wizard"
 import { isSetupMarkedComplete } from "@/lib/roomos/setup-session"
 import {
   discoverDevices,
+  fetchRoomsStatus,
   fetchSmartPlugStatus,
   saveDeviceSettingsDocument,
   testLights,
@@ -22,7 +27,8 @@ import {
   testThermostat,
   type DiscoveredDevice,
 } from "@/lib/roomos/api-client"
-import { integrationsQueryOptions } from "@/lib/roomos/dashboard-queries"
+import { integrationsQueryOptions, integrationsInitialData, integrationsQueryKey } from "@/lib/roomos/dashboard-queries"
+import { useClientHydrated } from "@/hooks/use-client-hydrated"
 import {
   canConnectCategory,
   deviceRowPresentation,
@@ -89,6 +95,8 @@ const CATEGORIES: CategoryConfig[] = [
   { arrayKey: "thermostats", category: "thermostat", title: "Thermostat", addLabel: "Add thermostat", icon: Thermometer },
 ]
 
+type ConnectionsTab = "cameras" | "devices"
+
 export function ConnectionsPageClient() {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState<DeviceSettingsDocument | null>(null)
@@ -102,8 +110,20 @@ export function ConnectionsPageClient() {
   const [scanned, setScanned] = useState<DiscoveredDevice[] | null>(null)
   const [plugPowerState, setPlugPowerState] = useState<Record<string, "on" | "off">>({})
   const [readingPlugId, setReadingPlugId] = useState<string | null>(null)
-  const [showSetupWizard, setShowSetupWizard] = useState(() => !isSetupMarkedComplete())
+  const [showSetupWizard, setShowSetupWizard] = useState(false)
+  const [connectionsTab, setConnectionsTab] = useState<ConnectionsTab>("cameras")
+  const hydrated = useClientHydrated()
   const { user, enabled: authEnabled, session } = useHavenAuth()
+
+  useEffect(() => {
+    if (!hydrated) return
+    setShowSetupWizard(!isSetupMarkedComplete())
+    const key = integrationsQueryKey(user?.id)
+    if (!queryClient.getQueryData(key)) {
+      const boot = integrationsInitialData()
+      if (boot) queryClient.setQueryData(key, boot)
+    }
+  }, [hydrated, user?.id, queryClient])
 
   const docQuery = useQuery({
     ...integrationsQueryOptions(user?.id),
@@ -111,6 +131,16 @@ export function ConnectionsPageClient() {
 
   const doc = dirty && draft ? draft : docQuery.data?.doc ?? null
   const apiOnline = docQuery.data?.apiOnline ?? true
+
+  const roomsQuery = useQuery({
+    queryKey: ["roomos", "rooms"],
+    queryFn: ({ signal }) => fetchRoomsStatus(signal),
+    staleTime: 5_000,
+    enabled: hydrated,
+  })
+
+  const rooms = roomsQuery.data?.rooms ?? []
+  const enabledCameraCount = useMemo(() => rooms.filter((r) => r.enabled).length, [rooms])
 
   const refreshPlugPower = useCallback(
     async (plug: SmartPlugDevice) => {
@@ -496,8 +526,44 @@ export function ConnectionsPageClient() {
     [doc],
   )
 
-  if (!doc && docQuery.isPending) {
-    return <PreferencesSkeleton />
+  if (!hydrated || (!doc && docQuery.isPending)) {
+    return <HavenDashboardSkeleton />
+  }
+
+  if (docQuery.isError && !doc) {
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 pb-20">
+        <HavenPageHeader
+          eyebrow="Devices"
+          title="Connections"
+          lede="Add plugs, lights, and thermostats on your network."
+        />
+        <HavenSurfaceState
+          variant="light"
+          tone="error"
+          role="alert"
+          title="Connections could not load"
+          description={
+            docQuery.error instanceof Error
+              ? docQuery.error.message
+              : "Haven may be offline. Start the backend and try again."
+          }
+          footer={
+            <button
+              type="button"
+              onClick={() => void docQuery.refetch()}
+              className={cn(roomosUi.havenPrimaryBtn, "rounded-full px-5 py-2.5 text-[13px] font-semibold text-white")}
+            >
+              Retry
+            </button>
+          }
+        />
+      </div>
+    )
+  }
+
+  if (!doc) {
+    return <HavenDashboardSkeleton />
   }
 
   const authRequired = docQuery.data?.authRequired ?? false
@@ -514,29 +580,66 @@ export function ConnectionsPageClient() {
         <HavenOfflineBanner context="connections" />
       ) : null}
 
-      <header className="relative overflow-hidden rounded-[1.5rem] border border-stone-200/80 bg-[linear-gradient(145deg,#fffefb_0%,#f8f4ec_48%,#f0ebe2_100%)] px-6 py-7 shadow-[var(--haven-shadow-card)] sm:px-8 sm:py-9">
-        <div className="pointer-events-none absolute -right-8 -top-20 h-48 w-64 rounded-full bg-teal-400/15 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -bottom-16 left-8 h-32 w-40 rounded-full bg-amber-200/20 blur-3xl" aria-hidden />
-        <p className="relative text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">Devices</p>
-        <div className="relative mt-2 flex flex-wrap items-end justify-between gap-4">
-          <h1 className="font-serif text-[clamp(2rem,4vw,2.85rem)] font-medium tracking-[-0.03em] text-stone-900">
-            Connections
-          </h1>
-          <p
-            className={cn(
-              "rounded-full border px-3.5 py-1 text-[12px] font-semibold",
-              connectionCounts.connected > 0
-                ? "border-teal-600/30 bg-teal-50 text-teal-900"
-                : "border-stone-300/80 bg-white/80 text-stone-600",
-            )}
+      <HavenPageHeader
+        eyebrow="Devices"
+        title="Connections"
+        lede="Add cameras and name each room, assign plugs and lights to that room, then tune moods in Preferences."
+        actions={
+          <div
+            className={cn(havenNavIsland, "inline-flex p-0.5")}
+            role="tablist"
+            aria-label="Connections sections"
           >
-            {connectionCounts.connected} of {connectionCounts.total} connected
-          </p>
-        </div>
-        <p className="relative mt-3 max-w-xl text-[15px] leading-relaxed text-stone-600">
-          Add as many plugs, lights, and thermostats as you need. Name each device whatever you like.
-        </p>
-      </header>
+            {(
+              [
+                { id: "cameras" as const, label: "Cameras & rooms" },
+                { id: "devices" as const, label: "Smart devices" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={connectionsTab === t.id}
+                onClick={() => setConnectionsTab(t.id)}
+                className={cn(
+                  "rounded-full px-3.5 py-2 text-[12px] font-semibold min-h-9 transition-colors sm:text-[13px]",
+                  roomosUi.focusRingLight,
+                  connectionsTab === t.id
+                    ? "bg-[linear-gradient(168deg,#1d1c1a_0%,#0d0c0b_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+                    : "text-[color:var(--haven-muted)] hover:text-[color:var(--haven-ink)]",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
+
+      <div className={cn("grid gap-3 sm:grid-cols-3", roomosUi.pageEnterStagger1)}>
+        <HavenStatCard
+          eyebrow="Cameras"
+          value={enabledCameraCount}
+          hint={`${rooms.length} room${rooms.length === 1 ? "" : "s"} configured`}
+          delta={enabledCameraCount > 0 ? "Live-ready" : "Add a camera"}
+          deltaTone={enabledCameraCount > 0 ? "teal" : "neutral"}
+        />
+        <HavenStatCard
+          eyebrow="Smart devices"
+          value={connectionCounts.connected}
+          hint={`${connectionCounts.total} device${connectionCounts.total === 1 ? "" : "s"} total`}
+          delta={connectionCounts.connected > 0 ? "Ready for moods" : "Add a device"}
+          deltaTone={connectionCounts.connected > 0 ? "teal" : "neutral"}
+        />
+        <HavenStatCard
+          eyebrow="API"
+          value={apiOnline ? "Online" : "Offline"}
+          hint={apiOnline ? "Device tests available" : "Start npm run demo"}
+          delta={apiOnline ? "Reachable" : "Local only"}
+          deltaTone={apiOnline ? "teal" : "amber"}
+        />
+      </div>
 
       {showSetupWizard ? (
         <HavenSetupWizard
@@ -545,8 +648,8 @@ export function ConnectionsPageClient() {
           className="max-w-3xl"
         />
       ) : (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200/80 bg-white/70 px-4 py-3">
-          <p className="text-[13px] text-stone-600">
+        <div className={cn("flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3", havenInsetPanel)}>
+          <p className="text-[13px] text-[color:var(--haven-muted)]">
             New to Haven? Run the guided setup for rooms and cameras.
           </p>
           <button
@@ -563,11 +666,76 @@ export function ConnectionsPageClient() {
         </div>
       )}
 
-      <section className="rounded-[1.25rem] border border-stone-200/80 bg-white/70 px-5 py-5 shadow-[var(--haven-shadow-card)] sm:px-6">
+      {connectionsTab === "cameras" ? (
+        <div className="flex flex-col gap-8">
+          <section className={cn(havenCard, "px-5 py-5 sm:px-6")}>
+            <LiveCamerasSection variant="light" />
+          </section>
+
+          {doc ? (
+            <section className={cn(havenCard, "px-5 py-5 sm:px-6")}>
+              <div className="mb-5 flex flex-col gap-2">
+                <h2 className="haven-section-title text-[color:var(--haven-ink)]">Devices per room</h2>
+                <p className="text-[13px] leading-relaxed text-[color:var(--haven-muted)]">
+                  Check which plugs, lights, and thermostats belong to each camera room. Only the{" "}
+                  <span className="font-semibold text-[color:var(--haven-ink-soft)]">active</span> room
+                  follows live mood inference on Live.
+                </p>
+              </div>
+              <RoomsSettingsSection devicesDoc={doc} variant="light" />
+            </section>
+          ) : null}
+
+          {rooms.length >= 2 ? (
+            <div className={cn(havenInsetPanel, "flex flex-wrap items-center justify-between gap-3 px-4 py-4")}>
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--haven-accent-soft)] text-[color:var(--haven-accent)]">
+                  <LayoutGrid className="size-4" aria-hidden />
+                </span>
+                <div>
+                  <p className="text-[13px] font-semibold text-[color:var(--haven-ink)]">Gallery view on Live</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-[color:var(--haven-muted)]">
+                    With two or more cameras, open Live and switch to Gallery to preview every room at once.
+                    The active room runs full inference; others stay in preview.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/live"
+                className={cn(
+                  "inline-flex min-h-10 shrink-0 items-center rounded-full px-4 py-2 text-[12px] font-semibold",
+                  roomosUi.havenPrimaryBtn,
+                  "text-white",
+                )}
+              >
+                Open Live
+              </Link>
+            </div>
+          ) : null}
+
+          {!apiOnline ? (
+            <p className={cn(roomosUi.prefsCallout, "px-4 py-3 text-[13px] text-[color:var(--haven-muted)]")}>
+              Camera setup needs the Haven API on this machine. Start{" "}
+              <code className="font-mono text-[12px]">npm run demo</code> to add rooms and pick webcams or phone
+              cameras.
+            </p>
+          ) : (
+            <p className={cn(havenInsetPanel, "px-4 py-3 text-[13px] leading-relaxed text-[color:var(--haven-muted)]")}>
+              <span className="font-semibold text-[color:var(--haven-ink-soft)]">Multiple DroidCams:</span> open
+              the app on each phone, tap Rescan, add one room per phone, and pick{" "}
+              <span className="font-semibold">Phone camera (auto-discover)</span> on each — Haven pairs one
+              phone per room. Explicit <span className="font-mono text-[12px]">DroidCam · IP</span> entries
+              are optional if you want to pin a specific device.
+            </p>
+          )}
+        </div>
+      ) : (
+        <>
+      <section className={cn(havenCard, "px-5 py-5 sm:px-6")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-serif text-[1.15rem] font-medium tracking-[-0.02em] text-stone-900">Scan my network</h2>
-            <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
+            <h2 className="haven-section-title text-[color:var(--haven-ink)]">Scan my network</h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-[color:var(--haven-muted)]">
               Find smart plugs and lights on your WiFi automatically. No typing IP addresses.
             </p>
           </div>
@@ -576,9 +744,10 @@ export function ConnectionsPageClient() {
             onClick={() => void handleScan()}
             disabled={scanning}
             className={cn(
-              "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold",
+              "inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold min-h-11",
               roomosUi.havenPrimaryBtn,
               scanning && "opacity-70",
+              scanning && "haven-scan-pulse",
             )}
           >
             <Radar className={cn("h-4 w-4", scanning && "animate-spin")} aria-hidden />
@@ -587,30 +756,43 @@ export function ConnectionsPageClient() {
         </div>
 
         {scanned && scanned.length > 0 ? (
-          <ul className="mt-4 flex flex-col gap-2">
+          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
             {scanned.map((device, i) => (
               <li key={`${device.host}-${device.category}-${i}`}>
                 <button
                   type="button"
                   onClick={() => applyDiscovered(device)}
-                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200/80 bg-white/80 px-3.5 py-2.5 text-left transition hover:border-teal-600/40 hover:bg-teal-50/50"
+                  className={cn(
+                    "group flex w-full items-center justify-between gap-3 rounded-xl border border-[color:var(--haven-line-strong)]",
+                    "bg-[color-mix(in_oklab,#fffefb_92%,transparent)] px-3.5 py-3 text-left transition",
+                    "hover:border-teal-600/35 hover:shadow-[var(--haven-shadow-card)] motion-safe:hover:-translate-y-px",
+                  )}
                 >
-                  <span className="flex items-center gap-2.5">
-                    {device.category === "lights" ? (
-                      <Lightbulb className="h-4 w-4 text-amber-500" aria-hidden />
-                    ) : (
-                      <Plug className="h-4 w-4 text-teal-700" aria-hidden />
-                    )}
-                    <span className="flex flex-col">
-                      <span className="text-[13.5px] font-medium text-stone-900">
+                  <span className="flex items-center gap-3">
+                    <span
+                      className={cn(
+                        "flex size-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset",
+                        device.category === "lights"
+                          ? "bg-amber-50 text-amber-700 ring-amber-200/80"
+                          : "bg-teal-50 text-teal-800 ring-teal-200/80",
+                      )}
+                    >
+                      {device.category === "lights" ? (
+                        <Lightbulb className="size-4" aria-hidden />
+                      ) : (
+                        <Plug className="size-4" aria-hidden />
+                      )}
+                    </span>
+                    <span className="flex flex-col min-w-0">
+                      <span className="truncate text-[13.5px] font-medium text-[color:var(--haven-ink)]">
                         {device.name || device.model || DISCOVERY_BRAND_LABEL[device.brand] || device.brand}
                       </span>
-                      <span className="font-mono text-[11.5px] text-stone-500">
+                      <span className="font-mono text-[11px] text-[color:var(--haven-faint)]">
                         {DISCOVERY_BRAND_LABEL[device.brand] ?? device.brand} · {device.host}
                       </span>
                     </span>
                   </span>
-                  <span className="rounded-full border border-stone-300/80 px-2.5 py-0.5 text-[11px] font-semibold text-stone-600">
+                  <span className="shrink-0 rounded-full border border-[color:var(--haven-line-strong)] bg-[color:var(--haven-accent-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-[color:var(--haven-accent)] group-hover:border-teal-600/30">
                     Add
                   </span>
                 </button>
@@ -618,13 +800,13 @@ export function ConnectionsPageClient() {
             ))}
           </ul>
         ) : scanned && scanned.length === 0 ? (
-          <p className="mt-4 text-[13px] text-stone-500">
+          <p className="mt-4 text-[13px] text-[color:var(--haven-muted)]">
             Nothing found yet. Power cycle the device, confirm it's on this WiFi, then scan again.
           </p>
         ) : null}
       </section>
 
-      <div className="flex flex-col gap-8">
+      <div className={cn("flex flex-col gap-8", "haven-list-stagger")}>
         {CATEGORIES.map(({ arrayKey, category, title, addLabel, icon: Icon }) => {
           const devices = doc.devices[arrayKey]
           const connectedInCategory = devices.filter((d) => d.connected).length
@@ -633,9 +815,9 @@ export function ConnectionsPageClient() {
             <section key={arrayKey} className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center justify-between gap-3 px-1">
                 <div className="flex items-center gap-2.5">
-                  <Icon className="size-4 text-stone-500" aria-hidden />
-                  <h2 className="text-[13px] font-semibold uppercase tracking-[0.2em] text-stone-600">{title}</h2>
-                  <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-600">
+                  <Icon className="size-4 text-[color:var(--haven-muted)]" aria-hidden />
+                  <h2 className="haven-eyebrow !tracking-[0.2em]">{title}</h2>
+                  <span className="rounded-full border border-[color:var(--haven-line-strong)] bg-[color:var(--haven-canvas-mist)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--haven-muted)]">
                     {connectedInCategory} connected
                   </span>
                 </div>
@@ -643,7 +825,9 @@ export function ConnectionsPageClient() {
                   type="button"
                   onClick={() => addDevice(arrayKey)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg border border-stone-300/90 bg-white/90 px-3 py-1.5 text-[12px] font-semibold text-stone-800 transition hover:border-teal-700/30 hover:bg-teal-50/60",
+                    "inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[color:var(--haven-line-strong)]",
+                    "bg-[color-mix(in_oklab,#fffefb_92%,transparent)] px-3 py-1.5 text-[12px] font-semibold text-[color:var(--haven-ink)]",
+                    "transition hover:border-teal-700/30 hover:bg-[color:var(--haven-accent-soft)]",
                   )}
                 >
                   <Plus className="size-3.5" aria-hidden />
@@ -652,7 +836,7 @@ export function ConnectionsPageClient() {
               </div>
 
               {devices.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-stone-300/80 bg-white/50 px-4 py-6 text-center text-[13px] text-stone-500">
+                <p className="rounded-xl border border-dashed border-[color:var(--haven-line-strong)] bg-[color-mix(in_oklab,#fffefb_55%,transparent)] px-4 py-6 text-center text-[13px] text-[color:var(--haven-muted)]">
                   No {title.toLowerCase()} yet. Click <span className="font-semibold text-stone-700">{addLabel}</span> or scan your network.
                 </p>
               ) : (
@@ -786,10 +970,10 @@ export function ConnectionsPageClient() {
           )
         })}
       </div>
+        </>
+      )}
 
-      <HavenAccountBar />
-
-      {dirty ? (
+      {dirty && connectionsTab === "devices" ? (
         <div className={cn(roomosUi.prefsStickyBar, "sticky bottom-4 flex justify-end px-4 py-3")}>
           <button
             type="button"

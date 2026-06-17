@@ -23,6 +23,7 @@ import {
   LandingEyebrow,
   LandingSectionShell,
 } from "@/components/landing/landing-primitives"
+import { havenAppHref } from "@/lib/roomos/app-entry"
 import { markLiveStartIntent } from "@/lib/roomos/live-session-start"
 import { cn } from "@/lib/utils"
 
@@ -104,7 +105,7 @@ export function FinalCtaSection() {
 
               <motion.div variants={rightLine} className="relative space-y-4">
                 <Link
-                  href="/live?start=1"
+                  href={havenAppHref("/live?start=1")}
                   onClick={() => markLiveStartIntent()}
                   className={cn(
                     landingBtnPrimaryLg,

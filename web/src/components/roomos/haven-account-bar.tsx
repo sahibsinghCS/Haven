@@ -40,7 +40,26 @@ export function HavenAccountBar() {
     )
   }
 
-  if (loading || !user) return null
+  if (loading) {
+    return (
+      <section
+        className={cn(
+          roomosUi.prefsCallout,
+          "flex items-center gap-3 border-[color:var(--haven-line-strong)] px-5 py-4",
+        )}
+        aria-busy="true"
+        aria-label="Loading account"
+      >
+        <div className="haven-shimmer size-10 shrink-0 rounded-full border border-[color:var(--haven-line-strong)]" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="haven-shimmer h-3 w-28 rounded-md border border-[color:var(--haven-line-strong)]" />
+          <div className="haven-shimmer h-3 w-40 max-w-full rounded-md border border-[color:var(--haven-line-strong)]" />
+        </div>
+      </section>
+    )
+  }
+
+  if (!user) return null
 
   return (
     <section

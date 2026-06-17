@@ -11,6 +11,8 @@ import { AuthFormField, authInputClassName } from "@/components/auth/auth-form-f
 import { PasswordField } from "@/components/auth/password-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { havenBtnPrimary } from "@/components/roomos/haven-primitives"
+import { cn } from "@/lib/utils"
 
 const initialState: AuthActionState = {}
 
@@ -24,7 +26,7 @@ export function SignUpForm({ next }: { next: string }) {
           We sent a confirmation link if your email provider accepts messages from Supabase. After
           confirming, return here to sign in.
         </AuthAlert>
-        <Button asChild className="mt-6 h-11 w-full bg-[color:var(--haven-ink)] text-[color:var(--haven-paper)]">
+        <Button asChild className={cn(havenBtnPrimary, "w-full")}>
           <Link href={`/login${next !== "/live" ? `?next=${encodeURIComponent(next)}`: ""}`}>
             Back to sign in
           </Link>
@@ -79,14 +81,10 @@ export function SignUpForm({ next }: { next: string }) {
         <p className="text-[12px] leading-relaxed text-[color:var(--haven-muted)]">
           By creating an account, you agree to use Haven on your own devices and network.
         </p>
-        <Button
-          type="submit"
-          disabled={pending}
-          className="h-11 w-full bg-[color:var(--haven-ink)] text-[color:var(--haven-paper)]"
-        >
+        <button type="submit" disabled={pending} className={cn(havenBtnPrimary, "mt-2 w-full")}>
           {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
           {pending ? "Creating account…" : "Create account"}
-        </Button>
+        </button>
       </form>
     </AuthCard>
   )
