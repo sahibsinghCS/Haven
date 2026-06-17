@@ -10,6 +10,7 @@ import {
   missingModelArtifacts,
   resolveVenvPython,
 } from "./lib/paths.mjs";
+import { shippedModelReady } from "./lib/shipped-model.mjs";
 import { banner, fail, heading, hint, ok } from "./lib/print.mjs";
 
 heading("RoomOS setup");
@@ -29,7 +30,11 @@ if (!resolveVenvPython()) {
   hint("  # activate venv, then: pip install -r requirements.txt");
 }
 if (missingModelArtifacts().length) {
-  steps.push("npm run setup:model");
+  if (shippedModelReady()) {
+    steps.push("npm run demo  # copies pre-trained model on first preflight");
+  } else {
+    steps.push("npm run setup:model  # shipped bundle missing; trains synthetic demo");
+  }
 }
 
 if (!steps.length) {
@@ -55,7 +60,11 @@ if (!resolveVenvPython()) {
 }
 
 if (missingModelArtifacts().length) {
-  hint("  npm run setup:model   # trains demo model to backend/data/models/latest");
+  if (shippedModelReady()) {
+    hint("  npm run demo   # pre-trained model copies automatically on preflight");
+  } else {
+    hint("  npm run setup:model   # trains demo model to backend/data/models/latest");
+  }
 }
 
 hint("");

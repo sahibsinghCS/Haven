@@ -1,0 +1,137 @@
+{
+  "project": {
+    "name": "roomos",
+    "data_dir": "data",
+    "log_dir": "data/logs"
+  },
+  "video": {
+    "source": 0,
+    "sample_fps": 6,
+    "resize_width": 480,
+    "read_timeout_sec": 5.0,
+    "frame_preprocess": {
+      "enabled": true,
+      "strip_letterbox": false,
+      "flip_horizontal": true,
+      "strip_droidcam_watermark": false
+    },
+    "preview": {
+      "max_fps": 20,
+      "max_width": 1920,
+      "jpeg_quality": 88,
+      "fit": "cover"
+    },
+    "backend": "auto"
+  },
+  "burst": {
+    "frame_count": 5,
+    "duration_seconds": 2.5,
+    "sampling_strategy": "uniform",
+    "stride_seconds": 1.5,
+    "min_collected_frames": 4
+  },
+  "labels": {
+    "classes": [
+      "work",
+      "sleep",
+      "relaxing",
+      "away"
+    ],
+    "unknown_class": "unknown"
+  },
+  "features": {
+    "enabled": {
+      "clip": true,
+      "pose": false,
+      "motion": true,
+      "posture": false
+    },
+    "clip": {
+      "model_name": "ViT-B-32",
+      "pretrained": "laion2b_s34b_b79k",
+      "device": "auto",
+      "prompts": [
+        "a person sitting at a desk working on a computer",
+        "a person typing at a laptop",
+        "a person lying in bed sleeping",
+        "a person playing video games with a controller",
+        "a person watching television and relaxing",
+        "a person relaxing while lying on a bed awake",
+        "a person reading a book in bed",
+        "a person scrolling on a phone while lying in bed",
+        "a person reading a book on a couch",
+        "a person eating a meal",
+        "a person exercising or stretching",
+        "a person wearing a headset playing a fast-paced video game at a desk",
+        "a person studying with notebooks and a laptop at a desk",
+        "a person lounging on a sofa watching television without a keyboard",
+        "a person holding a game controller looking at a TV screen",
+        "a person typing on a keyboard in front of a computer monitor at work",
+        "a student studying at a desk with laptop and textbooks",
+        "a person working from home at a desk with dual monitors",
+        "a person curled up asleep under blankets in bed",
+        "an empty room with no people",
+        "a dimly lit bedroom at night",
+        "a bright room during the day",
+        "an empty bedroom with a made bed",
+        "an unoccupied office desk with a monitor and keyboard",
+        "an empty living room couch",
+        "a video game console with controllers connected to a television",
+        "a large gaming monitor displaying a colourful video game",
+        "an open laptop with a document on a desk",
+        "a tidy work desk with a monitor and a notebook",
+        "a cozy sofa with throw pillows and a blanket"
+      ],
+      "keep_embedding": true
+    },
+    "pose": {
+      "model_complexity": 1,
+      "min_detection_confidence": 0.5,
+      "min_tracking_confidence": 0.5
+    },
+    "motion": {
+      "diff_blur_ksize": 5,
+      "grid": [
+        4,
+        4
+      ]
+    }
+  },
+  "smoothing": {
+    "min_confidence": 0.45,
+    "prob_ema_alpha": 0.35,
+    "confirm_bursts": 1,
+    "cooldown_sec": 4.0
+  },
+  "training": {
+    "features_path": "data/features/multi_room_features.parquet",
+    "labels_path": "data/labels/labels.csv",
+    "output_dir": "data/models/latest",
+    "random_state": 42,
+    "split": {
+      "strategy": "by_source",
+      "val_size": 0.15,
+      "test_size": 0.15
+    },
+    "class_weighting": "balanced",
+    "xgboost": {
+      "objective": "multi:softprob",
+      "eval_metric": "mlogloss",
+      "n_estimators": 800,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "subsample": 0.8,
+      "colsample_bytree": 0.7,
+      "min_child_weight": 6,
+      "reg_lambda": 4.0,
+      "reg_alpha": 0.5,
+      "n_jobs": 0,
+      "tree_method": "hist",
+      "early_stopping_rounds": 50,
+      "colsample_bylevel": 0.85,
+      "gamma": 0.2
+    },
+    "use_row_weights": true
+  },
+  "_source_config": "C:\\Users\\SS\\RoomOS\\backend\\configs\\train_multi_room.yaml"
+}

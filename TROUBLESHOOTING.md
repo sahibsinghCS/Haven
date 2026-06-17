@@ -69,15 +69,23 @@ Should print `ok` and `Python 3.11.x`.
 
 ### Fix
 
-From **repo root**:
+From **repo root** (pre-trained bundle is in the repo):
+
+```bash
+npm run setup:shipped-model
+npm run train:verify
+npm run demo
+```
+
+Or just `npm run demo` — preflight copies the shipped model automatically when `backend/shipped_models/multi_room_v2/` exists.
+
+**Fallback** (synthetic bootstrap, ~5–15 min, downloads OpenCLIP once):
 
 ```bash
 npm run setup:model
 npm run train:verify
 npm run demo
 ```
-
-First run downloads **OpenCLIP** weights (~minutes, needs network once).
 
 ### Verify files exist
 

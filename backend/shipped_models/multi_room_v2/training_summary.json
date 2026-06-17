@@ -1,0 +1,21 @@
+{
+  "n_rows_total": 2596,
+  "n_train": 1812,
+  "n_val": 379,
+  "n_test": 405,
+  "class_counts": {
+    "relaxing": 755,
+    "away": 735,
+    "work": 598,
+    "sleep": 502,
+    "reading": 6
+  },
+  "classes": [
+    "work",
+    "sleep",
+    "relaxing",
+    "away",
+    "reading"
+  ],
+  "n_features": 233
+}

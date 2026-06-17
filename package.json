@@ -9,6 +9,7 @@
     "setup:venv": "node scripts/ensure-venv.mjs",
     "setup:install": "node scripts/setup.mjs --install-deps",
     "setup:model": "node scripts/ensure-venv.mjs && node scripts/run-python.mjs scripts/train_roomos.py demo",
+    "setup:shipped-model": "node scripts/setup-shipped-model.mjs",
     "preflight": "node scripts/preflight.mjs",
     "preflight:py": "node scripts/run-python.mjs scripts/demo_preflight.py",
     "probe:cameras": "node scripts/run-python.mjs scripts/probe_cameras.py",

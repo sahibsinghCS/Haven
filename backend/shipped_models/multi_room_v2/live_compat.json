@@ -1,0 +1,23 @@
+{
+  "verified_at_train": true,
+  "inference_config": "C:\\Users\\SS\\RoomOS\\backend\\configs\\inference.yaml",
+  "ok": true,
+  "bundle_dir": "C:\\Users\\SS\\RoomOS\\backend\\data\\models\\latest",
+  "train_config_source": "(provided)",
+  "bundle_classes": [
+    "work",
+    "sleep",
+    "relaxing",
+    "away",
+    "reading"
+  ],
+  "inference_classes": [
+    "work",
+    "sleep",
+    "relaxing",
+    "away"
+  ],
+  "n_bundle_columns": 233,
+  "n_expected_columns": 233,
+  "mismatches": []
+}

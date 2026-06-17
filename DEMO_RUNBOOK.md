@@ -15,11 +15,11 @@ Do this **before** the judging room, on the same machine you will present from.
 | 1 | Clone repo, `cd RoomOS` | You are at repo root |
 | 2 | `npm install && npm install --prefix web` | No npm errors |
 | 3 | `npm run setup:venv` | `backend/.venv` with Python **3.11** (Windows-safe; do not use bare `python -m venv`) |
-| 4 | `npm run setup:model` | `backend/data/models/latest/model.json` exists (~5–15 min first run) |
+| 4 | `npm run demo` (or `npm run preflight` first) | Pre-trained model copies from `backend/shipped_models/multi_room_v2/` → `data/models/latest/` |
 | 5 | `npm run train:verify` | Prints compatibility OK |
 | 6 | Copy `backend/.env.example` → `backend/.env` (optional) | Ports/autostart as you want |
-| 7 | Set camera in `backend/configs/default.yaml` → `video.source: 0` (or your index) | You know which webcam index works |
-| 8 | `npm run demo` → open http://127.0.0.1:3000/live | Preview + state updates within ~30s |
+| 7 | Set camera in setup wizard on `/live` (or `configs/default.yaml`) | Webcam index or DroidCam |
+| 8 | Confirm preview + state updates on `/live` | Within ~30s after camera connect |
 | 9 | (Optional) Personal model: `data:init` → `capture-stills` → `train:images` → `train:verify` | Better labels for your room |
 
 ### B. Day-of demo (every session)

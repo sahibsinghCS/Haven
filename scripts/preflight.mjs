@@ -13,6 +13,7 @@ import {
   resolveVenvPython,
 } from "./lib/paths.mjs";
 import { fail, heading, hint, ok, warn } from "./lib/print.mjs";
+import { installShippedModel, shippedModelReady } from "./lib/shipped-model.mjs";
 
 function venvImportCheck(py) {
   const r = spawnSync(
@@ -77,19 +78,35 @@ export function runPreflight(opts = {}) {
     }
   }
 
-  const missing = missingModelArtifacts();
+  let missing = missingModelArtifacts();
+  if (missing.length && shippedModelReady()) {
+    const installed = installShippedModel();
+    if (installed.ok) {
+      ok("Pre-trained model (copied from backend/shipped_models/multi_room_v2)");
+      missing = missingModelArtifacts();
+    } else {
+      warn(installed.reason);
+    }
+  }
+
   if (missing.length) {
     if (allowDemoReplay) {
       warn("Model bundle missing — OK for demo replay mode");
-      hint("  Live camera mode still needs: npm run setup:model");
+      hint("  Live camera mode: ensure backend/shipped_models/multi_room_v2/ exists, then npm run demo");
+      hint("  Or train synthetic bootstrap: npm run setup:model");
     } else {
       blockers.push("model bundle missing");
       fail(`Model not ready: backend/data/models/latest/`);
       for (const name of missing) fail(`  missing ${name}`);
       hint("");
-      hint("  One-time setup (~5–15 min, downloads OpenCLIP on first train):");
+      if (!shippedModelReady()) {
+        hint("  Pre-trained bundle missing from clone — expected at:");
+        hint("    backend/shipped_models/multi_room_v2/");
+        hint("  Maintainer: commit that folder, or run npm run train:multi-room-v2 and copy artifacts.");
+      }
+      hint("");
+      hint("  Fallback — train synthetic demo model (~5–15 min, downloads OpenCLIP once):");
       hint("    npm run setup:model");
-      hint("  or:  npm run train:demo");
       hint("");
       hint("  Or deterministic replay (no model):");
       hint("    npm run demo:replay");
@@ -97,7 +114,7 @@ export function runPreflight(opts = {}) {
       hint("  Then start the demo:");
       hint("    npm run demo");
     }
-  } else {
+  } else if (!missing.length) {
     ok(`Model bundle (${getBundleDir()})`);
   }
 
