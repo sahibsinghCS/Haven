@@ -47,7 +47,7 @@ export const LivePresenceRail = memo(function LivePresenceRail({
       aria-label="Rooms in this home"
     >
       {rooms.map((room) => {
-        const isActive = room.id === activeRoomId || room.isActive
+        const isActive = room.id === activeRoomId
         const mood = roomDisplayMood(room, snapshot)
         const role = roomScanRole(room, orchestratorMode)
         const health = roomSourceHealth(room)

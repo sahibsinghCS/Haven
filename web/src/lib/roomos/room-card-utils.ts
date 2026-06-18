@@ -43,13 +43,15 @@ export function roomScanRole(
   orchestratorMode: OrchestratorMode,
 ): RoomScanRole {
   if (!room.enabled) return "off"
-  if (room.inferenceActive) return "inferring"
-  if (orchestratorMode === "away") return "standby"
+  if (orchestratorMode === "away") {
+    return room.inferenceActive ? "grace_scan" : "standby"
+  }
   if (orchestratorMode === "grace") {
     if (room.isActive) return "active_hold"
     return "grace_scan"
   }
   if (room.isActive) return "inferring"
+  if (room.inferenceActive) return "grace_scan"
   return "preview"
 }
 
@@ -57,7 +59,7 @@ export function roomDisplayMood(
   room: RoomStatus,
   snapshot: LiveInferenceSnapshot | null,
 ): string | null {
-  if (room.inferenceActive && snapshot && snapshot.roomId === room.id) {
+  if (room.isActive && snapshot) {
     return snapshot.primaryState
   }
   return room.lastMood
@@ -105,7 +107,6 @@ export function optimisticActiveRoomPatch(
     rooms: status.rooms.map((room) => ({
       ...room,
       isActive: room.id === roomId,
-      inferenceActive: room.id === roomId && room.enabled,
     })),
   }
 }

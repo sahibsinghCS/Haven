@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
-import { Camera, Plus } from "lucide-react"
+import { Camera, Loader2, Plus } from "lucide-react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 
@@ -11,14 +11,36 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   createRoom,
   deleteRoom,
   fetchCameras,
   fetchRoomsStatus,
   setRoomEnabled,
   updateRoom,
+  validateCameraSource,
   type CameraOption,
+  type CamerasResponse,
 } from "@/lib/roomos/api-client"
+import {
+  buildCameraSource,
+  CAMERA_CONNECTION_TYPES,
+  cameraValueKey,
+  defaultManualFields,
+  inferConnectionType,
+  manualFieldsFromSource,
+  WIFI_CAMERA_BRANDS,
+  wifiBrandOption,
+  type CameraConnectionType,
+  type CameraManualFields,
+  type WifiCameraBrand,
+} from "@/lib/roomos/camera-connection-fields"
 import { formatCameraDeviceLabel } from "@/lib/roomos/format-camera-device-label"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import { useLiveSessionStore } from "@/stores/live-session-store"
@@ -29,17 +51,6 @@ type DraftCamera = {
   id: string
   name: string
   cameraValue: string | null
-}
-
-function cameraValueKey(source: number | string, backend: string): string {
-  return `${source}::${backend}`
-}
-
-function parseCameraValue(value: string): { source: number | string; backend: string } {
-  const [sourceRaw, backend] = value.split("::")
-  const source =
-    sourceRaw !== undefined && /^\d+$/.test(sourceRaw) ? Number(sourceRaw) : sourceRaw
-  return { source: source ?? 0, backend: backend || "auto" }
 }
 
 function cameraDetail(
@@ -61,7 +72,237 @@ function cameraDetail(
   if (typeof room.camera.source === "number") {
     return `Webcam index ${room.camera.source}`
   }
-  return "Phone camera"
+  const src = String(room.camera.source)
+  if (src.startsWith("rtsp://")) {
+    return `WiFi camera · ${src.replace(/^rtsp:\/\/[^@]*@/, "rtsp://")}`
+  }
+  if (src.startsWith("http://") || src.startsWith("https://")) {
+    return `Network camera · ${src.replace(/^https?:\/\//, "").split("/")[0]}`
+  }
+  return "Network camera"
+}
+
+function WifiCameraFields({
+  variant,
+  streamKind,
+  fields,
+  discoveredWifi,
+  onChange,
+  onPickDiscoveredHost,
+}: {
+  variant: "light" | "dark"
+  streamKind: "rtsp" | "http"
+  fields: CameraManualFields
+  discoveredWifi: NonNullable<CamerasResponse["discoveredWifi"]>
+  onChange: (fields: CameraManualFields) => void
+  onPickDiscoveredHost: (host: string) => void
+}) {
+  const isDark = variant === "dark"
+  const brand = wifiBrandOption(
+    streamKind === "http" ? "generic_http" : fields.wifiBrand,
+  )
+  const brands = WIFI_CAMERA_BRANDS.filter((b) =>
+    streamKind === "http" ? b.id === "generic_http" : b.id !== "generic_http",
+  )
+
+  const inputClass = cn(
+    "font-mono text-sm",
+    isDark ? "border-white/10 bg-black/40 text-zinc-100" : "border-stone-200/80 bg-white/90",
+  )
+
+  return (
+    <div className="space-y-4">
+      {discoveredWifi.length > 0 && streamKind === "rtsp" ? (
+        <div className="space-y-2">
+          <p className={cn("text-[12px] font-medium", isDark ? "text-zinc-400" : "text-stone-600")}>
+            Found on your network (ONVIF)
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {discoveredWifi.map((cam) => (
+              <button
+                key={cam.host}
+                type="button"
+                onClick={() => onPickDiscoveredHost(cam.host)}
+                className={cn(
+                  "rounded-lg border px-3 py-1.5 text-[12px] font-medium transition",
+                  isDark
+                    ? "border-white/15 bg-black/30 text-zinc-200 hover:border-teal-500/40"
+                    : "border-stone-200 bg-white text-stone-800 hover:border-teal-600/40",
+                )}
+              >
+                {cam.label || cam.host}
+              </button>
+            ))}
+          </div>
+          <p className={cn("text-[11px]", isDark ? "text-zinc-500" : "text-stone-500")}>
+            Tap a camera, then enter its username and password below (same as Home Assistant ONVIF).
+          </p>
+        </div>
+      ) : null}
+
+      {streamKind === "rtsp" ? (
+        <div className="space-y-2">
+          <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+            Camera brand
+          </Label>
+          <Select
+            value={fields.wifiBrand}
+            onValueChange={(v) =>
+              onChange({
+                ...fields,
+                wifiBrand: v as WifiCameraBrand,
+                port: wifiBrandOption(v as WifiCameraBrand).defaultPort,
+              })
+            }
+          >
+            <SelectTrigger className={cn("w-full text-xs", inputClass)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              className={cn(
+                isDark
+                  ? "border-white/10 bg-zinc-950 text-zinc-100"
+                  : "border-stone-200/80 bg-white text-stone-900",
+              )}
+            >
+              {brands.map((b) => (
+                <SelectItem key={b.id} value={b.id} className="text-xs">
+                  <span className="flex flex-col gap-0.5">
+                    <span>{b.label}</span>
+                    <span className="text-[10px] font-normal text-zinc-500">{b.hint}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
+      {!fields.useAdvancedUrl ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+                Camera IP address
+              </Label>
+              <Input
+                value={fields.host}
+                onChange={(e) => onChange({ ...fields, host: e.target.value })}
+                placeholder="192.168.1.50"
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+                Port
+              </Label>
+              <Input
+                value={fields.port}
+                onChange={(e) => onChange({ ...fields, port: e.target.value })}
+                placeholder={brand.defaultPort}
+                className={inputClass}
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+                Username
+              </Label>
+              <Input
+                value={fields.username}
+                onChange={(e) => onChange({ ...fields, username: e.target.value })}
+                placeholder="admin"
+                className={inputClass}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+                Password
+              </Label>
+              <Input
+                type="password"
+                value={fields.password}
+                onChange={(e) => onChange({ ...fields, password: e.target.value })}
+                placeholder="••••••••"
+                className={inputClass}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          {streamKind === "rtsp" &&
+          ["hikvision", "reolink", "amcrest", "dahua"].includes(fields.wifiBrand) ? (
+            <label
+              className={cn(
+                "flex cursor-pointer items-center gap-2 text-[12px]",
+                isDark ? "text-zinc-400" : "text-stone-600",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={fields.substream}
+                onChange={(e) => onChange({ ...fields, substream: e.target.checked })}
+                className="size-3.5 rounded border-stone-300"
+              />
+              Use substream (lower resolution, less bandwidth)
+            </label>
+          ) : null}
+          <div className="space-y-1.5">
+            <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+              {brand.streamLabel}
+            </Label>
+            <Input
+              value={fields.path}
+              onChange={(e) => onChange({ ...fields, path: e.target.value })}
+              placeholder={
+                streamKind === "rtsp" ? "/stream1 or leave blank for brand default" : "/mjpeg"
+              }
+              className={inputClass}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="space-y-1.5">
+          <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+            {streamKind === "rtsp" ? "Full RTSP URL" : "Full HTTP URL"}
+          </Label>
+          <Input
+            value={streamKind === "rtsp" ? fields.rtspUrl : fields.httpUrl}
+            onChange={(e) =>
+              onChange(
+                streamKind === "rtsp"
+                  ? { ...fields, rtspUrl: e.target.value }
+                  : { ...fields, httpUrl: e.target.value },
+              )
+            }
+            placeholder={
+              streamKind === "rtsp"
+                ? "rtsp://user:pass@192.168.1.50:554/stream1"
+                : "http://192.168.1.50/mjpeg"
+            }
+            className={inputClass}
+          />
+        </div>
+      )}
+
+      <label
+        className={cn(
+          "flex cursor-pointer items-center gap-2 text-[12px]",
+          isDark ? "text-zinc-500" : "text-stone-500",
+        )}
+      >
+        <input
+          type="checkbox"
+          checked={fields.useAdvancedUrl}
+          onChange={(e) => onChange({ ...fields, useAdvancedUrl: e.target.checked })}
+          className="size-3.5 rounded border-stone-300"
+        />
+        Advanced: paste full {streamKind === "rtsp" ? "RTSP" : "HTTP"} URL (Home Assistant Generic
+        Camera style)
+      </label>
+    </div>
+  )
 }
 
 function CameraConnectForm({
@@ -72,9 +313,10 @@ function CameraConnectForm({
   forNewRoom,
   excludeRoomId,
   initialValue,
+  initialSource,
   connectLabel,
   connecting,
-  onSubmit,
+  onConnect,
   variant,
 }: {
   name: string
@@ -84,12 +326,101 @@ function CameraConnectForm({
   forNewRoom?: boolean
   excludeRoomId?: string
   initialValue?: string
+  initialSource?: number | string
   connectLabel: string
   connecting: boolean
-  onSubmit: () => void
+  onConnect: (payload: { name: string; source: number | string; backend: string }) => void
   variant: "light" | "dark"
 }) {
   const isDark = variant === "dark"
+  const [connectionType, setConnectionType] = useState<CameraConnectionType>(() =>
+    initialSource !== undefined ? inferConnectionType(initialSource) : "scan",
+  )
+  const [manualFields, setManualFields] = useState<CameraManualFields>(() =>
+    initialSource !== undefined ? manualFieldsFromSource(initialSource) : defaultManualFields(),
+  )
+  const [validating, setValidating] = useState(false)
+  const [scanSummary, setScanSummary] = useState<string | null>(null)
+  const [discoveredWifi, setDiscoveredWifi] = useState<
+    NonNullable<CamerasResponse["discoveredWifi"]>
+  >([])
+
+  const onScanComplete = useCallback((data: CamerasResponse) => {
+    const scan = data.scan
+    if (data.discoveredWifi?.length) {
+      setDiscoveredWifi(data.discoveredWifi)
+    }
+    if (!scan) return
+    const parts: string[] = []
+    if (scan.phonesFound > 0) {
+      parts.push(
+        `${scan.phonesFound} phone${scan.phonesFound === 1 ? "" : "s"} on Wi‑Fi`,
+      )
+      if (scan.phonesAvailable > 0) {
+        parts.push(`${scan.phonesAvailable} available for this room`)
+      }
+      if (scan.phonesAssigned > 0) {
+        parts.push(`${scan.phonesAssigned} already assigned to other rooms`)
+      }
+    }
+    if (scan.onvifFound && scan.onvifFound > 0) {
+      parts.push(
+        `${scan.onvifFound} ONVIF camera${scan.onvifFound === 1 ? "" : "s"} on LAN — use WiFi (RTSP) and enter credentials`,
+      )
+    }
+    if (scan.usbProbeSkipped) {
+      parts.push("USB scan skipped so your live feed stays connected")
+    }
+    setScanSummary(parts.length > 0 ? parts.join(" · ") : null)
+  }, [])
+
+  const applyDiscoveredHost = (host: string) => {
+    setConnectionType("wifi_rtsp")
+    setManualFields((f) => ({
+      ...f,
+      host,
+      port: "554",
+      wifiBrand: "onvif",
+    }))
+  }
+
+  const canConnect =
+    connectionType === "scan"
+      ? Boolean(cameraValue)
+      : connectionType === "phone_ip"
+        ? Boolean(manualFields.host.trim())
+        : connectionType === "wifi_rtsp"
+          ? manualFields.useAdvancedUrl
+            ? Boolean(manualFields.rtspUrl.trim())
+            : Boolean(manualFields.host.trim())
+          : manualFields.useAdvancedUrl
+            ? Boolean(manualFields.httpUrl.trim())
+            : Boolean(manualFields.host.trim())
+
+  const handleConnect = async () => {
+    const built = buildCameraSource(connectionType, manualFields, cameraValue)
+    if (!built) {
+      toast.error("Complete the camera fields before connecting.")
+      return
+    }
+    setValidating(true)
+    try {
+      const result = await validateCameraSource(built.source)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      onConnect({
+        name,
+        source: built.source,
+        backend: built.backend,
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not verify camera")
+    } finally {
+      setValidating(false)
+    }
+  }
 
   return (
     <div className="space-y-5 font-sans">
@@ -101,10 +432,12 @@ function CameraConnectForm({
             : "border-stone-200/80 bg-white/80 text-stone-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]",
         )}
       >
-        Pick a webcam or DroidCam feed. For multiple phones, open DroidCam on each device, tap{" "}
-        <span className="font-semibold">Rescan</span>, then choose{" "}
-        <span className="font-semibold">Phone camera (auto-discover)</span> on every room card — Haven
-        assigns the next free phone to each room automatically.
+        One card per camera feed — like Home Assistant&apos;s one entity per camera. Adding a
+        second camera does <span className="font-semibold">not</span> switch the live view on{" "}
+        <span className="font-semibold">/live</span>. Use <span className="font-semibold">WiFi
+        (RTSP)</span> for IP cameras (Reolink, Hikvision, Tapo, ONVIF). Rescan finds ONVIF devices
+        on your LAN; then enter the camera username and password. Bluetooth cameras: use the
+        manufacturer app&apos;s Wi‑Fi stream URL here.
       </div>
 
       <div className="space-y-2">
@@ -132,26 +465,127 @@ function CameraConnectForm({
             isDark ? "text-zinc-500" : "text-stone-500",
           )}
         >
-          Camera source
+          Connection type
         </p>
-        <LiveCameraSelect
-          className="w-full max-w-none"
-          tone={isDark ? "dark" : "light"}
-          pickerOnly
-          forNewRoom={forNewRoom}
-          excludeRoomId={excludeRoomId}
-          initialValue={initialValue}
-          onSelectValue={onCameraChange}
-        />
+        <Select
+          value={connectionType}
+          onValueChange={(v) => setConnectionType(v as CameraConnectionType)}
+        >
+          <SelectTrigger
+            className={cn(
+              "w-full text-xs",
+              isDark
+                ? "border-white/10 bg-zinc-950/70 text-zinc-100"
+                : "border-stone-200/80 bg-white/90 text-stone-900",
+            )}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent
+            className={cn(
+              isDark
+                ? "border-white/10 bg-zinc-950 text-zinc-100"
+                : "border-stone-200/80 bg-white text-stone-900",
+            )}
+          >
+            {CAMERA_CONNECTION_TYPES.map((opt) => (
+              <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                <span className="flex flex-col gap-0.5">
+                  <span>{opt.label}</span>
+                  <span className="text-[10px] font-normal text-zinc-500">{opt.hint}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {connectionType === "scan" ? (
+        <div className="space-y-2">
+          <p
+            className={cn(
+              "text-[10px] font-semibold uppercase tracking-[0.16em]",
+              isDark ? "text-zinc-500" : "text-stone-500",
+            )}
+          >
+            Scanned devices
+          </p>
+          <LiveCameraSelect
+            className="w-full max-w-none"
+            tone={isDark ? "dark" : "light"}
+            pickerOnly
+            forNewRoom={forNewRoom}
+            excludeRoomId={excludeRoomId}
+            initialValue={initialValue}
+            onSelectValue={onCameraChange}
+            onScanComplete={onScanComplete}
+          />
+          {scanSummary ? (
+            <p className={cn("text-[12px] leading-relaxed", isDark ? "text-zinc-500" : "text-stone-500")}>
+              {scanSummary}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {connectionType === "phone_ip" ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+              Phone IP address
+            </Label>
+            <Input
+              value={manualFields.host}
+              onChange={(e) => setManualFields((f) => ({ ...f, host: e.target.value }))}
+              placeholder="192.168.1.10"
+              className={cn(
+                "font-mono text-sm",
+                isDark ? "border-white/10 bg-black/40 text-zinc-100" : "border-stone-200/80 bg-white/90",
+              )}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className={cn("text-[12px]", isDark ? "text-zinc-400" : "text-stone-600")}>
+              Port
+            </Label>
+            <Input
+              value={manualFields.port}
+              onChange={(e) => setManualFields((f) => ({ ...f, port: e.target.value }))}
+              placeholder="4747"
+              className={cn(
+                "font-mono text-sm",
+                isDark ? "border-white/10 bg-black/40 text-zinc-100" : "border-stone-200/80 bg-white/90",
+              )}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {connectionType === "wifi_rtsp" || connectionType === "wifi_http" ? (
+        <WifiCameraFields
+          variant={variant}
+          streamKind={connectionType === "wifi_rtsp" ? "rtsp" : "http"}
+          fields={manualFields}
+          discoveredWifi={discoveredWifi}
+          onChange={setManualFields}
+          onPickDiscoveredHost={applyDiscoveredHost}
+        />
+      ) : null}
 
       <Button
         type="button"
-        disabled={!cameraValue || connecting}
-        onClick={onSubmit}
+        disabled={!canConnect || connecting || validating}
+        onClick={() => void handleConnect()}
         className={cn("gap-2", roomosUi.havenPrimaryBtn)}
       >
-        {connectLabel}
+        {validating ? (
+          <>
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            Checking camera…
+          </>
+        ) : (
+          connectLabel
+        )}
       </Button>
     </div>
   )
@@ -200,20 +634,23 @@ export function LiveCamerasSection({
   )
 
   const create = useMutation({
-    mutationFn: async (draft: DraftCamera) => {
-      if (!draft.cameraValue) throw new Error("Pick a camera first")
-      const { source, backend } = parseCameraValue(draft.cameraValue)
+    mutationFn: async (payload: {
+      name: string
+      source: number | string
+      backend: string
+      draftId: string
+    }) => {
       return createRoom({
-        name: draft.name.trim() || "Room",
-        camera: { source, backend },
+        name: payload.name.trim() || "Room",
+        camera: { source: payload.source, backend: payload.backend },
       })
     },
-    onSuccess: (data, draft) => {
+    onSuccess: (data, payload) => {
       syncRooms(data)
-      setDrafts((prev) => prev.filter((d) => d.id !== draft.id))
+      setDrafts((prev) => prev.filter((d) => d.id !== payload.draftId))
       setDraftEdits((prev) => {
         const next = { ...prev }
-        delete next[draft.id]
+        delete next[payload.draftId]
         return next
       })
       setExpandedId(null)
@@ -223,19 +660,15 @@ export function LiveCamerasSection({
   })
 
   const saveRoom = useMutation({
-    mutationFn: async ({
-      roomId,
-      name,
-      cameraValue,
-    }: {
+    mutationFn: async (payload: {
       roomId: string
       name: string
-      cameraValue: string
+      source: number | string
+      backend: string
     }) => {
-      const { source, backend } = parseCameraValue(cameraValue)
-      return updateRoom(roomId, {
-        name: name.trim() || undefined,
-        camera: { source, backend },
+      return updateRoom(payload.roomId, {
+        name: payload.name.trim() || undefined,
+        camera: { source: payload.source, backend: payload.backend },
         enabled: true,
       })
     },
@@ -354,8 +787,9 @@ export function LiveCamerasSection({
           isDark ? "text-zinc-500" : "text-stone-600",
         )}
       >
-        One card per camera feed. Each DroidCam phone needs its own card — rescan after opening
-        the app on every phone, then pick a different stream per room.
+        One card per camera feed. Each phone or WiFi camera needs its own card — use{" "}
+        <span className="font-semibold">Phone by IP</span> for DroidCam at a fixed address like
+        192.168.1.10, or Rescan after opening the app on every phone.
       </p>
 
       {rooms.length === 0 && drafts.length === 0 ? (
@@ -431,12 +865,18 @@ export function LiveCamerasSection({
                 }
                 excludeRoomId={room.id}
                 initialValue={edit.cameraValue}
+                initialSource={room.camera.source}
                 connectLabel={room.enabled ? "Save camera" : "Connect camera"}
                 connecting={busy}
-                onSubmit={() => {
+                onConnect={(payload) => {
                   setBusyId(room.id)
                   saveRoom.mutate(
-                    { roomId: room.id, name: edit.name, cameraValue: edit.cameraValue },
+                    {
+                      roomId: room.id,
+                      name: payload.name,
+                      source: payload.source,
+                      backend: payload.backend,
+                    },
                     { onSettled: () => setBusyId(null) },
                   )
                 }}
@@ -490,9 +930,17 @@ export function LiveCamerasSection({
                 forNewRoom
                 connectLabel="Connect camera"
                 connecting={busy}
-                onSubmit={() => {
+                onConnect={(payload) => {
                   setBusyId(draft.id)
-                  create.mutate(getDraft(draft.id), { onSettled: () => setBusyId(null) })
+                  create.mutate(
+                    {
+                      draftId: draft.id,
+                      name: payload.name,
+                      source: payload.source,
+                      backend: payload.backend,
+                    },
+                    { onSettled: () => setBusyId(null) },
+                  )
                 }}
               />
             </CameraDeviceRow>

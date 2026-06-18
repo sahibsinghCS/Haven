@@ -41,6 +41,9 @@ video:
   # DSHOW. Run `npm run probe:cameras` to see what each backend reports.
   # Valid: auto | any | dshow | msmf | v4l2 | avfoundation
   backend: auto
+  # Always probe these LAN IPs first when scanning for phone cameras (DroidCam HTTP).
+  known_phone_hosts:
+    - 192.168.1.10
 
 # Burst-based multi-frame classification (not dense continuous video modeling).
 # Each burst = one XGBoost sample: collect frames over burst_duration_seconds,

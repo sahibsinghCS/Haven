@@ -86,13 +86,25 @@ def list_cameras(
     max_index: int = 4,
     excludeRoomId: str | None = None,
     forNewRoom: bool = False,
+    refresh: bool = False,
 ) -> dict[str, Any]:
     """Probe local webcams + LAN DroidCam phones (may take a few seconds)."""
     return state.list_cameras(
         max_index=max(0, min(8, max_index)),
         exclude_room_id=excludeRoomId,
         for_new_room=forNewRoom,
+        refresh=refresh,
     )
+
+
+class ValidateCameraRequest(BaseModel):
+    source: int | str
+
+
+@router.post("/cameras/validate")
+def validate_camera(req: ValidateCameraRequest) -> dict[str, Any]:
+    """Lightweight reachability check without opening an OpenCV capture."""
+    return state.validate_camera(req.source)
 
 
 @router.post("/camera")

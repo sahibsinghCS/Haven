@@ -175,5 +175,39 @@ def test_collect_claimed_droidcam_urls_two_auto_rooms() -> None:
     with patch("roomos.video.input.discover_droidcam_url", side_effect=fake_discover):
         claimed_a = collect_claimed_droidcam_urls(rooms, skip_room_id="a")
         claimed_b = collect_claimed_droidcam_urls(rooms, skip_room_id="b")
-    assert claimed_a == {urls[0]}
+    assert claimed_a == {urls[1]}
     assert claimed_b == {urls[0]}
+
+
+def test_discover_pinned_hosts_first() -> None:
+    from roomos.video.input import clear_droidcam_discovery_cache, discover_all_droidcam_urls
+
+    clear_droidcam_discovery_cache()
+
+    def fake_port_open(host: str, port: int, timeout_sec: float = 0.25) -> bool:
+        return host == "192.168.1.10" and port == 4747
+
+    with patch("roomos.video.input._droidcam_port_open", side_effect=fake_port_open):
+        with patch("roomos.video.input._lan_subnets", return_value=[]):
+            urls = discover_all_droidcam_urls(pinned_hosts=["192.168.1.10"])
+    assert urls == ["http://192.168.1.10:4747/video"]
+
+
+def test_discover_refresh_clears_cache() -> None:
+    from roomos.video.input import clear_droidcam_discovery_cache, discover_all_droidcam_urls
+
+    clear_droidcam_discovery_cache()
+    scan_calls = 0
+
+    def fake_uncached(**kwargs):
+        nonlocal scan_calls
+        scan_calls += 1
+        return ["http://192.168.1.10:4747/video"]
+
+    with patch(
+        "roomos.video.input._discover_all_droidcam_urls_uncached",
+        side_effect=fake_uncached,
+    ):
+        discover_all_droidcam_urls()
+        discover_all_droidcam_urls(refresh=True)
+    assert scan_calls == 2

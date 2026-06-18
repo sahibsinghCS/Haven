@@ -16,6 +16,7 @@ import {
   fetchEngineStatus,
   setCamera,
   type CameraOption,
+  type CamerasResponse,
 } from "@/lib/roomos/api-client"
 import { formatCameraDeviceLabel } from "@/lib/roomos/format-camera-device-label"
 import { useRoomOsAmbientStore } from "@/stores/roomos-store"
@@ -35,6 +36,7 @@ function parseCameraValue(value: string): { source: number | string; backend: st
 export function LiveCameraSelect({
   onChanged,
   onSelectValue,
+  onScanComplete,
   pickerOnly = false,
   forNewRoom = false,
   excludeRoomId,
@@ -45,6 +47,7 @@ export function LiveCameraSelect({
   onChanged?: () => void
   /** When ``pickerOnly``, called with value instead of POST /camera. */
   onSelectValue?: (value: string) => void
+  onScanComplete?: (data: CamerasResponse) => void
   pickerOnly?: boolean
   /** Hide cameras already assigned to other rooms (multi-DroidCam setup). */
   forNewRoom?: boolean
@@ -58,7 +61,7 @@ export function LiveCameraSelect({
   const [scanned, setScanned] = useState(false)
   const [busy, setBusy] = useState(false)
   const [cameras, setCameras] = useState<CameraOption[]>([])
-  const [selected, setSelected] = useState<string | undefined>(undefined)
+  const [selected, setSelected] = useState<string>("")
   const [currentLabel, setCurrentLabel] = useState("Camera")
   const bumpCameraRefresh = useRoomOsAmbientStore((s) => s.bumpCameraRefresh)
 
@@ -89,43 +92,53 @@ export function LiveCameraSelect({
     }
   }, [initialValue])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await fetchCameras(undefined, {
-        forNewRoom: pickerOnly && forNewRoom,
-        excludeRoomId,
-      })
-      setCameras(data.cameras)
-      setScanned(true)
-      if (pickerOnly && forNewRoom && !selected) {
-        const autoPick =
-          data.cameras.find((c) => c.kind === "droidcam_auto") ??
-          data.cameras.find((c) => c.kind === "droidcam" && c.available) ??
-          data.cameras.find((c) => c.available)
-        if (autoPick) {
-          const value = cameraValue(autoPick)
-          setSelected(value)
-          setCurrentLabel(formatCameraDeviceLabel(autoPick.label))
-          onSelectValue?.(value)
+  const load = useCallback(
+    async (refresh = false) => {
+      setLoading(true)
+      try {
+        const data = await fetchCameras(undefined, {
+          forNewRoom: pickerOnly && forNewRoom,
+          excludeRoomId,
+          refresh,
+        })
+        setCameras(data.cameras)
+        setScanned(true)
+        onScanComplete?.(data)
+        if (pickerOnly && forNewRoom && !selected) {
+          const explicitPhones = data.cameras.filter(
+            (c) => c.kind === "droidcam" && c.available,
+          )
+          const autoPick =
+            explicitPhones.length === 1
+              ? explicitPhones[0]
+              : data.cameras.find((c) => c.kind === "droidcam_auto") ??
+                explicitPhones[0] ??
+                data.cameras.find((c) => c.available)
+          if (autoPick) {
+            const value = cameraValue(autoPick)
+            setSelected(value)
+            setCurrentLabel(formatCameraDeviceLabel(autoPick.label))
+            onSelectValue?.(value)
+          }
         }
+        const match = data.cameras.find((c) => c.source === data.current.source)
+        if (match) {
+          setSelected(cameraValue(match))
+          setCurrentLabel(formatCameraDeviceLabel(match.label))
+        } else if (!pickerOnly || !forNewRoom || selected) {
+          setSelected(`${data.current.source}::${data.current.backend}`)
+          setCurrentLabel(formatCameraDeviceLabel(data.current.label))
+        }
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Could not list cameras. is the API running?",
+        )
+      } finally {
+        setLoading(false)
       }
-      const match = data.cameras.find((c) => c.source === data.current.source)
-      if (match) {
-        setSelected(cameraValue(match))
-        setCurrentLabel(formatCameraDeviceLabel(match.label))
-      } else {
-        setSelected(`${data.current.source}::${data.current.backend}`)
-        setCurrentLabel(formatCameraDeviceLabel(data.current.label))
-      }
-    } catch (err) {
-      toast.error(
- err instanceof Error ? err.message : "Could not list cameras. is the API running?",
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [excludeRoomId, forNewRoom, onSelectValue, pickerOnly, selected])
+    },
+    [excludeRoomId, forNewRoom, onScanComplete, onSelectValue, pickerOnly, selected],
+  )
 
   const onOpenChange = (open: boolean) => {
     if (open && !scanned && !loading) {
@@ -177,7 +190,7 @@ export function LiveCameraSelect({
         aria-hidden
       />
       <Select
-        value={selected}
+        value={selected || undefined}
         onValueChange={(v) => void onSelect(v)}
         onOpenChange={onOpenChange}
         disabled={busy || (scanned && noneAvailable)}
@@ -241,7 +254,9 @@ export function LiveCameraSelect({
                   <span>{label}</span>
                   <span className="text-[10px] font-normal text-zinc-500">
                     {!cam.available
-                      ? "Not available · try Rescan"
+                      ? cam.kind === "onvif"
+                        ? "ONVIF · enter credentials in WiFi (RTSP)"
+                        : "Not available · try Rescan"
                       : cam.kind === "droidcam"
                         ? `Phone stream · ${String(cam.source).replace(/^https?:\/\//, "").split("/")[0]}`
                         : cam.kind === "droidcam_auto"
@@ -258,7 +273,7 @@ export function LiveCameraSelect({
       </Select>
       <button
         type="button"
-        onClick={() => void load()}
+        onClick={() => void load(true)}
         disabled={loading || busy}
         className={cn(
           "inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50",

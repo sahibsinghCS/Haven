@@ -43,8 +43,12 @@ assert.equal(
 assert.equal(roomSourceHealth(baseRoom("a")), "live")
 
 assert.equal(
-  roomScanRole(baseRoom("a", { inferenceActive: true }), "active"),
+  roomScanRole(baseRoom("a", { isActive: true, inferenceActive: true }), "active"),
   "inferring",
+)
+assert.equal(
+  roomScanRole(baseRoom("b", { inferenceActive: true }), "active"),
+  "grace_scan",
 )
 assert.equal(
   roomScanRole(baseRoom("a", { isActive: true }), "grace"),
@@ -65,7 +69,7 @@ const status: RoomsStatusResponse = {
   lastPrimaryState: null,
   rooms: [
     baseRoom("a", { isActive: true, inferenceActive: true }),
-    baseRoom("b"),
+    baseRoom("b", { inferenceActive: true }),
   ],
 }
 const patched = optimisticActiveRoomPatch(status, "b")
@@ -73,5 +77,6 @@ assert.equal(patched.activeRoomId, "b")
 assert.equal(patched.rooms.find((r) => r.id === "b")?.isActive, true)
 assert.equal(patched.rooms.find((r) => r.id === "b")?.inferenceActive, true)
 assert.equal(patched.rooms.find((r) => r.id === "a")?.isActive, false)
+assert.equal(patched.rooms.find((r) => r.id === "a")?.inferenceActive, true)
 
 console.log("room card utils.test.ts: ok")

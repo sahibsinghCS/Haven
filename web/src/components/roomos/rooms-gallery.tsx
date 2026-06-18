@@ -92,7 +92,7 @@ function OrchestrationStrip({
       hint:
         mode === "active"
           ? `${activeName} · full burst`
- : "Someone home. one room infers",
+          : "Someone home · all rooms inferring",
     },
     {
       id: "grace",
@@ -107,7 +107,7 @@ function OrchestrationStrip({
       label: "Away",
       hint:
         mode === "away"
-          ? "Inference paused · devices off"
+          ? "Devices off · cameras still scanning"
           : "Nobody detected",
     },
   ]

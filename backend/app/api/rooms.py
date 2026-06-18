@@ -62,7 +62,7 @@ def create_room(req: CreateRoomRequest) -> dict[str, Any]:
             backend=req.camera.backend,
             device_ids=req.deviceIds,
         )
-        state.orchestrator.sync_previews()
+        state.sync_room_engines()
         return {"room": room.to_dict(), **state.rooms_status()}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -82,7 +82,7 @@ def update_room(room_id: str, req: UpdateRoomRequest) -> dict[str, Any]:
         if req.deviceIds is not None:
             kwargs["device_ids"] = req.deviceIds
         room = state.rooms_store.update_room(room_id, **kwargs)
-        state.orchestrator.sync_previews()
+        state.sync_room_engines()
         if req.enabled is False and state.orchestrator.active_room_id == room_id:
             enabled = state.rooms_store.document().enabled_rooms()
             if enabled:
@@ -96,7 +96,7 @@ def update_room(room_id: str, req: UpdateRoomRequest) -> dict[str, Any]:
 def delete_room(room_id: str) -> dict[str, Any]:
     if not state.rooms_store.delete_room(room_id):
         raise HTTPException(status_code=404, detail="Room not found")
-    state.orchestrator.sync_previews()
+    state.sync_room_engines()
     return state.rooms_status()
 
 
@@ -125,7 +125,7 @@ class SetRoomEnabledRequest(BaseModel):
 def set_room_enabled(room_id: str, req: SetRoomEnabledRequest) -> dict[str, Any]:
     try:
         state.rooms_store.update_room(room_id, enabled=req.enabled)
-        state.orchestrator.sync_previews()
+        state.sync_room_engines()
         if not req.enabled and state.orchestrator.active_room_id == room_id:
             enabled_rooms = state.rooms_store.document().enabled_rooms()
             if enabled_rooms:

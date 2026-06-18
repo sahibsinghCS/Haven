@@ -253,12 +253,13 @@ class _RoomCaptureThread:
         )
         self._thread.start()
 
-    def stop(self) -> None:
+    def stop(self, *, clear_hub: bool = True) -> None:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=4.0)
         self._thread = None
-        self._hub.clear_room(self._room.id)
+        if clear_hub:
+            self._hub.clear_room(self._room.id)
 
     def _run(self) -> None:
         # Live inference owns this room's feed (DroidCam HTTP allows one client).
@@ -316,17 +317,18 @@ class RoomPreviewManager:
         )
         self._threads: Dict[str, _RoomCaptureThread] = {}
         self._lock = threading.Lock()
-        self._inference_room_id: Optional[str] = None
+        self._inference_room_ids: set[str] = set()
         self._rooms: list[RoomRecord] = []
 
-    def set_inference_room(self, room_id: Optional[str]) -> None:
+    def set_inference_rooms(self, room_ids: set[str]) -> None:
         with self._lock:
-            self._inference_room_id = room_id
+            self._inference_room_ids = set(room_ids)
+
+    def set_inference_room(self, room_id: Optional[str]) -> None:
+        self.set_inference_rooms({room_id} if room_id else set())
 
     def _skip_ids(self) -> set[str]:
-        if self._inference_room_id:
-            return {self._inference_room_id}
-        return set()
+        return set(self._inference_room_ids)
 
     def sync_rooms(self, rooms: list[RoomRecord]) -> None:
         self._settings = load_room_preview_settings(self._config_path)
@@ -338,17 +340,16 @@ class RoomPreviewManager:
         enabled = {r.id: r for r in rooms if r.enabled}
         all_rooms_fn = lambda: self._rooms  # noqa: E731
         with self._lock:
-            inference_id = self._inference_room_id
-            if inference_id:
-                stale = self._threads.pop(inference_id, None)
-                if stale is not None:
-                    stale.stop()
+            inference_ids = self._inference_room_ids
+            for rid in list(self._threads.keys()):
+                if rid in inference_ids:
+                    self._threads.pop(rid).stop(clear_hub=False)
 
             for rid in list(self._threads.keys()):
                 if rid not in enabled:
-                    self._threads.pop(rid).stop()
+                    self._threads.pop(rid).stop(clear_hub=False)
             for room in enabled.values():
-                if room.id == inference_id:
+                if room.id in inference_ids:
                     continue
                 existing = self._threads.get(room.id)
                 if existing is None:
@@ -367,7 +368,7 @@ class RoomPreviewManager:
                     prev = existing._room.camera
                     cur = room.camera
                     if prev.source != cur.source or prev.backend != cur.backend:
-                        existing.stop()
+                        existing.stop(clear_hub=False)
                         t = _RoomCaptureThread(
                             room,
                             self.hub,
@@ -382,13 +383,27 @@ class RoomPreviewManager:
                     else:
                         existing._room = room
 
-    def stop_all(self) -> None:
+    def stop_all(self, *, clear_hub: bool = True) -> None:
         with self._lock:
             for t in list(self._threads.values()):
-                t.stop()
+                t.stop(clear_hub=clear_hub)
             self._threads.clear()
         self._encoder.stop()
-        self.hub.clear_all()
+        if clear_hub:
+            self.hub.clear_all()
+
+    def stop_room(self, room_id: str, *, clear_hub: bool = False) -> None:
+        with self._lock:
+            t = self._threads.pop(room_id, None)
+        if t is not None:
+            t.stop(clear_hub=clear_hub)
+        if clear_hub:
+            self.hub.clear_room(room_id)
+
+    def has_preview_thread(self, room_id: str) -> bool:
+        with self._lock:
+            t = self._threads.get(room_id)
+            return t is not None and t._thread is not None and t._thread.is_alive()
 
     def latest_bgr(self, room_id: str) -> Optional[np.ndarray]:
         with self._lock:

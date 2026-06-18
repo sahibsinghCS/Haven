@@ -543,6 +543,40 @@ async def apply_all_devices_off_async(
     )
 
 
+def filter_device_ids_by_categories(
+    device_ids: list[str],
+    categories: frozenset[str],
+) -> list[str]:
+    id_to_cat = _device_id_categories(_ui_devices_map())
+    return [d for d in device_ids if id_to_cat.get(d) in categories]
+
+
+async def apply_grace_origin_away_devices_async(
+    device_ids: list[str],
+    *,
+    scene: Dict[str, Any],
+    dry_run: bool = True,
+    integrations: Optional[Dict[str, Any]] = None,
+    room_id: str = "",
+) -> Dict[str, Any]:
+    """Apply away prefs to plugs/thermostats only — lights stay unchanged during grace."""
+    non_lights = filter_device_ids_by_categories(
+        device_ids,
+        frozenset({"smartPlugs", "thermostats"}),
+    )
+    if not non_lights:
+        return {"skipped": True, "reason": "no_non_light_devices"}
+    return await apply_room_scene_async(
+        scene,
+        device_ids=non_lights,
+        dry_run=dry_run,
+        integrations=integrations,
+        room_state="away",
+        room_id=room_id,
+        action_source=ActionSource.ORCHESTRATOR_AWAY,
+    )
+
+
 async def apply_walkway_lights_async(
     device_ids: list[str],
     *,
@@ -551,15 +585,17 @@ async def apply_walkway_lights_async(
     dry_run: bool = True,
     integrations: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Grace-period walkway lighting for all assigned devices."""
+    """Grace-period walkway lighting — lights category only."""
+    lights_only = filter_device_ids_by_categories(device_ids, frozenset({"lights"}))
+    if not lights_only:
+        return {"skipped": True, "reason": "no_lights_devices"}
     walkway = {
-        "fanOn": False,
         "brightness": max(1, min(100, int(brightness))),
         "lightColorHex": hex_color,
     }
     return await apply_room_scene_async(
         walkway,
-        device_ids=device_ids,
+        device_ids=lights_only,
         dry_run=dry_run,
         integrations=integrations,
         room_state="grace",

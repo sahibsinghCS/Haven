@@ -42,7 +42,7 @@ def test_sync_rooms_stops_existing_inference_room_preview() -> None:
     mgr.set_inference_room("room-live")
     mgr.sync_rooms([room])
 
-    stale.stop.assert_called_once()
+    stale.stop.assert_called_once_with(clear_hub=False)
     assert "room-live" not in mgr._threads
 
 

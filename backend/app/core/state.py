@@ -13,7 +13,7 @@ import queue
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Set, Tuple, Union
+from typing import Any, Callable, Literal, NamedTuple, Optional, Set, Tuple, Union
 
 import numpy as np
 
@@ -24,10 +24,12 @@ from roomos.personalization import TransitionJournal
 from roomos.model.compat import TrainServeCompatibilityError, gate_live_engine_start
 from roomos.model.registry import MODEL_ARTIFACT_FILES
 from roomos.utils.logging import get_logger
+from roomos.rooms.models import RoomRecord
 from roomos.rooms.orchestrator import PresenceOrchestrator
 from roomos.rooms.preview_manager import RoomPreviewManager
 from roomos.rooms.store import RoomsStore
 from roomos.video.input import (
+    _is_remote_video_source,
     collect_claimed_droidcam_urls,
     is_auto_video_source,
     is_phone_stream_url,
@@ -36,6 +38,7 @@ from roomos.video.input import (
     resolve_video_source,
     set_discovery_persist_hook,
     user_camera_error,
+    validate_camera_source,
 )
 
 from .config import settings
@@ -228,16 +231,21 @@ class SnapshotHub:
         self._subscribers.discard(q)
 
 
+class _PreviewEncodeJob(NamedTuple):
+    room_id: Optional[str]
+    frame: np.ndarray
+    max_width: int
+    jpeg_quality: int
+    push_main_preview: bool
+
+
 class _AsyncPreviewEncoder:
     """Resize + JPEG encode off the capture thread to keep preview frames fresh."""
 
     def __init__(self) -> None:
-        self._queue: "queue.Queue[Optional[np.ndarray]]" = queue.Queue(maxsize=1)
+        self._queue: "queue.Queue[Optional[_PreviewEncodeJob]]" = queue.Queue(maxsize=4)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        self._max_width = 1280
-        self._jpeg_quality = 88
-        self._inference_room_id: Optional[str] = None
         self._preview: Optional[PreviewHub] = None
         self._room_previews: Optional[RoomPreviewManager] = None
         self._side_hook: Optional[Callable[[np.ndarray], None]] = None
@@ -292,24 +300,28 @@ class _AsyncPreviewEncoder:
         self,
         image_bgr: np.ndarray,
         *,
+        room_id: Optional[str],
         max_width: int,
         jpeg_quality: int,
-        inference_room_id: Optional[str],
+        push_main_preview: bool = False,
     ) -> None:
-        self._max_width = max_width
-        self._jpeg_quality = jpeg_quality
-        self._inference_room_id = inference_room_id
         self.ensure_running()
-        frame = image_bgr.copy()
+        job = _PreviewEncodeJob(
+            room_id=room_id,
+            frame=image_bgr.copy(),
+            max_width=max_width,
+            jpeg_quality=jpeg_quality,
+            push_main_preview=push_main_preview,
+        )
         try:
-            self._queue.put_nowait(frame)
+            self._queue.put_nowait(job)
         except queue.Full:
             try:
                 self._queue.get_nowait()
             except queue.Empty:
                 pass
             try:
-                self._queue.put_nowait(frame)
+                self._queue.put_nowait(job)
             except queue.Full:
                 pass
 
@@ -321,16 +333,15 @@ class _AsyncPreviewEncoder:
                 continue
             if item is None:
                 break
-            work = item
             hook = self._side_hook
-            self._encode_and_push(work)
+            self._encode_and_push(item)
             if hook is not None:
                 try:
-                    hook(work)
+                    hook(item.frame)
                 except Exception as e:
                     log.debug("preview side hook failed: %s", e)
 
-    def _encode_and_push(self, image_bgr: np.ndarray) -> None:
+    def _encode_and_push(self, job: _PreviewEncodeJob) -> None:
         preview = self._preview
         if preview is None:
             return
@@ -338,9 +349,9 @@ class _AsyncPreviewEncoder:
             import cv2
         except ImportError:
             return
-        frame = image_bgr
+        frame = job.frame
         h, w = frame.shape[:2]
-        max_w = int(self._max_width)
+        max_w = int(job.max_width)
         if max_w > 0 and w > max_w:
             scale = max_w / float(w)
             frame = cv2.resize(
@@ -352,20 +363,20 @@ class _AsyncPreviewEncoder:
             mean_luma = float(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).mean())
         except Exception:
             mean_luma = None
-        quality = max(50, min(100, int(self._jpeg_quality)))
+        quality = max(50, min(100, int(job.jpeg_quality)))
         ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
         if not ok:
             return
         jpeg_bytes = buf.tobytes()
-        preview.push_from_thread(jpeg_bytes, mean_luma=mean_luma)
-        room_id = self._inference_room_id
-        if room_id and self._room_previews is not None:
-            self._room_previews.hub.push(room_id, jpeg_bytes, mean_luma=mean_luma)
+        if job.room_id and self._room_previews is not None:
+            self._room_previews.hub.push(job.room_id, jpeg_bytes, mean_luma=mean_luma)
+        if job.push_main_preview and preview is not None:
+            preview.push_from_thread(jpeg_bytes, mean_luma=mean_luma)
 
 
 class AppState:
     def __init__(self) -> None:
-        self.engine: Optional[LiveInferenceEngine] = None
+        self._room_engines: dict[str, LiveInferenceEngine] = {}
         self.live_mode: LiveMode = "off"
         self.engine_error: Optional[str] = None
         self.engine_compat_report: Optional[dict] = None
@@ -383,10 +394,14 @@ class AppState:
             self.rooms_store,
             config_path=settings.roomos_config,
             preview_manager=self.room_previews,
-            restart_engine=self.restart_engine_for_room,
-            stop_engine=self._orchestrator_stop_engine,
+            on_active_room_changed=self._on_orchestrator_active_room_changed,
+            on_mode_changed=self._on_orchestrator_mode_changed,
         )
         self._inference_room_id: Optional[str] = None
+        self._preview_max_w: int = 1280
+        self._preview_quality: int = 88
+        self._last_ml_rooms: set[str] = set()
+        self._snapshot_lock = threading.RLock()
         active_room = self.rooms_store.document().active_room_id
         active = (
             self.rooms_store.get_room(active_room)
@@ -401,6 +416,7 @@ class AppState:
             self.video_source_override = saved_source
             self.video_backend_override = saved_backend
         self.camera_setup_required: bool = False
+        self._usb_probe_cache: Optional[list[dict[str, Any]]] = None
         # Persist a DroidCam URL auto-discovered after the phone's IP changed, so
         # subsequent restarts connect instantly instead of re-scanning the LAN.
         set_discovery_persist_hook(self._on_droidcam_rediscovered)
@@ -408,6 +424,29 @@ class AppState:
             preview=self.preview,
             room_previews=self.room_previews,
         )
+
+    @property
+    def engine(self) -> Optional[LiveInferenceEngine]:
+        """Primary engine for the active room (feedback, transitions, status)."""
+        active_id = self.orchestrator.active_room_id or self._inference_room_id
+        if active_id and active_id in self._room_engines:
+            return self._room_engines[active_id]
+        if self._room_engines:
+            return next(iter(self._room_engines.values()))
+        return None
+
+    def _on_orchestrator_active_room_changed(self, room_id: str) -> None:
+        self._inference_room_id = room_id
+        active = self.rooms_store.get_room(room_id)
+        if active is not None:
+            self.video_source_override = active.camera.source
+            self.video_backend_override = active.camera.backend
+            self.inference_source = describe_video_source(
+                self._apply_video_overrides_for_room(
+                    load_config(settings.roomos_config),
+                    active,
+                )
+            )
 
     def preview_mjpeg_fps(self) -> float:
         try:
@@ -469,50 +508,141 @@ class AppState:
         except OSError as e:
             log.debug("Could not persist rediscovered camera URL: %s", e)
 
-    def _orchestrator_stop_engine(self) -> None:
-        self.stop_engine()
+    def _on_orchestrator_mode_changed(self, mode: str) -> None:
+        if self.live_mode != "live":
+            return
+        self._ensure_room_engines()
+
+    def _handoff_preview_to_ml(
+        self,
+        room: RoomRecord,
+        *,
+        preview_max_w: int,
+        preview_quality: int,
+    ) -> Optional[LiveInferenceEngine]:
+        """Release the preview HTTP client so ML can open the same DroidCam URL."""
+        room_id = room.id
+        if room_id in self._room_engines:
+            return self._room_engines[room_id]
+        had_preview = self.room_previews.has_preview_thread(room_id)
+        if had_preview:
+            self.room_previews.stop_room(room_id, clear_hub=False)
+        eng = self._start_room_engine(
+            room,
+            preview_max_w=preview_max_w,
+            preview_quality=preview_quality,
+        )
+        if eng is None and had_preview:
+            log.warning(
+                "ML handoff failed for room %s — restoring preview thread",
+                room.name,
+            )
+            self.room_previews.sync_rooms(self.rooms_store.document().rooms)
+        return eng
+
+    def _ensure_room_engines(self) -> None:
+        """Keep ML on every enabled room while live — never tear down on mode/focus switches."""
+        if self.live_mode != "live":
+            self.orchestrator.sync_previews()
+            return
+
+        doc = self.rooms_store.document()
+        enabled = doc.enabled_rooms()
+        active_id = doc.active_room_id or self._inference_room_id
+        preview_max_w = getattr(self, "_preview_max_w", 1280)
+        preview_quality = getattr(self, "_preview_quality", 88)
+        enabled_ids = {room.id for room in enabled}
+        prev_ml = set(self._last_ml_rooms)
+        engines_changed = False
+
+        for rid in list(self._room_engines.keys()):
+            if rid not in enabled_ids:
+                self._stop_room_engine(rid)
+                engines_changed = True
+
+        for room in enabled:
+            existing = self._room_engines.get(room.id)
+            if existing is not None and not existing.is_running():
+                log.warning(
+                    "Room %s engine stopped unexpectedly — restarting",
+                    room.name,
+                )
+                self._room_engines.pop(room.id, None)
+                engines_changed = True
+            if room.id not in self._room_engines:
+                if self._handoff_preview_to_ml(
+                    room,
+                    preview_max_w=preview_max_w,
+                    preview_quality=preview_quality,
+                ):
+                    engines_changed = True
+
+        ml_rooms = set(self._room_engines.keys())
+        self._last_ml_rooms = ml_rooms
+        self.orchestrator.set_inference_rooms(ml_rooms)
+        self.room_previews.set_inference_rooms(ml_rooms)
+        if active_id:
+            self.orchestrator.set_inference_room(active_id)
+        if engines_changed or ml_rooms != prev_ml:
+            self.room_previews.sync_rooms(doc.rooms)
+
+    def _sync_ml_scope(self, mode: Optional[str] = None) -> None:
+        """Backward-compatible alias — mode no longer stops per-room engines."""
+        _ = mode
+        self._ensure_room_engines()
 
     def restart_engine_for_room(self, room_id: str) -> None:
+        """Switch UI focus / active room without stopping any camera feeds."""
         try:
-            source, backend = self.orchestrator.camera_for_room(room_id)
+            self.orchestrator.camera_for_room(room_id)
         except ValueError:
             return
-        self._inference_room_id = room_id
-        self.orchestrator.set_inference_room(room_id)
-        self.video_source_override = source
-        self.video_backend_override = backend
         self.rooms_store.set_active_room_id(room_id)
-        if self.live_mode == "live":
-            self._stop_engine()
-            self._start_live()
-        else:
+        self._on_orchestrator_active_room_changed(room_id)
+        self.orchestrator.set_inference_room(room_id)
+
+    def sync_room_engines(self) -> None:
+        """Start/stop per-room engines when the room list changes during live mode."""
+        if self.live_mode != "live":
             self.orchestrator.sync_previews()
+            return
+        enabled = {r.id: r for r in self.rooms_store.document().enabled_rooms()}
+        for rid in list(self._room_engines.keys()):
+            if rid not in enabled:
+                self._stop_room_engine(rid)
+        self._ensure_room_engines()
+        for room in enabled.values():
+            if room.id in self._room_engines:
+                self._restart_room_engine_if_camera_changed(room)
 
     def rooms_status(self) -> dict[str, Any]:
         return self.orchestrator.status_payload()
 
     def room_preview_jpeg(self, room_id: str) -> Optional[bytes]:
+        data = self.room_previews.hub.latest_jpeg(room_id)
+        if data is not None:
+            return data
         if (
-            self._inference_room_id == room_id
+            self.orchestrator.active_room_id == room_id
             and self.preview.available
         ):
-            data = self.preview.latest_jpeg()
-            if data is not None:
-                return data
-        return self.room_previews.hub.latest_jpeg(room_id)
+            return self.preview.latest_jpeg()
+        return None
 
-    def _on_engine_snapshot(self, snap: LiveSnapshot) -> None:
-        room_id = self._inference_room_id
-        if room_id:
+    def _on_engine_snapshot(self, room_id: str, snap: LiveSnapshot) -> None:
+        with self._snapshot_lock:
             snap.room_id = room_id
+            self.orchestrator.handle_snapshot(room_id, snap)
             snap.orchestrator_mode = self.orchestrator.mode
             snap.active_room_id = self.orchestrator.active_room_id
-            self.orchestrator.handle_snapshot(room_id, snap)
-        self.hub.push_from_thread(snap)
+            if room_id == self.orchestrator.active_room_id:
+                self.hub.push_from_thread(snap)
 
     @property
     def is_running(self) -> bool:
-        return self.engine is not None and self.engine.is_running()
+        return bool(self._room_engines) and any(
+            eng.is_running() for eng in self._room_engines.values()
+        )
 
     def _effective_video_config(self, cfg: Config) -> tuple[VideoSourceLike, str]:
         source = (
@@ -535,16 +665,13 @@ class AppState:
             skip_room_id=room_id,
         )
 
-    def _apply_video_overrides(self, cfg: Config) -> Config:
-        source, backend = self._effective_video_config(cfg)
-        exclude = self._droidcam_exclude_for_room(self._inference_room_id)
+    def _apply_video_overrides_for_room(self, cfg: Config, room: RoomRecord) -> Config:
+        source = room.camera.source
+        backend = room.camera.backend
+        exclude = self._droidcam_exclude_for_room(room.id)
         resolved = resolve_video_source(
             source, backend=backend, exclude_urls=exclude
         )
-        # NOTE: ``cfg.video`` returns a *fresh copy* on every attribute access
-        # (Config.__getattr__ -> _wrap -> new _AttrDict), so assigning to
-        # ``cfg.video.source`` would mutate a throwaway and never reach the
-        # engine. Write straight into the backing dict so build_engine sees it.
         video = cfg.raw.setdefault("video", {})
         if resolved.unresolved:
             video["source"] = source
@@ -553,6 +680,25 @@ class AppState:
             video["source"] = resolved.source
             video["backend"] = resolved.backend
         return cfg
+
+    def _apply_video_overrides(self, cfg: Config) -> Config:
+        active_id = self._inference_room_id or self.rooms_store.active_room_id()
+        room = self.rooms_store.get_room(active_id) if active_id else None
+        if room is None:
+            source, backend = self._effective_video_config(cfg)
+            exclude = self._droidcam_exclude_for_room(active_id)
+            resolved = resolve_video_source(
+                source, backend=backend, exclude_urls=exclude
+            )
+            video = cfg.raw.setdefault("video", {})
+            if resolved.unresolved:
+                video["source"] = source
+                video["backend"] = backend
+            else:
+                video["source"] = resolved.source
+                video["backend"] = resolved.backend
+            return cfg
+        return self._apply_video_overrides_for_room(cfg, room)
 
     def _assigned_camera_sources(self, *, skip_room_id: Optional[str] = None) -> set[str]:
         """Picker entries already taken by other rooms (not ``droidcam:auto``)."""
@@ -570,24 +716,46 @@ class AppState:
                 exclude.add(str(src))
         return exclude
 
+    def _known_phone_hosts(self, cfg: Config) -> list[str]:
+        raw = cfg.video.get("known_phone_hosts") or []
+        if not isinstance(raw, list):
+            return []
+        return [str(h).strip() for h in raw if str(h).strip()]
+
+    def _skip_usb_probe_for_listing(self, cfg: Config) -> bool:
+        """Avoid opening USB webcams while a network stream is actively inferring."""
+        if not self.is_running or self.live_mode != "live":
+            return False
+        source, _ = self._effective_video_config(cfg)
+        return _is_remote_video_source(source)
+
     def list_cameras(
         self,
         *,
         max_index: int = 6,
         exclude_room_id: Optional[str] = None,
         for_new_room: bool = False,
+        refresh: bool = False,
     ) -> dict[str, Any]:
+        cfg = load_config(settings.roomos_config)
         exclude = (
             self._assigned_camera_sources(skip_room_id=exclude_room_id)
             if for_new_room or exclude_room_id
             else set()
         )
+        skip_usb = self._skip_usb_probe_for_listing(cfg)
+        if not skip_usb:
+            self._usb_probe_cache = list_available_cameras(max_index=max_index)
         cameras = list_all_cameras_for_ui(
             max_index=max_index,
             exclude_sources=exclude,
             include_droidcam_scan=True,
+            skip_usb_probe=skip_usb,
+            cached_usb_cameras=self._usb_probe_cache,
+            droidcam_refresh=refresh,
+            pinned_hosts=self._known_phone_hosts(cfg),
+            include_onvif_scan=refresh,
         )
-        cfg = load_config(settings.roomos_config)
         current_source, current_backend = self._effective_video_config(cfg)
         resolved = resolve_video_source(current_source, backend=current_backend)
         current_label = (
@@ -606,6 +774,20 @@ class AppState:
             ):
                 current_label = str(cam.get("label") or current_label)
                 break
+
+        discovered_phones = [
+            c for c in cameras if c.get("kind") in ("droidcam", "droidcam_auto")
+        ]
+        assigned = exclude & {
+            str(c.get("source"))
+            for c in discovered_phones
+            if c.get("kind") == "droidcam"
+        }
+        available_phones = [
+            c for c in discovered_phones if c.get("kind") == "droidcam" and c.get("available")
+        ]
+        onvif_found = [c for c in cameras if c.get("kind") == "onvif"]
+
         return {
             "cameras": cameras,
             "current": {
@@ -613,7 +795,27 @@ class AppState:
                 "backend": current_backend,
                 "label": current_label,
             },
+            "scan": {
+                "phonesFound": len([c for c in cameras if c.get("kind") == "droidcam"]),
+                "phonesAvailable": len(available_phones),
+                "phonesAssigned": len(assigned),
+                "onvifFound": len(onvif_found),
+                "usbProbeSkipped": skip_usb,
+                "refreshed": refresh,
+            },
+            "discoveredWifi": [
+                {
+                    "host": str(c.get("host") or ""),
+                    "label": str(c.get("label") or ""),
+                    "protocol": "onvif",
+                }
+                for c in onvif_found
+                if c.get("host")
+            ],
         }
+
+    def validate_camera(self, source: VideoSourceLike) -> dict[str, Any]:
+        return validate_camera_source(source)
 
     def set_video_source(
         self,
@@ -639,7 +841,18 @@ class AppState:
                 pass
         log.info("Video source set to %r (backend=%s)", source, backend_hint)
         was_live = self.live_mode == "live" and self.is_running
-        if was_live or pending_setup:
+        if was_live:
+            self.sync_room_engines()
+            cfg = load_config(settings.roomos_config)
+            self.inference_source = describe_video_source(self._apply_video_overrides(cfg))
+            return {
+                "status": "updated",
+                "source": source,
+                "backend": backend_hint,
+                "inference_source": self.inference_source,
+                "engine_restarted": True,
+            }
+        if pending_setup:
             result = self.start_engine(mode="live")
             result["engine_restarted"] = True
             return result
@@ -655,27 +868,123 @@ class AppState:
 
     def _push_preview_frame(
         self,
+        room_id: str,
         image_bgr: np.ndarray,
         *,
         max_width: int = 1280,
         jpeg_quality: int = 88,
     ) -> None:
+        active_id = self.orchestrator.active_room_id or self._inference_room_id
         self._preview_encoder.enqueue(
             image_bgr,
+            room_id=room_id,
             max_width=max_width,
             jpeg_quality=jpeg_quality,
-            inference_room_id=self._inference_room_id,
+            push_main_preview=(room_id == active_id),
         )
 
+    def _preview_side_hook(self, frame_bgr: np.ndarray) -> None:
+        eng = self.engine
+        if eng is not None:
+            eng.push_evidence_from_preview(frame_bgr)
+
+    def _stop_room_engine(self, room_id: str) -> None:
+        eng = self._room_engines.pop(room_id, None)
+        if eng is not None and eng.is_running():
+            eng.stop()
+
+    def _restart_room_engine_if_camera_changed(self, room: RoomRecord) -> None:
+        eng = self._room_engines.get(room.id)
+        if eng is None:
+            return
+        cfg = load_config(settings.roomos_config)
+        applied = self._apply_video_overrides_for_room(cfg, room)
+        current_src = applied.raw.get("video", {}).get("source")
+        current_bkd = applied.raw.get("video", {}).get("backend")
+        eng_video = eng.config.raw.get("video", {})
+        if (
+            eng_video.get("source") == current_src
+            and eng_video.get("backend") == current_bkd
+        ):
+            return
+        self._stop_room_engine(room.id)
+        video_cfg = cfg.video
+        preview_cfg = video_cfg.get("preview", {}) or {}
+        preview_max_w = int(
+            preview_cfg.get("max_width", video_cfg.get("preview_max_width", 1280))
+        )
+        preview_quality = int(
+            preview_cfg.get("jpeg_quality", video_cfg.get("preview_jpeg_quality", 88))
+        )
+        self._start_room_engine(
+            room,
+            preview_max_w=preview_max_w,
+            preview_quality=preview_quality,
+        )
+
+    def _start_room_engine(
+        self,
+        room: RoomRecord,
+        *,
+        preview_max_w: int,
+        preview_quality: int,
+    ) -> Optional[LiveInferenceEngine]:
+        if room.id in self._room_engines:
+            return self._room_engines[room.id]
+
+        cfg = load_config(settings.roomos_config)
+        room_cfg = self._apply_video_overrides_for_room(cfg, room)
+        resolved = resolve_video_source(
+            room.camera.source,
+            backend=room.camera.backend,
+            exclude_urls=self._droidcam_exclude_for_room(room.id),
+        )
+        if resolved.unresolved:
+            log.warning(
+                "Skipping room %s — camera %r not resolved",
+                room.name,
+                room.camera.source,
+            )
+            return None
+
+        room_id = room.id
+
+        def _on_snapshot(snap: LiveSnapshot) -> None:
+            self._on_engine_snapshot(room_id, snap)
+
+        def _on_preview(image_bgr: np.ndarray) -> None:
+            self._push_preview_frame(
+                room_id,
+                image_bgr,
+                max_width=preview_max_w,
+                jpeg_quality=preview_quality,
+            )
+
+        engine = build_engine(
+            room_cfg,
+            actions_config_path=None,
+            on_snapshot=_on_snapshot,
+            on_preview_frame=_on_preview,
+        )
+        engine.orchestrator_managed = True
+        engine.inference_room_id = room_id
+        engine.start_background()
+        self._room_engines[room_id] = engine
+        log.info("Started inference engine for room %s (%s)", room.name, room_id[:8])
+        return engine
+
     def _stop_engine(self) -> None:
-        if self.engine is not None and self.engine.is_running():
-            self.engine.stop()
+        for rid in list(self._room_engines.keys()):
+            self._stop_room_engine(rid)
+        self.room_previews.stop_all(clear_hub=False)
         self._preview_encoder.stop()
         self._preview_encoder.set_side_hook(None)
-        self.engine = None
         self.live_mode = "off"
         self.preview.clear()
+        self.room_previews.hub.clear_all()
         self._inference_room_id = None
+        self._last_ml_rooms = set()
+        self.orchestrator.set_inference_rooms(set())
 
     def start_engine(self, *, mode: Optional[str] = None) -> dict:
         target: LiveMode = "live"
@@ -710,33 +1019,9 @@ class AppState:
             if active_id is None or doc.room_by_id(active_id) is None:
                 active_id = enabled[0].id
                 self.rooms_store.set_active_room_id(active_id)
-            active_room = doc.room_by_id(active_id)
-            if active_room is not None:
-                self.video_source_override = active_room.camera.source
-                self.video_backend_override = active_room.camera.backend
-                self._inference_room_id = active_id
+            self._on_orchestrator_active_room_changed(active_id)
 
             cfg = load_config(settings.roomos_config)
-            raw_source, raw_backend = self._effective_video_config(cfg)
-            exclude = self._droidcam_exclude_for_room(self._inference_room_id)
-            resolved = resolve_video_source(
-                raw_source, backend=raw_backend, exclude_urls=exclude
-            )
-            if resolved.unresolved:
-                self.camera_setup_required = True
-                self.live_mode = "off"
-                self.engine = None
-                self.engine_error = None
-                self.inference_source = None
-                log.info("No camera resolved for %r — waiting for user setup", raw_source)
-                return {
-                    "status": "camera_setup_required",
-                    "live_mode": "off",
-                    "camera_setup_required": True,
-                }
-
-            self.camera_setup_required = False
-            cfg = self._apply_video_overrides(cfg)
             bundle_dir = resolve_bundle_dir(cfg)
             missing = [n for n in MODEL_ARTIFACT_FILES if not (bundle_dir / n).exists()]
             if missing:
@@ -745,7 +1030,6 @@ class AppState:
                 log.error(self.engine_error)
                 return {"status": "error", "error": self.engine_error, "live_mode": "off"}
 
-            self.inference_source = describe_video_source(cfg)
             compat = gate_live_engine_start(
                 cfg,
                 inference_config_path=settings.roomos_config,
@@ -756,6 +1040,7 @@ class AppState:
                 compat.bundle_dir,
                 compat.n_bundle_columns,
             )
+
             video_cfg = cfg.video
             preview_cfg = video_cfg.get("preview", {}) or {}
             preview_max_w = int(
@@ -764,34 +1049,50 @@ class AppState:
             preview_quality = int(
                 preview_cfg.get("jpeg_quality", video_cfg.get("preview_jpeg_quality", 88))
             )
+            self._preview_max_w = preview_max_w
+            self._preview_quality = preview_quality
 
-            def _preview_frame(image_bgr: np.ndarray) -> None:
-                self._push_preview_frame(
-                    image_bgr,
-                    max_width=preview_max_w,
-                    jpeg_quality=preview_quality,
-                )
+            # Release low-FPS preview threads before ML opens each DroidCam URL.
+            for room in enabled:
+                self.room_previews.stop_room(room.id, clear_hub=False)
 
-            def _preview_side_hook(frame_bgr: np.ndarray) -> None:
-                engine.push_evidence_from_preview(frame_bgr)
+            started_rooms: list[str] = []
+            for room in enabled:
+                if self._handoff_preview_to_ml(
+                    room,
+                    preview_max_w=preview_max_w,
+                    preview_quality=preview_quality,
+                ):
+                    started_rooms.append(room.id)
 
-            engine = build_engine(
-                cfg,
-                actions_config_path=settings.roomos_actions_config,
-                on_snapshot=self._on_engine_snapshot,
-                on_preview_frame=_preview_frame,
-            )
-            engine.orchestrator_managed = True
-            engine.inference_room_id = self._inference_room_id
-            # Gallery preview threads may already hold DroidCam HTTP while live is off.
-            self.orchestrator.set_inference_room(self._inference_room_id)
-            self.room_previews.stop_all()
-            engine.start_background()
-            self.engine = engine
-            self._preview_encoder.set_side_hook(_preview_side_hook)
+            if not started_rooms:
+                self.camera_setup_required = True
+                self.live_mode = "off"
+                self.engine_error = None
+                self.inference_source = None
+                log.info("No room cameras resolved — waiting for user setup")
+                return {
+                    "status": "camera_setup_required",
+                    "live_mode": "off",
+                    "camera_setup_required": True,
+                }
+
+            self.camera_setup_required = False
+            ml_started = set(self._room_engines.keys())
+            self._last_ml_rooms = ml_started
+            self.orchestrator.set_inference_rooms(ml_started)
+            self.orchestrator.set_inference_room(active_id)
+            self.room_previews.set_inference_rooms(set(self._room_engines.keys()))
+            self.room_previews.sync_rooms(doc.rooms)
+            self._preview_encoder.set_side_hook(self._preview_side_hook)
             self.live_mode = "live"
             self.orchestrator.on_live_started()
             self.engine_error = None
+            active_room = doc.room_by_id(active_id)
+            if active_room is not None:
+                self.inference_source = describe_video_source(
+                    self._apply_video_overrides_for_room(cfg, active_room)
+                )
             src, bkd = self._effective_video_config(cfg)
             return {
                 "status": "started",
@@ -801,6 +1102,7 @@ class AppState:
                 "data_source": "roomos-ml",
                 "video_source": src,
                 "video_backend": bkd,
+                "rooms_started": started_rooms,
             }
         except TrainServeCompatibilityError as e:
             self.engine_compat_report = e.report.to_dict() if e.report else None
@@ -860,11 +1162,13 @@ class AppState:
 
         latest = self.hub.latest
 
-        run_error = (
-            getattr(self.engine, "_run_error", None)
-            if self.live_mode == "live" and self.engine is not None
-            else None
-        )
+        run_error = None
+        if self.live_mode == "live" and self._room_engines:
+            for eng in self._room_engines.values():
+                err = getattr(eng, "_run_error", None)
+                if err:
+                    run_error = err
+                    break
         reported_error = _sanitize_camera_error(run_error or self.engine_error)
 
         boot_phase = "off"

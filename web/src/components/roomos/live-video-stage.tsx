@@ -2,7 +2,7 @@
 
 
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 
 
 
@@ -21,6 +21,7 @@ import { useInferenceCameraPreview } from "@/hooks/use-inference-camera-preview"
 import type { LiveEngineHookStatus } from "@/hooks/use-live-engine"
 
 import type { ModelKind } from "@/lib/roomos/api-client"
+import { roomPreviewMjpegUrl } from "@/lib/roomos/api-client"
 
 import {
 
@@ -108,10 +109,11 @@ export function LiveVideoStage({
 }) {
 
   const [inspectOpen, setInspectOpen] = useState(false)
+  const [multiFeedLive, setMultiFeedLive] = useState<Record<string, boolean>>({})
 
   const activeRoomId = useLiveSessionStore((s) => s.activeRoomId)
-
   const rooms = useLiveSessionStore((s) => s.rooms)
+  const enabledRooms = useMemo(() => rooms.filter((r) => r.enabled), [rooms])
 
   const activeRoomName =
 
@@ -162,22 +164,20 @@ export function LiveVideoStage({
 
 
   const previewEnabled = engineStatus === "running" || snapshot.dataSource === "roomos-ml"
-
-  const preview = useInferenceCameraPreview(previewEnabled, {
-
+  const multiRoom = enabledRooms.length > 1
+  const focusRoomId = activeRoomId ?? enabledRooms[0]?.id ?? null
+  const singlePreview = useInferenceCameraPreview(previewEnabled && !multiRoom, {
     resumeLive: previewResumeLive,
-
   })
-
-  const feedLive = preview.status === "live"
-
-
+  const onMultiRoomFeedLoad = useCallback((roomId: string) => {
+    setMultiFeedLive((prev) => ({ ...prev, [roomId]: true }))
+  }, [])
+  const feedLive = multiRoom
+    ? Boolean(focusRoomId && multiFeedLive[focusRoomId])
+    : singlePreview.status === "live"
 
   const showDarkWarning = previewDark && feedLive
-
   const useCover = previewFit === "cover"
-
-  const multiRoom = rooms.length > 1
 
   const inferenceMode = resolveInferenceDisplayMode(modelKind, snapshot.dataSource)
   const trustLine =
@@ -208,45 +208,52 @@ export function LiveVideoStage({
 
 
       <div className="absolute inset-0 z-0 flex items-center justify-center bg-black">
-
-        {preview.streamSrc ? (
-
+        {multiRoom && previewEnabled ? (
+          enabledRooms.map((room) => {
+            const isFocus = room.id === focusRoomId
+            const roomLive = Boolean(multiFeedLive[room.id])
+            return (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={room.id}
+                src={roomPreviewMjpegUrl(room.id)}
+                alt=""
+                decoding="async"
+                onLoad={() => onMultiRoomFeedLoad(room.id)}
+                className={cn(
+                  "absolute inset-0 mx-auto object-center transition-opacity duration-150",
+                  useCover
+                    ? "size-full object-cover"
+                    : "h-full w-auto max-w-full object-contain",
+                  isFocus
+                    ? roomLive || !previewEnabled
+                      ? "opacity-100"
+                      : "opacity-40"
+                    : "pointer-events-none opacity-0",
+                  showDarkWarning && isFocus && "brightness-[0.55] contrast-90",
+                )}
+              />
+            )
+          })
+        ) : singlePreview.streamSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
-
           <img
-
-            src={preview.streamSrc}
-
+            src={singlePreview.streamSrc}
             alt=""
-
             decoding="async"
-
-            onLoad={preview.onStreamLoad}
-
-            onError={preview.onStreamError}
-
+            onLoad={singlePreview.onStreamLoad}
+            onError={singlePreview.onStreamError}
             className={cn(
-
               "object-center",
-
               useCover
-
                 ? "size-full object-cover"
-
                 : "h-full w-auto max-w-full object-contain",
-
-              feedLive || preview.status !== "waiting" ? "opacity-100" : "opacity-40",
-
+              feedLive || singlePreview.status !== "waiting" ? "opacity-100" : "opacity-40",
             )}
-
           />
-
         ) : (
-
           <div className="size-full bg-zinc-900" aria-hidden />
-
         )}
-
       </div>
 
 
@@ -283,7 +290,7 @@ export function LiveVideoStage({
 
 
 
-      {!feedLive && preview.message ? (
+      {!feedLive && !multiRoom && singlePreview.message ? (
 
         <p
 
@@ -293,11 +300,9 @@ export function LiveVideoStage({
 
         >
 
-          {preview.status === "waiting"
-
+          {singlePreview.status === "waiting"
             ? "Connecting to inference camera…"
-
-            : preview.message}
+            : singlePreview.message}
 
         </p>
 

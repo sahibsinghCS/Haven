@@ -12,7 +12,6 @@ import {
   type ModelKind,
 } from "@/lib/roomos/api-client"
 import { useLiveSessionStore } from "@/stores/live-session-store"
-import { useRoomOsAmbientStore } from "@/stores/roomos-store"
 
 export type LiveEngineHookStatus =
   | "idle"
@@ -53,7 +52,6 @@ export function useLiveEngineAutostart(enabled = true) {
   const [liveMode, setLiveMode] = useState<LiveMode>("off")
   const [cameraSetupRequired, setCameraSetupRequired] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const cameraRefreshNonce = useRoomOsAmbientStore((s) => s.cameraRefreshNonce)
 
   const refreshStatus = useCallback(() => setRefreshKey((k) => k + 1), [])
 
@@ -200,7 +198,7 @@ export function useLiveEngineAutostart(enabled = true) {
       cancelled = true
       if (pollTimer) clearInterval(pollTimer)
     }
-  }, [enabled, refreshKey, cameraRefreshNonce])
+  }, [enabled, refreshKey])
 
   return {
     status,

@@ -409,22 +409,58 @@ export type CamerasResponse = {
     backend: string
     label: string
   }
+  scan?: {
+    phonesFound: number
+    phonesAvailable: number
+    phonesAssigned: number
+    onvifFound?: number
+    usbProbeSkipped: boolean
+    refreshed: boolean
+  }
+  discoveredWifi?: Array<{
+    host: string
+    label: string
+    protocol: string
+  }>
+}
+
+export type ValidateCameraResponse = {
+  ok: boolean
+  kind: string
+  message: string
+  resolved?: string
 }
 
 export async function fetchCameras(
   signal?: AbortSignal,
-  opts?: { forNewRoom?: boolean; excludeRoomId?: string },
+  opts?: { forNewRoom?: boolean; excludeRoomId?: string; refresh?: boolean },
 ): Promise<CamerasResponse> {
   const params = new URLSearchParams()
   if (opts?.forNewRoom) params.set("forNewRoom", "true")
   if (opts?.excludeRoomId) params.set("excludeRoomId", opts.excludeRoomId)
+  if (opts?.refresh) params.set("refresh", "true")
   const qs = params.toString()
   const res = await fetch(
-    `${API_BASE}/api/live/cameras${qs? `?${qs}`: ""}`,
+    `${API_BASE}/api/live/cameras${qs ? `?${qs}` : ""}`,
     { signal, cache: "no-store" },
   )
   if (!res.ok) throw new Error(`cameras ${res.status}`)
   return (await res.json()) as CamerasResponse
+}
+
+export async function validateCameraSource(
+  source: number | string,
+): Promise<ValidateCameraResponse> {
+  const res = await fetch(`${API_BASE}/api/live/cameras/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source }),
+  })
+  const body = (await res.json()) as ValidateCameraResponse & { error?: string; detail?: string }
+  if (!res.ok) {
+    throw new Error(body.error ?? body.detail ?? `validate failed: ${res.status}`)
+  }
+  return body
 }
 
 export async function setCamera(params: {

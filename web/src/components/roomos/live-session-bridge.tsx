@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 
 import { useLiveEngineAutostart } from "@/hooks/use-live-engine"
 import { useLiveInference } from "@/hooks/use-live-inference"
+import { fetchRoomsStatus } from "@/lib/roomos/api-client"
 import { useLiveSessionStore } from "@/stores/live-session-store"
 
 /**
@@ -19,12 +20,33 @@ export function LiveSessionBridge() {
   const setEngineWasRunning = useLiveSessionStore((s) => s.setEngineWasRunning)
   const setLiveInference = useLiveSessionStore((s) => s.setLiveInference)
   const setEngineSession = useLiveSessionStore((s) => s.setEngineSession)
+  const setRoomsStatus = useLiveSessionStore((s) => s.setRoomsStatus)
 
   const shouldRunEngine = cameraEnabled && (isLive || engineWasRunning)
   const shouldStreamInference = cameraEnabled && (isLive || engineWasRunning)
 
   const engine = useLiveEngineAutostart(shouldRunEngine)
   const live = useLiveInference(shouldStreamInference)
+
+  // Active room / focus come from orchestrator status — not ML snapshots (those alternate per burst).
+  useEffect(() => {
+    if (!shouldRunEngine) return
+    let cancelled = false
+    const syncRooms = async () => {
+      try {
+        const status = await fetchRoomsStatus()
+        if (!cancelled) setRoomsStatus(status)
+      } catch {
+        // status poll is best-effort; engine status also refreshes rooms
+      }
+    }
+    void syncRooms()
+    const timer = setInterval(syncRooms, 2000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [shouldRunEngine, setRoomsStatus])
 
   useEffect(() => {
     if (engine.status === "running") {
@@ -43,7 +65,6 @@ export function LiveSessionBridge() {
     if (live.snapshot?.orchestratorMode) {
       useLiveSessionStore.setState({
         orchestratorMode: live.snapshot.orchestratorMode,
-        activeRoomId: live.snapshot.activeRoomId ?? null,
       })
     }
   }, [

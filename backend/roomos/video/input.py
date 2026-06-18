@@ -320,6 +320,8 @@ def discover_all_droidcam_urls(
     preferred_prefix: Optional[str] = None,
     connect_timeout: float = 0.3,
     max_workers: int = 200,
+    refresh: bool = False,
+    pinned_hosts: Optional[Sequence[str]] = None,
 ) -> List[str]:
     """Scan localhost + LAN for **all** reachable DroidCam HTTP feeds.
 
@@ -328,8 +330,14 @@ def discover_all_droidcam_urls(
 
     Results are cached briefly and concurrent callers share a single in-flight
     scan so the API stays responsive when the UI lists cameras repeatedly.
+
+    Pass ``refresh=True`` to bypass the cache (UI Rescan). ``pinned_hosts`` are
+    probed before the /24 sweep so known phones are found quickly.
     """
-    key = (preferred_port, preferred_prefix, round(connect_timeout, 3), max_workers)
+    if refresh:
+        clear_droidcam_discovery_cache()
+    pin_key = tuple(pinned_hosts or ())
+    key = (preferred_port, preferred_prefix, round(connect_timeout, 3), max_workers, pin_key)
     with _discovery_cond:
         entry = _discovery_cache.get(key)
         if entry and time.monotonic() - entry[0] < _DISCOVERY_CACHE_TTL_SEC:
@@ -347,6 +355,7 @@ def discover_all_droidcam_urls(
             preferred_prefix=preferred_prefix,
             connect_timeout=connect_timeout,
             max_workers=max_workers,
+            pinned_hosts=pinned_hosts,
         )
     finally:
         with _discovery_cond:
@@ -362,12 +371,26 @@ def _discover_all_droidcam_urls_uncached(
     preferred_prefix: Optional[str] = None,
     connect_timeout: float = 0.3,
     max_workers: int = 200,
+    pinned_hosts: Optional[Sequence[str]] = None,
 ) -> List[str]:
     import concurrent.futures
 
     ports = _droidcam_scan_ports(preferred_port)
     found: List[str] = []
     seen_hosts: set[str] = set()
+
+    for raw_host in pinned_hosts or ():
+        host = str(raw_host).strip()
+        if not host or host in seen_hosts:
+            continue
+        for port in ports:
+            if _droidcam_port_open(host, port, timeout_sec=connect_timeout):
+                url = _droidcam_url(host, port)
+                if url not in found:
+                    found.append(url)
+                    seen_hosts.add(host)
+                    log.info("DroidCam found at %s (pinned host)", url)
+                break
 
     for host in _DROIDCAM_DEFAULT_HOSTS:
         for port in ports:
@@ -385,7 +408,7 @@ def _discover_all_droidcam_urls_uncached(
     for prefix in subnets:
         for octet in range(1, 255):
             host = f"{prefix}{octet}"
-            if host in ("127.0.0.1", "localhost"):
+            if host in ("127.0.0.1", "localhost") or host in seen_hosts:
                 continue
             for port in ports:
                 tasks.append((host, port))
@@ -424,6 +447,8 @@ def discover_droidcam_url(
     connect_timeout: float = 0.3,
     max_workers: int = 200,
     exclude_urls: Optional[set[str]] = None,
+    refresh: bool = False,
+    pinned_hosts: Optional[Sequence[str]] = None,
 ) -> Optional[str]:
     """Return the first DroidCam URL not already in *exclude_urls*."""
     exclude = exclude_urls or set()
@@ -432,6 +457,8 @@ def discover_droidcam_url(
         preferred_prefix=preferred_prefix,
         connect_timeout=connect_timeout,
         max_workers=max_workers,
+        refresh=refresh,
+        pinned_hosts=pinned_hosts,
     )
     for url in urls:
         if url not in exclude:
@@ -452,22 +479,27 @@ def collect_claimed_droidcam_urls(
     """DroidCam HTTP URLs already assigned to other rooms (stable by room id).
 
     Each ``droidcam:auto`` room claims the next free phone on the network so
-    multiple rooms can all use auto-discover without colliding.
+    multiple rooms can all use auto-discover without colliding. Assignments are
+    computed for *all* rooms in sorted id order, then URLs for rooms other than
+    *skip_room_id* are returned.
     """
     used: set[str] = set()
+    room_urls: dict[str, str] = {}
     ordered = sorted(rooms, key=lambda r: str(getattr(r, "id", "")))
     for room in ordered:
         rid = str(getattr(room, "id", ""))
-        if skip_room_id and rid == skip_room_id:
-            continue
         camera = getattr(room, "camera", None)
         src = getattr(camera, "source", None) if camera is not None else None
         if is_auto_video_source(src):
             url = discover_droidcam_url(exclude_urls=used)
             if url:
                 used.add(url)
+                room_urls[rid] = url
         elif isinstance(src, str) and is_phone_stream_url(src):
             used.add(src)
+            room_urls[rid] = src
+    if skip_room_id:
+        return {url for rid, url in room_urls.items() if rid != skip_room_id}
     return used
 
 
@@ -1280,13 +1312,18 @@ def list_droidcam_network_cameras(
     *,
     exclude_sources: Optional[set[str]] = None,
     scan: bool = True,
+    refresh: bool = False,
+    pinned_hosts: Optional[Sequence[str]] = None,
 ) -> List[dict]:
     """Network DroidCam feeds for the camera picker (one entry per phone)."""
     exclude = exclude_sources or set()
     out: List[dict] = []
     if scan:
         try:
-            urls = discover_all_droidcam_urls()
+            urls = discover_all_droidcam_urls(
+                refresh=refresh,
+                pinned_hosts=pinned_hosts,
+            )
         except Exception as e:
             log.warning("DroidCam LAN scan failed: %s", e)
             urls = []
@@ -1327,21 +1364,166 @@ def list_droidcam_network_cameras(
     return out
 
 
+def list_onvif_discovered_cameras(
+    *,
+    exclude_hosts: Optional[set[str]] = None,
+    scan: bool = True,
+) -> List[dict]:
+    """ONVIF cameras found via WS-Discovery (host only — user supplies RTSP creds)."""
+    exclude = exclude_hosts or set()
+    out: List[dict] = []
+    if not scan:
+        return out
+    try:
+        from .onvif_discovery import discover_onvif_hosts
+
+        hosts = discover_onvif_hosts()
+    except Exception as e:
+        log.warning("ONVIF discovery failed: %s", e)
+        hosts = []
+
+    for idx, host in enumerate(hosts):
+        if host in exclude:
+            continue
+        out.append(
+            {
+                "index": 2000 + idx,
+                "source": f"rtsp://{host}:554/",
+                "backend": "auto",
+                "label": f"ONVIF camera · {host}",
+                "available": False,
+                "mean_luma": None,
+                "frame_shape": None,
+                "kind": "onvif",
+                "host": host,
+                "needsCredentials": True,
+            }
+        )
+    return out
+
+
 def list_all_cameras_for_ui(
     *,
     max_index: int = 4,
     exclude_sources: Optional[set[str]] = None,
     include_droidcam_scan: bool = True,
+    skip_usb_probe: bool = False,
+    cached_usb_cameras: Optional[List[dict]] = None,
+    droidcam_refresh: bool = False,
+    pinned_hosts: Optional[Sequence[str]] = None,
+    include_onvif_scan: bool = False,
 ) -> List[dict]:
-    """USB/webcam indices plus discovered DroidCam HTTP streams."""
-    local = list_available_cameras(max_index=max_index)
+    """USB/webcam indices plus discovered DroidCam HTTP streams and ONVIF hosts."""
+    if skip_usb_probe and cached_usb_cameras is not None:
+        local = list(cached_usb_cameras)
+    else:
+        local = list_available_cameras(max_index=max_index)
     exclude = exclude_sources or set()
     filtered_local = [c for c in local if str(c.get("source")) not in exclude]
     network = list_droidcam_network_cameras(
         exclude_sources=exclude,
         scan=include_droidcam_scan,
+        refresh=droidcam_refresh,
+        pinned_hosts=pinned_hosts,
     )
-    return filtered_local + network
+    onvif_exclude = {
+        str(c.get("host") or "")
+        for c in network
+        if c.get("host")
+    }
+    for src in exclude:
+        if isinstance(src, str) and src.startswith("rtsp://"):
+            try:
+                from urllib.parse import urlparse
+
+                host = urlparse(src).hostname
+                if host:
+                    onvif_exclude.add(host)
+            except Exception:
+                pass
+    onvif = list_onvif_discovered_cameras(
+        exclude_hosts=onvif_exclude,
+        scan=include_onvif_scan and include_droidcam_scan,
+    )
+    return filtered_local + network + onvif
+
+
+def validate_camera_source(source: VideoSourceLike) -> dict[str, Any]:
+    """Lightweight reachability check without holding an OpenCV capture open."""
+    if isinstance(source, int) or (isinstance(source, str) and str(source).isdigit()):
+        return {
+            "ok": True,
+            "kind": "usb",
+            "message": "Webcam index — connect to verify the feed.",
+        }
+    s = str(source).strip()
+    if is_auto_video_source(s):
+        url = discover_droidcam_url(refresh=True)
+        if url:
+            return {
+                "ok": True,
+                "kind": "droidcam_auto",
+                "resolved": url,
+                "message": f"Phone stream found at {url}",
+            }
+        return {
+            "ok": False,
+            "kind": "droidcam_auto",
+            "message": "No phone stream found on the network. Open DroidCam on the phone and rescan.",
+        }
+    if s.startswith(("http://", "https://")):
+        host, port = _url_host_port(s)
+        if host and port and not _droidcam_port_open(host, port, timeout_sec=1.0):
+            return {
+                "ok": False,
+                "kind": "http",
+                "message": f"Cannot reach {host}:{port}. Check Wi‑Fi and that the camera app is running.",
+            }
+        import urllib.error
+        import urllib.request
+
+        try:
+            resp = urllib.request.urlopen(s, timeout=4.0)
+        except urllib.error.URLError as exc:
+            return {"ok": False, "kind": "http", "message": str(exc)}
+        try:
+            peek = resp.read(512)
+            ct = str(resp.headers.get("Content-Type") or "").lower()
+            body = peek.decode("utf-8", "replace").lower()
+            if "droidcam is busy" in body or "droidcam_busy" in body:
+                return {
+                    "ok": False,
+                    "kind": "http",
+                    "message": "Camera is busy — another app is using the feed.",
+                }
+            if "text/html" in ct and peek.lstrip().startswith(b"<!"):
+                return {
+                    "ok": False,
+                    "kind": "http",
+                    "message": "Host responded but did not return a video stream.",
+                }
+            return {"ok": True, "kind": "http", "message": "Stream reachable."}
+        finally:
+            try:
+                resp.close()
+            except Exception:
+                pass
+    if s.startswith("rtsp://"):
+        host, port = _url_host_port(s)
+        if host:
+            port_num = port or 554
+            if _droidcam_port_open(host, port_num, timeout_sec=1.0):
+                return {
+                    "ok": True,
+                    "kind": "rtsp",
+                    "message": "RTSP host is reachable — connect to verify the stream.",
+                }
+        return {
+            "ok": False,
+            "kind": "rtsp",
+            "message": "Cannot reach RTSP host. Check IP, port, and credentials.",
+        }
+    return {"ok": False, "kind": "unknown", "message": "Unsupported camera source."}
 
 
 def _attach_windows_device_hints(results: List[dict], dshow_names: List[str]) -> None:
