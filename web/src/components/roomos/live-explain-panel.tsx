@@ -1,64 +1,119 @@
 "use client"
 
-import { memo, useMemo, useState } from "react"
+import { memo, useMemo } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
-import {
-  ChevronDown,
-  ChevronRight,
-  GitBranch,
-  HelpCircle,
-  Sparkles,
-} from "lucide-react"
+import { Brain, ChevronDown, ChevronRight } from "lucide-react"
 
-import { LiveDistributionList } from "@/components/roomos/live-distribution-list"
 import { LiveQuickCorrection } from "@/components/roomos/live-quick-correction"
 import { buildLiveExplainSummary } from "@/lib/roomos/live-explain-utils"
+import { roomStateAccent } from "@/lib/roomos/state-meta"
 import { cn } from "@/lib/utils"
 import { roomosUi } from "@/lib/roomos/roomos-ui"
 import type { LiveInferenceSnapshot } from "@/types/roomos"
 
 const TIER_CHIP = {
-  high: "border-teal-400/35 bg-teal-950/40 text-teal-100",
-  medium: "border-amber-400/35 bg-amber-950/35 text-amber-100",
-  low: "border-rose-400/35 bg-rose-950/40 text-rose-100",
+  high: "border-teal-400/35 bg-teal-500/10 text-teal-100",
+  medium: "border-amber-400/35 bg-amber-500/10 text-amber-100",
+  low: "border-rose-400/35 bg-rose-500/10 text-rose-100",
 } as const
 
-function PipelineStep({
-  step,
-  isLast,
+function CompactStateBars({
+  states,
 }: {
-  step: ReturnType<typeof buildLiveExplainSummary>["pipeline"][number]
-  isLast: boolean
+  states: ReturnType<typeof buildLiveExplainSummary>["topStates"]
 }) {
   return (
-    <div className="flex min-w-0 flex-1 items-stretch gap-1">
-      <div
-        className={cn(
-          "min-w-0 flex-1 rounded-lg border px-2 py-1.5 sm:px-2.5",
-          step.active
-            ? "border-white/14 bg-white/[0.07]"
-            : "border-white/[0.06] bg-white/[0.02] opacity-75",
-        )}
-      >
-        <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-          {step.label}
-        </p>
-        <p className="mt-0.5 truncate text-[11px] font-medium text-zinc-100">{step.detail}</p>
-        {step.deltaPct != null && step.deltaPct !== 0 ? (
-          <p
+    <ul className="space-y-2.5" aria-label="State confidence">
+      {states.slice(0, 4).map((state) => {
+        const accent = roomStateAccent(state.id)
+        return (
+          <li key={state.id} className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className={cn(
+                    "size-2.5 shrink-0 rounded-full",
+                    accent.bar,
+                    !state.isPrimary && "opacity-50",
+                  )}
+                  aria-hidden
+                />
+                <span
+                  className={cn(
+                    "truncate text-[12px] font-medium leading-none",
+                    state.isPrimary ? "text-zinc-100" : "text-zinc-400",
+                  )}
+                >
+                  {state.label}
+                </span>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 font-mono text-[12px] font-semibold tabular-nums",
+                  state.isPrimary ? "text-zinc-200" : "text-zinc-500",
+                )}
+              >
+                {state.pct}%
+              </span>
+            </div>
+            <div
+              className="h-3.5 w-full overflow-hidden rounded-full bg-white/[0.1] ring-1 ring-inset ring-white/[0.06]"
+              aria-hidden
+            >
+              <div
+                className={cn(
+                  "h-full rounded-full transition-[width] duration-300",
+                  accent.bar,
+                  !state.isPrimary && "opacity-75",
+                )}
+                style={{ width: `${Math.min(100, state.pct)}%` }}
+              />
+            </div>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function PipelineStrip({
+  steps,
+}: {
+  steps: ReturnType<typeof buildLiveExplainSummary>["pipeline"]
+}) {
+  return (
+    <div className="flex flex-wrap items-stretch gap-1" aria-label="How the read was formed">
+      {steps.map((step, i) => (
+        <div key={step.id} className="flex min-w-0 items-stretch gap-1">
+          <div
             className={cn(
-              "mt-0.5 font-mono text-[10px] tabular-nums",
-              step.deltaPct > 0 ? "text-teal-300/90" : "text-amber-300/90",
+              "min-w-[5.5rem] flex-1 rounded-lg border px-2 py-1.5",
+              step.active
+                ? "border-white/10 bg-white/[0.05]"
+                : "border-white/[0.05] bg-white/[0.02] text-zinc-500",
             )}
           >
-            {step.deltaPct > 0 ? "+" : ""}
-            {step.deltaPct}% vs burst
-          </p>
-        ) : null}
-      </div>
-      {!isLast ? (
-        <ChevronRight className="mt-3 size-3 shrink-0 text-zinc-600" aria-hidden />
-      ) : null}
+            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              {step.label}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] font-medium text-zinc-100">{step.detail}</p>
+            {step.deltaPct != null && step.deltaPct !== 0 ? (
+              <p
+                className={cn(
+                  "mt-0.5 font-mono text-[9px] tabular-nums",
+                  step.deltaPct > 0 ? "text-teal-300/90" : "text-amber-300/90",
+                )}
+              >
+                {step.deltaPct > 0 ? "+" : ""}
+                {step.deltaPct}%
+              </p>
+            ) : null}
+          </div>
+          {i < steps.length - 1 ? (
+            <ChevronRight className="mt-2 size-3 shrink-0 text-zinc-600" aria-hidden />
+          ) : null}
+        </div>
+      ))}
     </div>
   )
 }
@@ -77,21 +132,12 @@ export const LiveExplainPanel = memo(function LiveExplainPanel({
   multiRoom?: boolean
 }) {
   const reduceMotion = useReducedMotion()
-  const [showAllStates, setShowAllStates] = useState(false)
-  const [showCorrect, setShowCorrect] = useState(false)
-
   const explain = useMemo(() => buildLiveExplainSummary(snapshot), [snapshot])
 
-  const chipCount = [
-    explain.uncertain,
-    explain.memoryApplied,
-    Math.abs(explain.smoothingDeltaPct) >= 2,
-    explain.smoothingChangedPrimary,
-  ].filter(Boolean).length
+  const memoryHint =
+    explain.memoryExamples > 0 ? `${explain.memoryExamples} saved` : null
 
-  const collapseLabel = open
-    ? "Hide explanation"
-    : `Why ${explain.primaryLabel} · ${explain.shownPct}%`
+  const rationaleLines = [...explain.rationalePreview, ...explain.rationaleMore].slice(0, 2)
 
   return (
     <div className="pointer-events-auto w-full">
@@ -99,26 +145,44 @@ export const LiveExplainPanel = memo(function LiveExplainPanel({
         type="button"
         onClick={onToggle}
         className={cn(
-          roomosUi.liveStatusPillTranslucent,
-          "mx-auto mb-1 flex w-full max-w-lg items-center justify-between gap-2 px-3 py-2 text-left sm:max-w-xl",
+          roomosUi.liveOverlayGlassTranslucent,
+          "flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-zinc-950/88 sm:px-4",
           roomosUi.focusRingDark,
         )}
         aria-expanded={open}
         aria-controls="live-explain-panel"
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <HelpCircle className="size-3.5 shrink-0 text-teal-300/90" aria-hidden />
-          <span className="truncate text-[11px] font-semibold text-zinc-200">{collapseLabel}</span>
-          {!open && chipCount > 0 ? (
-            <span className="shrink-0 rounded-full bg-teal-500/20 px-1.5 py-px text-[9px] font-bold text-teal-100">
-              {chipCount}
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] font-semibold tracking-tight text-zinc-50">
+            Why · {explain.primaryLabel} · {explain.shownPct}%
+          </p>
+          <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+            {open ? "Tap to collapse" : explain.verdict}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {memoryHint ? (
+            <span className="hidden items-center gap-1 rounded-full border border-violet-400/20 bg-violet-950/40 px-2 py-0.5 text-[9px] font-medium text-violet-100 sm:inline-flex">
+              <Brain className="size-3" aria-hidden />
+              {memoryHint}
             </span>
           ) : null}
-        </span>
-        <ChevronDown
-          className={cn("size-3.5 shrink-0 text-zinc-500 transition-transform", open && "rotate-180")}
-          aria-hidden
-        />
+          <span
+            className={cn(
+              "rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider",
+              TIER_CHIP[explain.confidenceTier],
+            )}
+          >
+            {explain.confidenceTier}
+          </span>
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-zinc-500 transition-transform duration-200",
+              open && "rotate-180",
+            )}
+            aria-hidden
+          />
+        </div>
       </button>
 
       <AnimatePresence initial={false}>
@@ -132,186 +196,76 @@ export const LiveExplainPanel = memo(function LiveExplainPanel({
             transition={
               reduceMotion
                 ? { duration: 0.12 }
-                : { duration: 0.28, ease: [0.22, 1, 0.36, 1] }
+                : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
             }
             className="overflow-hidden"
           >
             <div
               className={cn(
                 roomosUi.liveOverlayGlassTranslucent,
-                "mb-1 max-h-[min(48vh,400px)] overflow-hidden border-t border-white/10",
+                "mt-1 border-t border-white/[0.08] px-3 py-3 sm:px-3.5",
               )}
             >
-              <div className="overflow-y-auto overscroll-contain p-3 sm:p-3.5">
-                {/* Verdict + chips */}
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-zinc-200">
-                    {explain.verdict}
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    <span
-                      className={cn(
-                        "rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
-                        TIER_CHIP[explain.confidenceTier],
-                      )}
+              {multiRoom && roomName ? (
+                <p className="mb-2 text-[9px] font-medium uppercase tracking-[0.14em] text-zinc-600">
+                  {roomName}
+                  {explain.roomId ? (
+                    <span className="font-mono text-zinc-700"> · #{explain.sequence}</span>
+                  ) : null}
+                </p>
+              ) : null}
+
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,10.5rem)_1fr] lg:gap-5">
+                <section aria-labelledby="live-explain-breakdown">
+                  <h4
+                    id="live-explain-breakdown"
+                    className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500"
+                  >
+                    Confidence
+                  </h4>
+                  <CompactStateBars states={explain.topStates} />
+                </section>
+
+                <section aria-labelledby="live-explain-why" className="min-w-0 space-y-2">
+                  <div>
+                    <h4
+                      id="live-explain-why"
+                      className="mb-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500"
                     >
-                      {explain.confidenceTier}
-                    </span>
-                    {explain.memoryApplied ? (
-                      <span className="rounded-full border border-violet-400/30 bg-violet-950/50 px-2 py-0.5 text-[9px] font-semibold text-violet-100">
-                        Memory
-                      </span>
-                    ) : null}
-                    {Math.abs(explain.smoothingDeltaPct) >= 2 ? (
-                      <span className="rounded-full border border-sky-400/30 bg-sky-950/45 px-2 py-0.5 text-[9px] font-semibold text-sky-100">
-                        Smoothed
-                      </span>
-                    ) : null}
-                    {explain.smoothingChangedPrimary ? (
-                      <span className="rounded-full border border-amber-400/30 bg-amber-950/45 px-2 py-0.5 text-[9px] font-semibold text-amber-100">
-                        Label shifted
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-
-                {multiRoom && roomName ? (
-                  <p className="mt-2 text-[10px] text-zinc-500">
-                    Read for <span className="font-medium text-zinc-400">{roomName}</span>
-                    {explain.roomId ? (
-                      <span className="font-mono text-zinc-600"> · burst #{explain.sequence}</span>
-                    ) : null}
-                  </p>
-                ) : null}
-
-                {/* Pipeline */}
-                <div className="mt-3">
-                  <p className="mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                    <GitBranch className="size-3" aria-hidden />
-                    How this read was formed
-                  </p>
-                  <div className="flex items-stretch gap-0.5 sm:gap-1">
-                    {explain.pipeline.map((step, i) => (
-                      <PipelineStep
-                        key={step.id}
-                        step={step}
-                        isLast={i === explain.pipeline.length - 1}
-                      />
-                    ))}
-                  </div>
-                  <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-                    Burst read is after room memory blend, before temporal smoothing. Nothing leaves
-                    this device.
-                  </p>
-                </div>
-
-                {/* Top states compact */}
-                <div className="mt-3 border-t border-white/[0.06] pt-3">
-                  <p className="mb-2 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                    <Sparkles className="size-3" aria-hidden />
-                    Top states this burst
-                  </p>
-                  <div className="space-y-1">
-                    {explain.topStates.map((row) => (
-                      <div key={row.id} className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            "w-24 shrink-0 truncate text-[11px]",
-                            row.isPrimary ? "font-semibold text-zinc-50" : "text-zinc-400",
-                          )}
-                        >
-                          {row.label}
-                        </span>
-                        <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
-                          <motion.div
-                            className={cn(
-                              "absolute inset-y-0 left-0 rounded-full",
-                              row.isPrimary ? "bg-teal-400/75" : "bg-white/25",
-                            )}
-                            initial={false}
-                            animate={{ width: `${row.pct}%` }}
-                            transition={
-                              reduceMotion
-                                ? { duration: 0.12 }
-                                : { type: "spring", stiffness: 220, damping: 30 }
-                            }
-                          />
-                        </div>
-                        <span className="w-9 shrink-0 text-right font-mono text-[10px] tabular-nums text-zinc-400">
-                          {row.pct}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowAllStates((v) => !v)}
-                    className={cn(
-                      "mt-2 text-[10px] font-semibold text-teal-300/90 underline-offset-2 hover:underline",
-                      roomosUi.focusRingDark,
-                    )}
-                  >
-                    {showAllStates ? "Hide full distribution" : "All states & burst comparison"}
-                  </button>
-
-                  {showAllStates ? (
-                    <div className="mt-3 space-y-4 border-t border-white/[0.06] pt-3">
-                      {snapshot.modelDistribution ? (
-                        <>
-                          <div>
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                              Burst read (pre-smooth)
-                            </p>
-                            <LiveDistributionList
-                              distribution={snapshot.modelDistribution}
-                              primary={snapshot.primaryState}
-                              finePercent
+                      Why this read
+                    </h4>
+                    {explain.hasRationale ? (
+                      <ul className="space-y-1">
+                        {rationaleLines.map((line, i) => (
+                          <li
+                            key={`${i}-${line.slice(0, 20)}`}
+                            className="flex gap-1.5 text-[11px] leading-snug text-zinc-300"
+                          >
+                            <span
+                              className="mt-1.5 size-1 shrink-0 rounded-full bg-teal-400/60"
+                              aria-hidden
                             />
-                          </div>
-                          <div>
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                              Shown (smoothed)
-                            </p>
-                            <LiveDistributionList
-                              distribution={snapshot.distribution}
-                              primary={snapshot.primaryState}
-                              finePercent
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <LiveDistributionList
-                          distribution={snapshot.distribution}
-                          primary={snapshot.primaryState}
-                          finePercent
-                        />
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Correction disclosure */}
-                <div className="mt-3 border-t border-white/[0.06] pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowCorrect((v) => !v)}
-                    className={cn(
-                      "flex w-full items-center justify-between py-1.5 text-[11px] font-semibold text-zinc-300",
-                      roomosUi.focusRingDark,
+                            <span className="line-clamp-2">{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="line-clamp-2 text-[11px] leading-snug text-zinc-400">
+                        {explain.verdict}
+                      </p>
                     )}
-                  >
-                    Mark right or wrong
-                    <ChevronDown
-                      className={cn("size-3.5 transition-transform", showCorrect && "rotate-180")}
-                    />
-                  </button>
-                  {showCorrect ? (
-                    <div className="pt-2">
-                      <LiveQuickCorrection snapshot={snapshot} compact />
-                    </div>
-                  ) : null}
-                </div>
+                    {explain.uncertain && explain.runnerUp ? (
+                      <p className="mt-1.5 text-[10px] text-amber-200/90">
+                        Close: {explain.runnerUp.label} {explain.runnerUp.pct}%
+                      </p>
+                    ) : null}
+                  </div>
+                  <PipelineStrip steps={explain.pipeline} />
+                </section>
+              </div>
+
+              <div className="mt-3 border-t border-white/[0.06] pt-3">
+                <LiveQuickCorrection snapshot={snapshot} compact embedded dense />
               </div>
             </div>
           </motion.div>

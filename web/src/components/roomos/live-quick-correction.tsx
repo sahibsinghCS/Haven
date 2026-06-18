@@ -38,11 +38,17 @@ export function LiveQuickCorrection({
   disabled = false,
   disabledReason = "Feedback unavailable.",
   compact = false,
+  embedded = false,
+  dense = false,
 }: {
   snapshot: LiveInferenceSnapshot
   disabled?: boolean
   disabledReason?: string
   compact?: boolean
+  /** Inside LiveExplainPanel — no outer card chrome or duplicate title. */
+  embedded?: boolean
+  /** Tighter single-row layout for explain panel. */
+  dense?: boolean
 }) {
   const [pending, setPending] = useState<RoomStateId | "confirm" | null>(null)
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
@@ -134,45 +140,68 @@ export function LiveQuickCorrection({
   const storedTotal = autoRt?.storedCorrections ?? memoryCount
   const retrainProgress =
     autoRt?.enabled
-      ? `${retrainTaps}/${retrainNeed} taps · ${storedTotal} in model memory`
+      ? dense
+        ? `${retrainTaps}/${retrainNeed} · ${storedTotal}`
+        : `${retrainTaps}/${retrainNeed} taps · ${storedTotal} in model memory`
       : null
   const lastRetrain = autoRt?.lastResult as { ok?: boolean; error?: string } | null | undefined
 
   const confirmBusy = pending === "confirm"
   const confirmSaved = lastSaved === "confirm"
 
-  return (
-    <aside
-      className={cn(
-        roomosUi.liveOverlayGlassTranslucent,
-        "pointer-events-auto",
-        compact ? "p-3" : "p-4 sm:p-5",
+  const body = (
+    <>
+      {!embedded ? (
+        <div className="flex items-start justify-between gap-2">
+          <h3
+            id="roomos-quick-correct"
+            className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-zinc-400"
+          >
+            Right or wrong? (now)
+          </h3>
+          <span
+            className="inline-flex items-center gap-1 rounded-full border border-violet-400/25 bg-violet-950/40 px-2 py-0.5 text-[10px] font-semibold text-violet-100"
+            title="Each tap improves the model automatically"
+          >
+            <Brain className="size-3" aria-hidden />
+            {retrainProgress ?? `${memoryCount} saved`}
+          </span>
+        </div>
+      ) : (
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <h4
+            id="roomos-quick-correct"
+            className="text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-500"
+          >
+            Train this read
+          </h4>
+          <div className="flex items-center gap-2">
+            {snapshot.personalization?.applied && dense ? (
+              <span
+                className="text-[9px] text-violet-300/80"
+                title="Room memory is influencing this read"
+              >
+                Memory active
+              </span>
+            ) : null}
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-violet-400/20 bg-violet-950/35 px-2 py-0.5 text-[9px] font-medium text-violet-100"
+              title="Each tap improves the model automatically"
+            >
+              <Brain className="size-2.5" aria-hidden />
+              {retrainProgress ?? `${memoryCount} saved`}
+            </span>
+          </div>
+        </div>
       )}
-      aria-labelledby="roomos-quick-correct"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <h3
-          id="roomos-quick-correct"
-          className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-zinc-400"
-        >
-          Right or wrong? (now)
-        </h3>
-        <span
-          className="inline-flex items-center gap-1 rounded-full border border-violet-400/25 bg-violet-950/40 px-2 py-0.5 text-[10px] font-semibold text-violet-100"
-          title="Each tap improves the model automatically"
-        >
-          <Brain className="size-3" aria-hidden />
-          {retrainProgress ?? `${memoryCount} saved`}
-        </span>
-      </div>
 
-      {autoRt?.enabled && lastRetrain && lastRetrain.ok === false ? (
+      {autoRt?.enabled && lastRetrain && lastRetrain.ok === false && !dense ? (
         <p className="mt-1 text-[10px] text-amber-300/90">
  Retrain pending. run{" "}
           <code className="font-mono text-[10px]">npm run train:reinforce</code> once, then restart dev.
         </p>
       ) : null}
-      {autoRt?.running ? (
+      {autoRt?.running && !dense ? (
         <p className="mt-1 text-[10px] text-teal-300/90">Retraining model now…</p>
       ) : null}
 
@@ -205,6 +234,7 @@ export function LiveQuickCorrection({
           primary={primary}
           target={pendingConfirm.label}
           busy={pending !== null}
+          compact={dense}
           onCancel={() => setPendingConfirm(null)}
           onConfirm={() => void submit(pendingConfirm.label, pendingConfirm.mode)}
         />
@@ -223,12 +253,73 @@ export function LiveQuickCorrection({
         </p>
       ) : null}
 
-      {snapshot.personalization?.applied ? (
+      {snapshot.personalization?.applied && !dense ? (
         <p className="mt-2 rounded-lg border border-violet-400/20 bg-violet-950/30 px-2.5 py-1.5 text-[11px] text-violet-100/95">
           Your past answers are shaping this read now
         </p>
       ) : null}
 
+      {dense ? (
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Train this read">
+          <button
+            type="button"
+            disabled={disabled || (pending !== null && !confirmBusy) || Boolean(pendingConfirm)}
+            onClick={() => requestSubmit(primary, "confirm")}
+            className={cn(
+              "inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition",
+              "focus:outline-none focus:ring-2 focus:ring-emerald-400/40",
+              confirmSaved
+                ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-50"
+                : "border-emerald-400/30 bg-emerald-950/50 text-emerald-50 hover:bg-emerald-950/65",
+              confirmBusy && "opacity-80",
+            )}
+          >
+            {confirmBusy ? (
+              <Loader2 className="size-3 animate-spin" aria-hidden />
+            ) : confirmSaved ? (
+              <CheckCircle2 className="size-3" aria-hidden />
+            ) : (
+              <ThumbsUp className="size-3" aria-hidden />
+            )}
+            <span className={cn("size-2.5 shrink-0 rounded-full", primaryAccent.bar)} aria-hidden />
+            Yes
+          </button>
+          <span className="px-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-600">
+            or
+          </span>
+          {alternatives.map((state) => {
+            const accent = roomStateAccent(state)
+            const isPending = pending === state
+            const isSaved = lastSaved === state
+            return (
+              <button
+                key={state}
+                type="button"
+                disabled={disabled || (pending !== null && !isPending) || Boolean(pendingConfirm)}
+                onClick={() => requestSubmit(state, "correct")}
+                className={cn(
+                  "inline-flex min-h-8 items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition",
+                  "focus:outline-none focus:ring-2 focus:ring-teal-400/40",
+                  isSaved
+                    ? "border-teal-400/35 bg-teal-500/20 text-teal-50"
+                    : "border-white/[0.08] bg-white/[0.04] text-zinc-200 hover:bg-white/[0.08]",
+                  isPending && "opacity-80",
+                )}
+              >
+                {isPending ? (
+                  <Loader2 className="size-3 animate-spin" aria-hidden />
+                ) : isSaved ? (
+                  <CheckCircle2 className="size-3 text-teal-200" aria-hidden />
+                ) : (
+                  <span className={cn("size-2.5 shrink-0 rounded-full", accent.bar)} aria-hidden />
+                )}
+                {roomStateLabel(state)}
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <>
       <button
         type="button"
         disabled={disabled || (pending !== null && !confirmBusy) || Boolean(pendingConfirm)}
@@ -290,8 +381,31 @@ export function LiveQuickCorrection({
           )
         })}
       </div>
+        </>
+      )}
 
       {lastResult && !compact ? <LearningSummary result={lastResult} /> : null}
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <div className="pointer-events-auto" aria-labelledby="roomos-quick-correct">
+        {body}
+      </div>
+    )
+  }
+
+  return (
+    <aside
+      className={cn(
+        roomosUi.liveOverlayGlassTranslucent,
+        "pointer-events-auto",
+        compact ? "p-3" : "p-4 sm:p-5",
+      )}
+      aria-labelledby="roomos-quick-correct"
+    >
+      {body}
     </aside>
   )
 }
@@ -300,39 +414,59 @@ function MismatchConfirm({
   primary,
   target,
   busy,
+  compact = false,
   onCancel,
   onConfirm,
 }: {
   primary: RoomStateId
   target: RoomStateId
   busy: boolean
+  compact?: boolean
   onCancel: () => void
   onConfirm: () => void
 }) {
   return (
     <div
-      className="mt-3 space-y-2 rounded-xl border border-amber-400/35 bg-amber-950/45 p-3"
+      className={cn(
+        "space-y-2 rounded-xl border border-amber-400/35 bg-amber-950/45",
+        compact ? "mt-2 p-2" : "mt-3 p-3",
+      )}
       role="alertdialog"
       aria-labelledby="mismatch-title"
     >
-      <p id="mismatch-title" className="flex items-start gap-2 text-[12px] font-semibold text-amber-50">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <p
+        id="mismatch-title"
+        className={cn(
+          "flex items-start gap-2 font-semibold text-amber-50",
+          compact ? "text-[11px]" : "text-[12px]",
+        )}
+      >
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         These frames look like {roomStateLabel(primary)} now
       </p>
-      <p className="text-[11px] leading-relaxed text-amber-100/90">
-        Saving as <strong>{roomStateLabel(target)}</strong> teaches the model that this
-        video frame means {roomStateLabel(target)}. For an earlier moment, use{" "}
-        <Link href="/review" className="font-semibold text-amber-50 underline">
-          Review past switches
-        </Link>{" "}
-        so the saved burst matches that moment.
-      </p>
-      <div className="flex flex-wrap gap-2">
+      {!compact ? (
+        <p className="text-[11px] leading-relaxed text-amber-100/90">
+          Saving as <strong>{roomStateLabel(target)}</strong> teaches the model that this
+          video frame means {roomStateLabel(target)}. For an earlier moment, use{" "}
+          <Link href="/review" className="font-semibold text-amber-50 underline">
+            Review past switches
+          </Link>{" "}
+          so the saved burst matches that moment.
+        </p>
+      ) : (
+        <p className="text-[10px] text-amber-100/90">
+          Save as {roomStateLabel(target)} anyway?
+        </p>
+      )}
+      <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-zinc-100 hover:bg-white/15"
+          className={cn(
+            "rounded-lg border border-white/15 bg-white/10 font-semibold text-zinc-100 hover:bg-white/15",
+            compact ? "px-2 py-1 text-[10px]" : "px-3 py-1.5 text-[12px]",
+          )}
         >
           Cancel
         </button>
@@ -340,9 +474,12 @@ function MismatchConfirm({
           type="button"
           disabled={busy}
           onClick={onConfirm}
-          className="rounded-lg border border-amber-400/40 bg-amber-500/25 px-3 py-1.5 text-[12px] font-semibold text-amber-50 hover:bg-amber-500/35"
+          className={cn(
+            "rounded-lg border border-amber-400/40 bg-amber-500/25 font-semibold text-amber-50 hover:bg-amber-500/35",
+            compact ? "px-2 py-1 text-[10px]" : "px-3 py-1.5 text-[12px]",
+          )}
         >
-          {busy ? "Saving…" : `Save as ${roomStateLabel(target)} anyway`}
+          {busy ? "Saving…" : `Save as ${roomStateLabel(target)}`}
         </button>
       </div>
     </div>

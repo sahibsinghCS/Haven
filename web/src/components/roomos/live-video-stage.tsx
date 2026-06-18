@@ -145,17 +145,17 @@ export function LiveVideoStage({
 
       const runnerPct = Math.round(runnerUp.value * 100)
 
-      return `Mixed read. ${roomStateLabel(runnerUp.id)} is close at ${runnerPct}%. Tap Why below for the breakdown.`
+      return `Mixed read. ${roomStateLabel(runnerUp.id)} is close at ${runnerPct}%. Open Why · Right now for the breakdown.`
 
     }
 
     if (confidencePct < 55) {
 
-      return `Low confidence (${confidencePct}%). open Why below before trusting automation.`
+      return `Low confidence (${confidencePct}%). Open Why · Right now before trusting automation.`
 
     }
 
-    return "Signals are mixed this burst. check Why below before trusting automation."
+    return "Signals are mixed this burst. Check Why · Right now before trusting automation."
 
   }, [uncertain, runnerUp, liveConfidence, confidencePct])
 
@@ -337,7 +337,12 @@ export function LiveVideoStage({
 
 
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[min(62vh,540px)] flex-col justify-end">
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end",
+          inspectOpen ? "max-h-[min(78vh,640px)]" : "max-h-[min(52vh,420px)]",
+        )}
+      >
 
         <div
           className={cn(
@@ -359,9 +364,9 @@ export function LiveVideoStage({
               "bg-zinc-950/55",
             )}
             className={cn(
-              "!px-3 !py-2.5 sm:!px-4",
+              "!px-3 !py-2 sm:!px-4",
               inspectOpen
-                ? "[&_h3]:!text-xl [&_h3]:sm:!text-2xl"
+                ? "[&_h3]:!text-lg [&_h3]:sm:!text-xl"
                 : "[&_h3]:!text-2xl [&_h3]:sm:!text-3xl",
             )}
           />
