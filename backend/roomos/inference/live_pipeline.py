@@ -395,6 +395,7 @@ class LiveInferenceEngine:
         self._latest_evidence: Optional[dict] = None
         self._recent_screenshots: Deque[np.ndarray] = deque(maxlen=5)
         self._recent_evidence_frames: Deque[np.ndarray] = deque(maxlen=5)
+        self._last_evidence_preview_at: float = 0.0
         self._evidence_max_width = 1280
         self._frame_lock = threading.RLock()
         self._latest_live_frame_bgr: Optional[np.ndarray] = None
@@ -1263,8 +1264,13 @@ class LiveInferenceEngine:
 
     def push_evidence_from_preview(self, image_bgr: np.ndarray) -> None:
         """Transition/feedback evidence — called from the preview encode worker."""
-        if self._transition_journal is not None or self._feedback_model is not None:
-            self._push_evidence_frame(image_bgr)
+        if self._transition_journal is None and self._feedback_model is None:
+            return
+        now = time.monotonic()
+        if now - self._last_evidence_preview_at < 0.4:
+            return
+        self._last_evidence_preview_at = now
+        self._push_evidence_frame(image_bgr)
 
     def _emit_preview_frame(self, image_bgr: np.ndarray) -> None:
         if self._on_preview_frame is not None:

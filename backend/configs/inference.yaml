@@ -10,11 +10,12 @@ video:
   # Let the driver pick native resolution (forcing 1280×960 broke some built-in cams).
   frame_preprocess:
     enabled: true
-    strip_letterbox: true
+    strip_letterbox: false   # skip per-frame scan on phone HTTP streams (lower latency)
+    flip_horizontal: true
   preview:
-    max_fps: 30          # encode runs off capture thread; keeps MJPEG closer to real time
-    max_width: 1280      # balance sharpness vs encode CPU on the worker thread
-    jpeg_quality: 88
+    max_fps: 30
+    max_width: 960           # faster JPEG encode; still sharp on /live stage
+    jpeg_quality: 80
     fit: contain
   room_preview:
     max_fps: 1.5

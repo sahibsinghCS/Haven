@@ -744,8 +744,25 @@ def _open_capture(
     )
 
 
+# Max bytes we let the MJPEG parse buffer grow to before discarding stale data.
+# A backlog this large only happens on a corrupt/never-terminated stream or a
+# huge frame; we keep the tail (newest partial frame) and drop the rest.
+_MJPEG_MAX_BUFFER = 16_000_000
+# Per-read chunk size. Large so a single read can swallow several queued frames
+# (draining the socket backlog) instead of trickling 8 KB at a time.
+_MJPEG_READ_CHUNK = 262_144
+
+
 class _MjpegHttpCapture:
-    """VideoCapture-like reader for DroidCam-style MJPEG over HTTP (stdlib)."""
+    """VideoCapture-like reader for DroidCam-style MJPEG over HTTP (stdlib).
+
+    Latency control: DroidCam pushes frames continuously. If the consumer
+    (JPEG decode + ML pipeline) can't keep up, frames pile up in the OS socket
+    receive buffer and Python's buffered HTTP reader. To keep latency bounded we
+    drain *everything* currently waiting on the socket before decoding, then only
+    decode the single freshest complete JPEG and discard the backlog without
+    decoding the intermediate frames.
+    """
 
     def __init__(self, url: str) -> None:
         import urllib.error
@@ -767,12 +784,21 @@ class _MjpegHttpCapture:
         self._buffer = peek
         self._opened = True
 
+        # Underlying buffered socket reader. Used for non-blocking draining via
+        # ``select`` so we can skip stale frames. Falls back to plain blocking
+        # reads if anything here is unavailable (e.g. a mocked response).
+        self._fp = getattr(self._resp, "fp", None)
+        self._fileno: Optional[int] = None
+        if self._fp is not None and hasattr(self._fp, "read1"):
+            try:
+                self._fileno = self._fp.fileno()
+            except Exception:
+                self._fileno = None
+
     def isOpened(self) -> bool:
         return self._opened
 
     def read(self):
-        import cv2
-
         frame = self._read_jpeg_frame()
         if frame is None:
             return False, None
@@ -785,17 +811,70 @@ class _MjpegHttpCapture:
         except Exception:
             pass
 
+    def _read_chunk(self, size: int) -> bytes:
+        """Read up to ``size`` bytes, returning as soon as *any* data is ready.
+
+        ``read1`` avoids the blocking-until-full behaviour of ``read`` so a
+        partially-arrived frame doesn't stall us, which keeps latency low.
+        """
+        if self._fp is not None and hasattr(self._fp, "read1"):
+            return self._fp.read1(size)
+        return self._resp.read(size)
+
+    def _drain_available(self) -> None:
+        """Pull all bytes currently waiting on the socket (non-blocking).
+
+        This is what bounds latency: any frames queued behind the freshest one
+        are appended to the buffer here so the parser can skip straight to the
+        newest complete JPEG instead of decoding the backlog frame by frame.
+        """
+        if self._fileno is None:
+            return
+        import select
+
+        while True:
+            try:
+                readable, _, _ = select.select([self._fileno], [], [], 0.0)
+            except (OSError, ValueError):
+                # Socket/select unusable on this platform — stop draining and
+                # fall back to plain blocking reads for the rest of the session.
+                self._fileno = None
+                return
+            if not readable:
+                return
+            try:
+                chunk = self._read_chunk(_MJPEG_READ_CHUNK)
+            except (OSError, ValueError):
+                return
+            if not chunk:
+                return
+            self._buffer += chunk
+            if len(self._buffer) > _MJPEG_MAX_BUFFER:
+                self._trim_buffer_to_latest()
+                return
+
+    def _trim_buffer_to_latest(self) -> None:
+        """Drop everything before the last JPEG start marker (cap memory)."""
+        soi = b"\xff\xd8"
+        keep = self._buffer.rfind(soi)
+        if keep > 0:
+            self._buffer = self._buffer[keep:]
+        elif keep < 0:
+            self._buffer = self._buffer[-_MJPEG_READ_CHUNK:]
+
     def _read_jpeg_frame(self) -> Optional[np.ndarray]:
         import cv2
 
         soi = b"\xff\xd8"
         eoi = b"\xff\xd9"
         while True:
-            # Always jump to the *most recent* complete JPEG already buffered and
-            # drop everything before it. If the consumer falls behind, frames pile
-            # up in the socket/buffer; serving the oldest one (the previous
-            # behaviour) made latency grow without bound. We decode only the
-            # freshest frame and keep any trailing partial frame for next time.
+            # Swallow any backlog sitting on the socket so we decode the freshest
+            # frame, not a stale one. Without this, a consumer that falls behind
+            # makes latency grow without bound.
+            self._drain_available()
+
+            # Jump to the *most recent* complete JPEG and drop everything before
+            # it, keeping any trailing partial frame for next time.
             last_eoi = self._buffer.rfind(eoi)
             if last_eoi >= 0:
                 last_soi = self._buffer.rfind(soi, 0, last_eoi)
@@ -809,11 +888,11 @@ class _MjpegHttpCapture:
                     if img is not None and img.size > 0:
                         return img
                     # Decode failed — keep pulling more bytes.
-            if len(self._buffer) > 4_000_000:
+            if len(self._buffer) > _MJPEG_MAX_BUFFER:
                 # Corrupt/never-terminated stream: avoid unbounded growth.
-                self._buffer = b""
-                return None
-            chunk = self._resp.read(8192)
+                self._trim_buffer_to_latest()
+            # Nothing complete buffered yet — block briefly for more data.
+            chunk = self._read_chunk(_MJPEG_READ_CHUNK)
             if not chunk:
                 return None
             self._buffer += chunk
@@ -1387,6 +1466,8 @@ class FrameSource:
         self._grab_frame_id: int = 0
         self._grab_consumed_id: int = 0
         self._grab_dead: bool = False
+        self._preview_from_grabber: bool = False
+        self._preview_grabber_lock = threading.Lock()
 
     @property
     def last_frame_shape(self) -> Optional[tuple[int, ...]]:
@@ -1457,15 +1538,31 @@ class FrameSource:
         self._next_preview_emit_at = 0.0
         self._frame_index = 0
 
-        # Network streams buffer in the driver/socket; drain in a background thread.
-        # Local webcams (incl. DroidCam virtual cam) stay on direct read — a grabber
-        # here forces preprocess on every camera frame and adds latency.
-        if (
-            isinstance(self.coerced_source, str)
-            and "://" in self.coerced_source
+        # Network streams and local webcams both buffer in the driver; drain in a
+        # background thread so preview always sees the freshest frame.
+        self._preview_from_grabber = bool(
+            self.preview_callback is not None
+            and self._preview_period is not None
             and self.is_live()
-        ):
+        )
+        if self.is_live():
             self._start_grabber()
+
+    def _maybe_emit_preview(self, frame: np.ndarray, *, now_rel: float) -> None:
+        if (
+            self.preview_callback is None
+            or self._preview_period is None
+            or now_rel < self._next_preview_emit_at
+        ):
+            return
+        self._next_preview_emit_at = now_rel + self._preview_period
+        out = frame
+        if self.frame_preprocess:
+            out = preprocess_frame(frame, self.frame_preprocess)
+        try:
+            self.preview_callback(out)
+        except Exception as e:
+            log.debug("preview_callback failed: %s", e)
 
     def _start_grabber(self) -> None:
         """Continuously read the capture in the background, keeping only the
@@ -1506,6 +1603,10 @@ class FrameSource:
                     return
                 continue
             consecutive_failures = 0
+            now_rel = time.monotonic() - self._opened_at
+            with self._preview_grabber_lock:
+                if self._preview_from_grabber:
+                    self._maybe_emit_preview(frame, now_rel=now_rel)
             with self._grab_cond:
                 self._latest_grab = frame
                 self._grab_frame_id += 1
@@ -1594,7 +1695,8 @@ class FrameSource:
             last_ok = time.monotonic()
 
             preview_due = (
-                self.preview_callback is not None
+                not self._preview_from_grabber
+                and self.preview_callback is not None
                 and self._preview_period is not None
                 and now_rel >= self._next_preview_emit_at
             )
@@ -1618,7 +1720,8 @@ class FrameSource:
             self._last_frame_shape = tuple(frame.shape)
 
             if (
-                self.preview_callback is not None
+                not self._preview_from_grabber
+                and self.preview_callback is not None
                 and self._preview_period is not None
                 and preview_due
             ):

@@ -323,12 +323,12 @@ class _AsyncPreviewEncoder:
                 break
             work = item
             hook = self._side_hook
+            self._encode_and_push(work)
             if hook is not None:
                 try:
                     hook(work)
                 except Exception as e:
                     log.debug("preview side hook failed: %s", e)
-            self._encode_and_push(work)
 
     def _encode_and_push(self, image_bgr: np.ndarray) -> None:
         preview = self._preview
@@ -346,7 +346,7 @@ class _AsyncPreviewEncoder:
             frame = cv2.resize(
                 frame,
                 (max_w, max(1, int(round(h * scale)))),
-                interpolation=cv2.INTER_AREA,
+                interpolation=cv2.INTER_LINEAR,
             )
         try:
             mean_luma = float(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).mean())

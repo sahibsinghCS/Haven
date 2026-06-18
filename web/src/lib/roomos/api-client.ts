@@ -453,11 +453,8 @@ export function livePreviewUrl(): string {
   return LIVE_PREVIEW_URL
 }
 
-/** MJPEG stream. one connection, ~30 FPS; much smoother than polling JPEG blobs. */
+/** MJPEG stream — connect directly to FastAPI (Next.js rewrites buffer multipart streams). */
 export function livePreviewMjpegUrl(): string {
-  if (typeof window !== "undefined") {
-    return "/api/live/preview.mjpeg"
-  }
   return `${API_BASE}/api/live/preview.mjpeg`
 }
 
@@ -1325,9 +1322,6 @@ export async function fetchRoomsStatus(signal?: AbortSignal): Promise<RoomsStatu
 }
 
 export function roomPreviewMjpegUrl(roomId: string): string {
-  if (typeof window !== "undefined") {
-    return `/api/rooms/${encodeURIComponent(roomId)}/preview.mjpeg`
-  }
   return `${API_BASE}/api/rooms/${encodeURIComponent(roomId)}/preview.mjpeg`
 }
 

@@ -108,7 +108,7 @@ def test_frame_source_fallback_to_webcam() -> None:
                 assert fs.backend == "dshow"
 
 
-def test_frame_source_no_grabber_for_webcam_index() -> None:
+def test_frame_source_starts_grabber_for_webcam_index() -> None:
     from roomos.video.input import FrameSource
 
     fs = FrameSource(0, sample_fps=6.0)
@@ -120,8 +120,8 @@ def test_frame_source_no_grabber_for_webcam_index() -> None:
     with patch("roomos.video.input._open_video_capture", return_value=(mock_cap, "dshow")):
         fs.open()
     try:
-        assert fs._grab_thread is None
-        assert fs._grab_cond is None
+        assert fs._grab_thread is not None
+        assert fs._grab_cond is not None
     finally:
         fs.close()
 
@@ -142,6 +142,83 @@ def test_frame_source_starts_grabber_for_network_url() -> None:
         assert fs._grab_cond is not None
     finally:
         fs.close()
+
+
+def _jpeg_bytes(color: int) -> bytes:
+    """Encode a tiny solid-color JPEG (SOI..EOI) for MJPEG parsing tests."""
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    img = np.full((8, 8, 3), color, dtype=np.uint8)
+    ok, buf = cv2.imencode(".jpg", img)
+    assert ok
+    data = buf.tobytes()
+    assert data[:2] == b"\xff\xd8" and data[-2:] == b"\xff\xd9"
+    return data
+
+
+def _make_mjpeg_capture(buffer: bytes = b"", fp=None, fileno=None) -> "_MjpegHttpCapture":
+    """Build a capture without performing real network I/O in __init__."""
+    cap = _MjpegHttpCapture.__new__(_MjpegHttpCapture)
+    cap.url = "http://test/video"
+    cap._buffer = buffer
+    cap._opened = True
+    cap._resp = MagicMock()
+    cap._fp = fp
+    cap._fileno = fileno
+    return cap
+
+
+def test_mjpeg_decodes_latest_buffered_frame() -> None:
+    """When several whole frames are buffered, decode only the newest one."""
+    pytest.importorskip("cv2")
+    import numpy as np
+
+    f1 = _jpeg_bytes(10)
+    f2 = _jpeg_bytes(200)
+    # fileno=None -> draining skipped; both frames already buffered.
+    cap = _make_mjpeg_capture(buffer=f1 + f2, fileno=None)
+
+    ok, frame = cap.read()
+    assert ok
+    # Newest frame (brighter) should be the one decoded, not the stale first one.
+    assert float(np.mean(frame)) > 100
+
+
+def test_mjpeg_drains_socket_backlog_and_returns_newest(monkeypatch) -> None:
+    """The reader pulls all queued bytes and decodes only the freshest frame."""
+    pytest.importorskip("cv2")
+    import numpy as np
+
+    old = _jpeg_bytes(10)
+    newest = _jpeg_bytes(240)
+
+    class FakeFp:
+        def __init__(self, chunks):
+            self._chunks = list(chunks)
+
+        def read1(self, _size):
+            return self._chunks.pop(0) if self._chunks else b""
+
+    # A backlog of two stale frames followed by the newest frame waiting on the
+    # socket. select reports readable until everything has been pulled.
+    fp = FakeFp([old, old, newest])
+    readable_calls = {"n": 0}
+
+    def fake_select(rlist, wlist, xlist, timeout):
+        # Readable for the three queued chunks, then not.
+        readable_calls["n"] += 1
+        return (list(rlist) if readable_calls["n"] <= 3 else [], [], [])
+
+    import select as select_mod
+
+    monkeypatch.setattr(select_mod, "select", fake_select, raising=True)
+
+    cap = _make_mjpeg_capture(buffer=b"", fp=fp, fileno=123)
+    ok, frame = cap.read()
+    assert ok
+    # The backlog was drained and only the newest (brightest) frame decoded.
+    assert float(np.mean(frame)) > 150
 
 
 def test_preview_hub_wait_for_new_frame() -> None:
